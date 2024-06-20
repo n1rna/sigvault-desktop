@@ -1,4 +1,6 @@
-use tauri::{Manager, Window};
+use tauri::{Manager, Window, State};
+
+
 
 #[tauri::command]
 fn start_wallet_connection(window: Window, message: String) -> String {
@@ -9,11 +11,11 @@ fn start_wallet_connection(window: Window, message: String) -> String {
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(5));
+        // establish connection to websocket server and keep connection open
         window.emit("wallet_connection", Payload { message: "Tauri is awesome!".into() }).unwrap();
     });
 
     "Hello from Rust!".into()
-
 }
 
 // the payload type must implement `Serialize` and `Clone`.
