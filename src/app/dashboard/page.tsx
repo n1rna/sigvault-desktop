@@ -3,14 +3,17 @@
 import { GlobeIcon } from "@radix-ui/react-icons";
 import { useWalletConnection } from "@/hooks/wallet-connection";
 export default function DashboardPage() {
+
+
   const { connection, waitingForConnection, initialized } =
-    useWalletConnection("mymsg");
+    useWalletConnection();
 
   console.log("FFFFFFFFFFFFFFFFFFFFFFFFFFF", {
     connection,
     waitingForConnection,
     initialized,
   });
+
   return (
     <>
       <main className="flex-1 w-full p-6 flex flex-col items-center justify-center">

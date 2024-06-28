@@ -21,6 +21,7 @@
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18",
+    "react-toastify": "^10.0.5",
     "supertokens-auth-react": "^0.42.2",
     "supertokens-node": "^18.0.0",
     "supertokens-web-js": "^0.12.0",

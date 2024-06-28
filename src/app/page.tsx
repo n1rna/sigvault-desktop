@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { AuthSession } from "@supabase/supabase-js";
 
-import { supabase } from "@/components/supabase-client";
+import { supabase } from "@/lib/supabase-client";
 import { redirect } from "next/navigation";
 
 export default function Home() {

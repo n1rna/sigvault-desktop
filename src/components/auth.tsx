@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/components/supabase-client";
+import { supabase } from "@/lib/supabase-client";
 import { listen } from "@tauri-apps/api/event";
 
 
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
 
+import { toast } from 'react-toastify';
 
 
 function getLocalHostUrl(port: number) {
@@ -64,15 +65,16 @@ export default function Auth() {
     event.preventDefault();
     setLoading(true);
 
+    console.log("HANDLING LOGIN", getLocalHostUrl(port!))
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: getLocalHostUrl(port!) },
     });
 
     if (error) {
-      alert(error.message);
+      toast(error.message);
     } else {
-      alert("Check your email for the login link!");
+      toast("Check your email for the login link!");
     }
     setLoading(false);
   };
