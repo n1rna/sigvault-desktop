@@ -5,32 +5,22 @@ import { useWalletConnection } from "@/hooks/wallet-connection";
 export default function DashboardPage() {
 
 
-  const { connection, waitingForConnection, initialized } =
+  const { socketConnected, receivedMessages } =
     useWalletConnection();
-
-  console.log("FFFFFFFFFFFFFFFFFFFFFFFFFFF", {
-    connection,
-    waitingForConnection,
-    initialized,
-  });
 
   return (
     <>
       <main className="flex-1 w-full p-6 flex flex-col items-center justify-center">
         <div className="max-w-md mx-auto text-center">
-          {!waitingForConnection || !initialized ? (
-            <h2 className="text-2xl font-bold mb-4">
-              Waiting for connection
-            </h2>
-          ) : (
-            <h2 className="text-2xl font-bold mb-4">
-              Continue setting up your vault via the web app
-            </h2>
-          )}
+          {receivedMessages.map((msg, i) => (
+            <h5 className="text-md" key={i}>
+              {msg.success ? "Success" : "Error"}: {msg.error ? msg.error : `${msg.message.message_type}: ${JSON.stringify(msg.message.payload)}`}
+            </h5>
+          ))}
         </div>
       </main>
       <footer className="w-full bg-gray-900 text-white px-6 py-4 flex items-center justify-between">
-        {!waitingForConnection || !initialized ? (
+        {!socketConnected ? (
           <>
             <div className="flex items-center">
               <GlobeIcon className="h-6 w-6 mr-2" />

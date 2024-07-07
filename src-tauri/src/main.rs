@@ -1,109 +1,211 @@
-use futures_util::{SinkExt, StreamExt};
-use std::sync::Mutex;
+use futures::FutureExt;
+use futures_util::{stream::SplitSink, stream::SplitStream, StreamExt};
+use serde_json;
+use std::time::Duration;
+use std::{borrow::Borrow, sync::Arc};
 use tauri::{State, Window};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tokio::time::sleep;
+use tokio_tungstenite::{
+    connect_async, tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream,
+};
 
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 struct AuthState {
     token: String,
     session_id: String,
 }
 
+#[derive(Debug)]
+struct WSConnectionState {
+    stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct WindowEventMessage {
+    success: bool,
+    message: WebsocketMessage,
+    error: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Default)]
+struct WebsocketMessage {
+    message_type: String,
+    payload: serde_json::Value,
+}
+
+struct ApplicationState {
+    auth: Arc<Mutex<Option<AuthState>>>,
+    ws_thread: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+}
+
 async fn authorize_websocket_connection(auth_token: String) -> AuthState {
     let client = reqwest::Client::new();
-    let res = client
+    return match client
         .post("http://localhost:8000/api/v1/authorize")
         .header("Authorization", auth_token)
         .send()
         .await
-        .unwrap();
-
-    let body = res.text().await.unwrap();
-    print!("Response: {}", body);
-    let auth_state: AuthState = serde_json::from_str(&body).unwrap();
-    auth_state
+    {
+        Ok(res) => {
+            let body = res.text().await.unwrap();
+            let auth_state = serde_json::from_str::<AuthState>(&body).unwrap();
+            auth_state
+        }
+        Err(e) => {
+            println!("Error: {:?}", e);
+            return AuthState {
+                token: "".into(),
+                session_id: "".into(),
+            };
+        }
+    };
 }
 
-async fn start_websocket_connection(ws_session_id: String, ws_token: String) {
+async fn start_websocket_connection(auth: Arc<Mutex<Option<AuthState>>>) -> WSConnectionState {
+    let auth = auth.lock().await.as_ref().unwrap().clone();
     let (ws_stream, _) = connect_async(format!(
         "ws://localhost:8000/api/v1/{}?token={}",
-        ws_session_id, ws_token
+        auth.session_id, auth.token
     ))
     .await
     .expect("Failed to connect to websocket server");
 
-    let (mut write, read) = ws_stream.split();
-
-    tokio::spawn(async move {
-        read.for_each(|message| async {
-            match message {
-                Ok(msg) => {
-                    // Handle received message
-                    println!("Received message: {:?}", msg);
-                }
-                Err(e) => {
-                    // Handle error
-                    eprintln!("Error receiving message: {:?}", e);
-                }
-            }
-        })
-        .await;
-    });
-
-    // Send a message to the server
-    let message = Message::Text("Hello from Rust!".to_string());
-    write.send(message).await.expect("Failed to send message");
+    WSConnectionState { stream: ws_stream }
 }
 
-#[tauri::command]
-fn start_websocket_connection_command(
-    window: Window,
-    auth_state: State<Mutex<AuthState>>,
-    auth_session: String,
-) -> String {
-    println!(
-        "Starting websocket connection with session: {}",
-        auth_session
-    );
-    // perform authorization first based on the auth token (message)
-    let authorization = tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(authorize_websocket_connection(auth_session));
-
-    // Update the auth state with the token
-    *auth_state.lock().unwrap() = authorization;
-
+fn emit_window_message(window: &Window, message: WindowEventMessage) {
     window
         .emit(
-            "websocket_connection_established",
-            Some(r#"{ "token": "fetched" }"#.to_string()),
+            "websocket_connection",
+            serde_json::to_string(&message).unwrap(),
         )
         .expect("failed to emit event");
+}
 
-    let ws_token = auth_state.lock().unwrap().token.clone();
-    let ws_session_id = auth_state.lock().unwrap().session_id.clone();
+#[tokio::main]
+#[tauri::command]
+async fn start_websocket_connection_command(
+    window: Window,
+    app_state: State<'_, ApplicationState>,
+    auth_session: String,
+) -> String {
+    if app_state.ws_thread.lock().await.is_some() {
+        emit_window_message(
+            &window,
+            WindowEventMessage {
+                success: false,
+                message: Default::default(),
+                error: "Websocket connection already started".into(),
+            },
+        );
 
-    tokio::spawn(async move {
-        start_websocket_connection(ws_session_id, ws_token).await;
-        window
-            .emit(
-                "websocket_connection_established",
-                Some(r#"{ "success": "true" }"#.to_string()),
-            )
-            .expect("failed to emit event");
+        return "Websocket connection already started".into();
+    }
+
+    let authorization = authorize_websocket_connection(auth_session).await;
+    if authorization.token.is_empty() {
+        emit_window_message(
+            &window,
+            WindowEventMessage {
+                success: false,
+                message: Default::default(),
+                error: "Failed to authorize websocket connection".into(),
+            },
+        );
+
+        return "Failed to authorize websocket connection".into();
+    }
+
+    app_state.auth.lock().await.replace(authorization);
+    emit_window_message(
+        &window,
+        WindowEventMessage {
+            success: true,
+            message: WebsocketMessage {
+                message_type: "authorization_success".into(),
+                payload: serde_json::Value::Null,
+            },
+            error: "".into(),
+        },
+    );
+
+    let auth_state = Arc::clone(&app_state.auth);
+
+    let join_handler = tauri::async_runtime::spawn(async move {
+        let auth_state = Arc::clone(&auth_state);
+        let ws_con = start_websocket_connection(auth_state).await;
+        let (_, mut reader) = ws_con.stream.split();
+
+        emit_window_message(
+            &window,
+            WindowEventMessage {
+                success: true,
+                message: WebsocketMessage {
+                    message_type: "connection_opened".into(),
+                    payload: serde_json::Value::Null,
+                },
+                error: "".into(),
+            },
+        );
+
+        loop {
+            let message = match reader.next().await {
+                Some(msg) => {
+                    println!("MESSAGE RECEIVED {:?}", msg);
+                    msg
+                }
+                None => {
+                    println!("No message received");
+                    sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+            };
+
+            match message {
+                Ok(Message::Text(msg)) => {
+                    emit_window_message(
+                        &window,
+                        WindowEventMessage {
+                            success: true,
+                            message: serde_json::from_str::<WebsocketMessage>(&msg).unwrap(),
+                            error: "".into(),
+                        },
+                    );
+                }
+                Ok(Message::Close(_)) => {
+                    emit_window_message(
+                        &window,
+                        WindowEventMessage {
+                            success: true,
+                            message: WebsocketMessage {
+                                message_type: "connection_closed".into(),
+                                payload: serde_json::Value::Null,
+                            },
+                            error: "".into(),
+                        },
+                    );
+                    break;
+                }
+                _ => {}
+            }
+        }
     });
 
-    // You can perform any additional logic here, such as updating the UI or handling the result of the command.
-    // For example, you can show a success message to the user:
-    "fofofof".into()
+    app_state.ws_thread.lock().await.replace(join_handler);
+
+    "Websocket connection started".into()
 }
 
 fn main() {
     tauri::Builder::default()
-        .manage(Mutex::new(AuthState {
-            token: "".into(),
-            session_id: "".into(),
-        }))
+        // .manage(AuthStateMutex::default())
+        // .manage(WSConnectionMutex::default())
+        .manage(ApplicationState {
+            auth: Default::default(),
+            ws_thread: Default::default(),
+        })
         .plugin(tauri_plugin_oauth::init())
         .invoke_handler(tauri::generate_handler![start_websocket_connection_command])
         .run(tauri::generate_context!())

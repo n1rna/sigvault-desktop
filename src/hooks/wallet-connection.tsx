@@ -1,50 +1,48 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { emit, listen } from "@tauri-apps/api/event";
+import { Event } from "@tauri-apps/api/event";
 import { event } from "@tauri-apps/api";
 import { supabase } from "@/lib/supabase-client";
 
 type EventPayload = {
   // Define the structure of your event payload here
+  success: boolean,
+  error: string,
+  message: {
+    message_type: string;
+    payload: any;
+  }
 };
 
 export function useWalletConnection(): {
-  connection: string | null;
-  initialized: boolean;
-  waitingForConnection: boolean;
+  socketConnected: boolean;
+  receivedMessages: EventPayload[];
 } {
 
-  const [waitingForConnection, setWaitingForConnection] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const [connection, setConnection] = useState<string | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [receivedMessages, setReceivedMessages] = useState<EventPayload[]>([]);
 
   useEffect(() => {
-    if (!waitingForConnection || !initialized) {
+    if (!socketConnected) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        console.log("fofofofofofo", session)
         invoke("start_websocket_connection_command", { authSession: JSON.stringify(session) }).then((resp) => {
-          console.log("message sent and received", resp)
-          setWaitingForConnection(true);
+          setSocketConnected(true);
         });
       });
     }
 
-    const unlistenPromise = listen<string>("websocket_connection_established", (event) => {
-      console.log("Received event:", event.payload);
-
-      if (event.payload.includes("fetched ")) {
-        setInitialized(true);
-        setConnection(event.payload);
-      }
+    const unlistenPromise = listen<string>("websocket_connection", (event) => {
+      setReceivedMessages((prev) => [...prev, JSON.parse(event.payload) as EventPayload]);
     });
 
     return () => {
       unlistenPromise.then((unlisten) => {
-        console.log("yoyoy unlistening", unlisten);
+        console.log("unlistening");
         unlisten();
       });
     };
-  }, [waitingForConnection, initialized, connection]);
+  }, [socketConnected]);
 
-  return { connection, initialized, waitingForConnection };
+  return { socketConnected, receivedMessages };
 }
