@@ -17,7 +17,7 @@ tauri-build = { version = "1.5.2", features = [] }
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.6.5", features = [] }
+tauri = { version = "1.6.5", features = [ "window-show", "window-maximize", "window-start-dragging", "window-unminimize", "window-close", "window-minimize", "window-hide", "window-unmaximize"] }
 tauri-plugin-oauth = { git = "https://github.com/FabianLars/tauri-plugin-oauth", version = "0.0.0-alpha.0" }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.23.1"
