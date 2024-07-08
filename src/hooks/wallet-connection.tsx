@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { supabase } from "@/lib/supabase-client";
-import { websocket__handleCommand } from "@/lib/websocket";
+import usePersist from "@/hooks/use-persist";
 
 type EventPayload = {
   // Define the structure of your event payload here
@@ -24,7 +24,7 @@ export function useWalletConnection(): {
 
   const [socketConnected, setSocketConnected] = useState(false);
   const [socketConnectionRetries, setSocketConnectionRetries] = useState<number>(0);
-  const [receivedMessages, setReceivedMessages] = useState<EventPayload[]>([]);
+  const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({ name: "receivedMessages", value: [] });
 
   useEffect(() => {
     if (!socketConnected) {
@@ -40,12 +40,11 @@ export function useWalletConnection(): {
     if (socketConnected) {
       const unlistenPromise = listen<string>("websocket_connection", (event) => {
         const _message = JSON.parse(event.payload) as EventPayload;
-        setReceivedMessages((prev) => [...prev, _message]);
         if (_message.message.message_type === "connection_closed") {
           setSocketConnected(false);
-
         } else {
-          websocket__handleCommand(_message.message.message_type, _message.message.payload);
+          // websocket__handleCommand(_message.message.message_type, _message.message.payload);
+          setReceivedMessages((prev) => [_message, ...prev]);
         }
       });
 
@@ -56,7 +55,7 @@ export function useWalletConnection(): {
         });
       };
     }
-  }, [socketConnected, socketConnectionRetries]);
+  }, [socketConnected, socketConnectionRetries, setReceivedMessages]);
 
   return {
     socketConnected, receivedMessages, retrySocketConnection: () => {

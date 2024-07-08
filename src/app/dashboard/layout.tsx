@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { SocketProvider } from "@/components/socket-provider";
+import { SocketProvider } from "@/components/providers/socket-provider";
 import "../globals.css";
 import 'react-toastify/dist/ReactToastify.css';
+import { AppStateProvider } from "@/components/providers/appstate-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,7 +20,9 @@ export default function RootLayout({
 }>) {
     return (
         <SocketProvider>
-            {children}
+            <AppStateProvider>
+                {children}
+            </AppStateProvider>
         </SocketProvider>
     );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-
 import { useWalletConnection } from "@/hooks/wallet-connection";
 
-type SocketContextType = {
+export type SocketContextType = {
     socketConnected: boolean;
     receivedMessages: { success: boolean; error?: string; message: { message_type: string; payload: any } }[];
     retrySocketConnection: () => void;
@@ -24,8 +23,11 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     const { socketConnected, receivedMessages, retrySocketConnection } = useWalletConnection();
 
     return (
-        <SocketContext.Provider value={{ socketConnected, receivedMessages, retrySocketConnection }}>
+        <SocketContext.Provider value={{
+            socketConnected, receivedMessages, retrySocketConnection
+        }}>
             {children}
         </SocketContext.Provider>
     );
 };
+

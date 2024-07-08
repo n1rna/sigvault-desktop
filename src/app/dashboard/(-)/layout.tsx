@@ -1,15 +1,12 @@
 "use client";
 
-import { GlobeIcon } from "@radix-ui/react-icons";
-import { SocketContext } from "@/components/socket-provider";
-
 import * as React from "react";
 import { ShadowNoneIcon, LockClosedIcon, PersonIcon, LockOpen2Icon, ReloadIcon } from "@radix-ui/react-icons";
+import { useAppState } from "@/hooks";
 
 export default function DashboardPage({ children }: { children: React.ReactNode }) {
 
-    const { socketConnected, retrySocketConnection } =
-        React.useContext(SocketContext);
+    const { socket: { socketConnected, retrySocketConnection } } = useAppState();
 
     const handleRetry = (e: React.MouseEvent<HTMLSpanElement>) => { e.preventDefault(); retrySocketConnection() } // Remove the second generic type argument from MouseEvent
 
