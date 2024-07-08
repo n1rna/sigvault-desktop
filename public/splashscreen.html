@@ -1,0 +1,42 @@
+<style>
+    .container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+    }
+    .inner-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        min-height: 100px;
+        min-width: 100px;
+    }
+
+    @keyframes spin {
+        to {
+         transform: rotate(360deg);
+        }
+    }
+    
+    .spin {
+        transform-origin: center;
+        animation: spin 1.3s linear infinite;
+    }
+</style>
+<html>
+    <body>
+        <div class="container">
+            <div class="inner-container">
+              <svg viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
+                <circle class="spin" cx="400" cy="400" fill="none"
+                  r="176" stroke-width="50" stroke="#5271cc"
+                  stroke-dasharray="786 1400"
+                  stroke-linecap="round" />
+              </svg>
+            </div>
+        </div>
+        
+    </body>
+</html>

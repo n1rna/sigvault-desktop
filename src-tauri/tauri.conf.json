@@ -66,13 +66,25 @@
     },
     "windows": [
       {
+        "label": "main",
         "fullscreen": false,
-        "height": 500,
-        "resizable": false,
+        "width": 512,
+        "height": 416,
+        "center": true,
+        "resizable": true,
         "title": "qblok wallet",
-        "width": 700,
         "decorations": false,
+        "visible": false,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OverscrollHistoryNavigation,msExperimentalScrollin --disable-pinch"
+      },
+      {
+        "fullscreen": false,
+        "width": 256,
+        "height": 192,
+        "center": true,
+        "decorations": false,
+        "url": "splashscreen.html",
+        "label": "splashscreen"
       }
     ]
   }

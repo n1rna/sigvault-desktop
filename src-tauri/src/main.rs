@@ -2,7 +2,7 @@ use futures_util::StreamExt;
 use serde_json;
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{State, Window};
+use tauri::{Manager, State, Window};
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -138,6 +138,26 @@ async fn start_websocket_connection_command(
     "Websocket connection started".into()
 }
 
+#[tauri::command]
+async fn close_splashscreen(window: Window) {
+    // Close splashscreen
+    match window.get_window("splashscreen") {
+        Some(splashscreen) => {
+            splashscreen.close().unwrap();
+        }
+        None => {
+            println!("No splashscreen window found");
+        }
+    }
+
+    // Show main window
+    window
+        .get_window("main")
+        .expect("no window labeled 'main' found")
+        .show()
+        .unwrap();
+}
+
 fn main() {
     tauri::Builder::default()
         // .manage(AuthStateMutex::default())
@@ -147,7 +167,10 @@ fn main() {
             ws_thread: Default::default(),
         })
         .plugin(tauri_plugin_oauth::init())
-        .invoke_handler(tauri::generate_handler![start_websocket_connection_command])
+        .invoke_handler(tauri::generate_handler![
+            start_websocket_connection_command,
+            close_splashscreen
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
