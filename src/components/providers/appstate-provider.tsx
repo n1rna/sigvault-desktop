@@ -41,7 +41,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
     const router = useRouter();
 
     React.useEffect(() => {
-        if (socketState.receivedMessages?.length === 0) {
+        if (!socketState.receivedMessages?.length) {
             return;
         }
 
@@ -58,7 +58,8 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
 
         if (lastMessage.message.message_type === "create_new_device") {
             router.push("/dashboard/devices");
-        } else if (lastMessage.message.message_type === "device_created") {
+        }
+        else if (lastMessage.message.message_type === "device_created") {
             router.push("/dashboard");
         }
 

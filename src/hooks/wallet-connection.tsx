@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { supabase } from "@/lib/supabase-client";
@@ -22,9 +24,13 @@ export function useWalletConnection(): {
   retrySocketConnection: () => void;
 } {
 
-  const [socketConnected, setSocketConnected] = useState(false);
+  const [socketConnected, setSocketConnected] = useState<boolean>(false);
   const [socketConnectionRetries, setSocketConnectionRetries] = useState<number>(0);
-  const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({ name: "receivedMessages", value: [] });
+  const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({ name: "receivedMessagess", value: [] });
+
+  const retrySocketConnection = useCallback(() => {
+    setSocketConnectionRetries((prev) => prev + 1)
+  }, [])
 
   useEffect(() => {
     if (!socketConnected) {
@@ -58,8 +64,6 @@ export function useWalletConnection(): {
   }, [socketConnected, socketConnectionRetries, setReceivedMessages]);
 
   return {
-    socketConnected, receivedMessages, retrySocketConnection: () => {
-      setSocketConnectionRetries((prev) => prev + 1)
-    }
+    socketConnected, receivedMessages, retrySocketConnection
   };
 }

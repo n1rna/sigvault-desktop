@@ -25,8 +25,17 @@ pub async fn authorize_websocket_connection(auth_token: String) -> AuthState {
     {
         Ok(res) => {
             let body = res.text().await.unwrap();
-            let auth_state = serde_json::from_str::<AuthState>(&body).unwrap();
-            auth_state
+            let auth_state = serde_json::from_str::<AuthState>(&body);
+            match auth_state {
+                Ok(state) => state,
+                Err(e) => {
+                    println!("Error deserializing AuthState: {:?}", e);
+                    AuthState {
+                        token: "".into(),
+                        session_id: "".into(),
+                    }
+                }
+            }
         }
         Err(e) => {
             println!("Error: {:?}", e);
