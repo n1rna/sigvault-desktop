@@ -38,7 +38,7 @@ async fn start_websocket_connection_command(
             }
         }
         None => {
-            println!("Websocket connection not started");
+            return "Websocket connection could not be started".into();
         }
     }
 

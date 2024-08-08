@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
+
 import { listen } from "@tauri-apps/api/event";
 
-
-import { shell } from "@tauri-apps/api";
-import { invoke } from "@tauri-apps/api";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -39,7 +37,6 @@ export default function Auth() {
       const url = new URL(data.payload as string);
       const code = new URLSearchParams(url.search).get("code");
 
-      console.log("here", data.payload, code);
       if (code) {
         supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
           if (error) {
@@ -52,16 +49,17 @@ export default function Auth() {
       }
     });
 
-    let _port: number | null = null;
+    import('@tauri-apps/api').then((tauri) => {
+      tauri.invoke("plugin:oauth|start").then(async (port) => {
+        setPort(port as number);
+      });
+    })
 
-    invoke("plugin:oauth|start").then(async (port) => {
-      setPort(port as number);
-      _port = port as number;
-    });
-
-    () => {
+    return () => {
       unlisten?.then((u) => u());
-      invoke("plugin:oauth|cancel", { port: _port });
+      import('@tauri-apps/api').then((tauri) => {
+        tauri.invoke("plugin:oauth|cancel", { port: port });
+      })
     };
   }, [port]);
 
@@ -103,25 +101,6 @@ export default function Auth() {
     }
     setLoading(false);
     setWaitingForAction(true);
-  };
-
-  const onProviderLogin = (provider: "google" | "github") => async () => {
-    setLoading(true);
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      options: {
-        skipBrowserRedirect: true,
-        scopes: provider === "google" ? "profile email" : "",
-        redirectTo: getLocalHostUrl(port!),
-      },
-      provider: provider,
-    });
-
-    if (data.url) {
-      shell.open(data.url);
-    } else {
-      alert(error?.message);
-    }
   };
 
   return (

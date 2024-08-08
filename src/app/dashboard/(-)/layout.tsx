@@ -19,10 +19,10 @@ export default function DashboardPage({ children }: { children: React.ReactNode 
                 </div>
                 <div className="flex items-center gap-4">
                     {!socketConnected ? (
-                        <div onClick={handleRetry} className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <button onClick={handleRetry} className="flex items-center gap-2 text-sm text-muted-foreground">
                             <ReloadIcon className="w-4 h-4" />
                             <span>Retry Connection</span>
-                        </div>
+                        </button>
                     ) : (
                         <div onClick={handleRetry} className="flex items-center gap-2 text-sm text-muted-foreground">
                             <LockClosedIcon className="w-4 h-4" />

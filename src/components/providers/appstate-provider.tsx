@@ -44,7 +44,6 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
         if (socketState.receivedMessages?.length === 0) {
             return;
         }
-        console.log("foaoaofoafo", socketState.receivedMessages)
 
         // handle messages
         const lastMessage = socketState.receivedMessages[0];
@@ -56,6 +55,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
 
         setActionCommand(lastMessage.message.message_type);
         setActionPayload(lastMessage.message.payload);
+
         if (lastMessage.message.message_type === "create_new_device") {
             router.push("/dashboard/devices");
         } else if (lastMessage.message.message_type === "device_created") {
