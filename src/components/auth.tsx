@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
 
-import { listen } from "@tauri-apps/api/event";
-
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -28,38 +26,49 @@ export default function Auth() {
   const [waitingForAction, setWaitingForAction] = useState(false);
 
   useEffect(() => {
-    if (port) return;
+    let unlisten: (() => void) | undefined;
 
-    const unlisten = listen("oauth://url", (data) => {
-      setPort(null);
-      if (!data.payload) return;
+    const startOAuth = async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      const { invoke } = await import('@tauri-apps/api');
 
-      const url = new URL(data.payload as string);
-      const code = new URLSearchParams(url.search).get("code");
+      unlisten = await listen("oauth://url", (data) => {
+        if (!data.payload) return;
 
-      if (code) {
-        supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-          if (error) {
-            alert(error.message);
-            console.error(error);
-            return;
-          }
-          location.reload();
-        });
-      }
-    });
+        const url = new URL(data.payload as string);
+        const code = new URLSearchParams(url.search).get("code");
 
-    import('@tauri-apps/api').then((tauri) => {
-      tauri.invoke("plugin:oauth|start").then(async (port) => {
-        setPort(port as number);
+        if (code) {
+          supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+            if (error) {
+              alert(error.message);
+              console.error(error);
+              return;
+            }
+            location.reload();
+          });
+        }
       });
-    })
+
+      const newPort = await invoke("plugin:oauth|start");
+      setPort(newPort as number);
+      console.log("Started OAuth flow", newPort);
+    };
+
+    if (!port) {
+      startOAuth();
+    }
 
     return () => {
-      unlisten?.then((u) => u());
-      import('@tauri-apps/api').then((tauri) => {
-        tauri.invoke("plugin:oauth|cancel", { port: port });
-      })
+      if (unlisten) {
+        unlisten();
+      }
+      if (port) {
+        import('@tauri-apps/api').then((tauri) => {
+          console.log("Cancelling OAuth flow", port);
+          tauri.invoke("plugin:oauth|cancel", { port: port });
+        });
+      }
     };
   }, [port]);
 
@@ -84,7 +93,9 @@ export default function Auth() {
         theme: "light",
         transition: Flip,
         bodyClassName: "text-sm",
+        className: "top-8"
       });
+      setLoading(false);
     } else {
       toast.info("Check your email for the login link.", {
         position: "top-right",
@@ -97,10 +108,11 @@ export default function Auth() {
         theme: "light",
         transition: Flip,
         bodyClassName: "text-sm",
+        className: "top-8"
       });
+      setLoading(false);
+      setWaitingForAction(true);
     }
-    setLoading(false);
-    setWaitingForAction(true);
   };
 
   return (
