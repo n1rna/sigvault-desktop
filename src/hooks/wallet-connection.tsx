@@ -26,7 +26,7 @@ export function useWalletConnection(): {
 
   const [socketConnected, setSocketConnected] = useState<boolean>(false);
   const [socketConnectionRetries, setSocketConnectionRetries] = useState<number>(0);
-  const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({ name: "receivedMessagess", value: [] });
+  const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({ name: "receivedMessages", value: [] });
 
   const retrySocketConnection = useCallback(() => {
     setSocketConnectionRetries((prev) => prev + 1)

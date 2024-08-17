@@ -10,6 +10,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub mod window;
 pub mod ws;
+pub mod machine;
 
 struct ApplicationState {
     auth: Arc<Mutex<Option<ws::AuthState>>>,
@@ -46,10 +47,10 @@ async fn start_websocket_connection_command(
 
     drop(ws_thread); // Release the lock
 
-    debug!("Authorizing websocket connection");
-    let authorization = ws::authorize_websocket_connection(auth_session).await;
+    debug!("Authorizing user websocket connection");
+    let user_auth = ws::authorize_user_websocket_connection(auth_session).await;
 
-    if authorization.token.is_empty() {
+    if user_auth.token.is_empty() {
         error!("Failed to authorize websocket connection. Empty token received.");
         window::emit_window_message(
             &window,
@@ -63,8 +64,45 @@ async fn start_websocket_connection_command(
         return "Failed to authorize websocket connection".into();
     }
 
+    let current_machine_id = machine::get_machine_information();
+
+    debug!("Authorizing machine websocket connection");
+    let machine_auth = ws::authorize_machine_websocket_connection(user_auth.token, current_machine_id).await;
+
+    if machine_auth.token.is_empty() {
+        error!("Failed to authorize websocket connection. Empty token received.");
+        window::emit_window_message(
+            &window,
+            window::WindowEventMessage {
+                success: false,
+                message: Default::default(),
+                error: "Failed to authorize websocket connection".into(),
+            },
+        );
+
+        return "Failed to authorize websocket connection".into();
+    }
+
+    if machine_auth.status == "unregistered" {
+        error!("Current machine is not registered.");
+        window::emit_window_message(
+            &window,
+            window::WindowEventMessage {
+                success: true,
+                message: Default::default(),
+                error: "Current machine is not registered. Please register the machine first".into(),
+            },
+        );
+
+        return "Current machine is not registered. Please register the machine first".into();
+    }
+
+
     info!("Websocket connection authorized successfully");
-    app_state.auth.lock().await.replace(authorization);
+    app_state.auth.lock().await.replace(ws::AuthState {
+        token: machine_auth.token,
+        session_id: machine_auth.session_id,
+    });
     debug!("Emitting authorization success message to window");
     window::emit_window_message(
         &window,

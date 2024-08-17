@@ -10,38 +10,84 @@ pub struct AuthState {
     pub session_id: String,
 }
 
+#[derive(Debug, serde::Deserialize, Clone)]
+pub struct AuthorizerUserResponse {
+    pub token: String,
+}
+
+#[derive(Debug, serde::Deserialize, Clone)]
+pub struct AuthorizeMachineResponse {
+    pub token: String,
+    pub session_id: String,
+    pub status: String,
+}
+
 #[derive(Debug)]
 pub struct WSConnectionState {
     pub stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
 }
 
-pub async fn authorize_websocket_connection(auth_token: String) -> AuthState {
+pub async fn authorize_user_websocket_connection(auth_token: String) -> AuthorizerUserResponse {
     let client = reqwest::Client::new();
     return match client
-        .post("http://localhost:8000/api/v1/authorize")
+        .post("http://localhost:8000/api/v1/authorize-user")
         .header("Authorization", auth_token)
         .send()
         .await
     {
         Ok(res) => {
             let body = res.text().await.unwrap();
-            let auth_state = serde_json::from_str::<AuthState>(&body);
-            match auth_state {
-                Ok(state) => state,
+            let auth_user_resp = serde_json::from_str::<AuthorizerUserResponse>(&body);
+            match auth_user_resp {
+                Ok(resp) => resp,
                 Err(e) => {
                     println!("Error deserializing AuthState: {:?}", e);
-                    AuthState {
+                    AuthorizerUserResponse {
                         token: "".into(),
-                        session_id: "".into(),
                     }
                 }
             }
         }
         Err(e) => {
             println!("Error: {:?}", e);
-            return AuthState {
+            return AuthorizerUserResponse {
+                token: "".into(),
+            };
+        }
+    };
+}
+
+
+pub async fn authorize_machine_websocket_connection(auth_token: String, machine_id: String) -> AuthorizeMachineResponse {
+    let client = reqwest::Client::new();
+    return match client
+        .post("http://localhost:8000/api/v1/authorize-machine")
+        .header("Authorization", format!("Bearer {}", auth_token))
+        .json(&serde_json::json!({"machine_id": machine_id}))
+        .send()
+        .await
+    {
+        Ok(res) => {
+            let body = res.text().await.unwrap();
+            let auth_user_resp = serde_json::from_str::<AuthorizeMachineResponse>(&body);
+            match auth_user_resp {
+                Ok(resp) => resp,
+                Err(e) => {
+                    println!("Error deserializing AuthState: {:?}", e);
+                    AuthorizeMachineResponse {
+                        token: "".into(),
+                        session_id: "".into(),
+                        status: "".into(),
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            println!("Error: {:?}", e);
+            return AuthorizeMachineResponse {
                 token: "".into(),
                 session_id: "".into(),
+                status: "".into(),
             };
         }
     };
