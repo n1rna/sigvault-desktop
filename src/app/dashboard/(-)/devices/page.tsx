@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppState } from "@/hooks";
+import { useAppState } from "@/components/providers";
 
 import * as React from "react";
 

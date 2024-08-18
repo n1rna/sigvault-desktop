@@ -2,13 +2,15 @@
 
 import * as React from "react";
 import { ShadowNoneIcon, LockClosedIcon, PersonIcon, LockOpen2Icon, ReloadIcon } from "@radix-ui/react-icons";
-import { useAppState } from "@/hooks";
+import { useAppState } from "@/lib/providers";
 
 export default function DashboardPage({ children }: { children: React.ReactNode }) {
 
-    const { socket: { socketConnected, retrySocketConnection } } = useAppState();
+    const { socket: { tryBackendConnection }, applicationState } = useAppState();
 
-    const handleRetry = (e: React.MouseEvent<HTMLSpanElement>) => { e.preventDefault(); retrySocketConnection() } // Remove the second generic type argument from MouseEvent
+    console.log("aoaoaoa", applicationState)
+
+    const handleRetry = (e: React.MouseEvent<HTMLSpanElement>) => { e.preventDefault(); tryBackendConnection() } // Remove the second generic type argument from MouseEvent
 
     return (
         <>
@@ -18,7 +20,7 @@ export default function DashboardPage({ children }: { children: React.ReactNode 
                     <h1 className="ml-2 text-xl font-semibold">qblok</h1>
                 </div>
                 <div className="flex items-center gap-4">
-                    {!socketConnected ? (
+                    {!applicationState.socket_connected ? (
                         <button onClick={handleRetry} className="flex items-center gap-2 text-sm text-muted-foreground">
                             <ReloadIcon className="w-4 h-4" />
                             <span>Retry Connection</span>

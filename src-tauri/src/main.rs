@@ -1,213 +1,266 @@
-use futures_util::StreamExt;
+// src/main.rs
+
+mod api_handler;
+mod machine;
+mod window;
+mod ws_handler;
+
+use crate::window::{
+    send_backend_command, set_window_application_state, WindowApplicationRoute,
+    WindowApplicationState,
+};
 use log::{debug, error, info, warn};
-use serde_json;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Duration;
 use tauri::{Manager, State, Window};
 use tokio::sync::Mutex;
-use tokio::time::sleep;
-use tokio_tungstenite::tungstenite::protocol::Message;
 
-pub mod window;
-pub mod ws;
-pub mod machine;
+use api_handler::ApiHandler;
+use ws_handler::WebsocketHandler;
+
+#[derive(Serialize, Deserialize, Debug)]
+enum AppError {
+    #[serde(rename = "error_websocket_already_active")]
+    WebsocketAlreadyActive,
+    #[serde(rename = "error_authorization_failed")]
+    AuthorizationFailed,
+    #[serde(rename = "error_empty_token")]
+    EmptyToken,
+    #[serde(rename = "error_machine_authorization_failed")]
+    MachineAuthorizationFailed,
+    #[serde(rename = "error_machine_not_registered")]
+    MachineNotRegistered,
+    #[serde(rename = "error_websocket_connection")]
+    WebsocketConnection,
+}
+
+#[derive(Default, Clone)]
+struct AuthTokens {
+    auth_session: Option<String>,
+    user_auth_token: Option<String>,
+    machine_auth_token: Option<String>,
+}
 
 struct ApplicationState {
-    auth: Arc<Mutex<Option<ws::AuthState>>>,
     ws_thread: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+    auth_tokens: Arc<Mutex<AuthTokens>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CommandResult {
+    success: bool,
+    message: String,
+    error: Option<AppError>,
 }
 
 #[tokio::main]
 #[tauri::command]
-async fn start_websocket_connection_command(
+async fn cmd_register_new_machine(
+    app_state: State<'_, ApplicationState>,
+    machine_id: String,
+    machine_name: String,
+    machine_type: String,
+) -> CommandResult {
+    let api_handler = ApiHandler::new("http://localhost:8000".to_string());
+
+    let machine_info = machine::get_machine_information();
+
+    if machine_id != machine_info.machine_id || machine_type != machine_info.machine_type {
+        return CommandResult {
+            success: false,
+            message: "Machine ID does not match".into(),
+            error: None,
+        };
+    }
+
+    match api_handler
+        .register_new_machine(
+            app_state
+                .auth_tokens
+                .lock()
+                .await
+                .user_auth_token
+                .clone()
+                .unwrap(),
+            machine_id.clone(),
+            machine_name.clone(),
+            machine_type.clone(),
+        )
+        .await
+    {
+        Ok(_) => CommandResult {
+            success: true,
+            message: "Machine registered successfully".into(),
+            error: None,
+        },
+        Err(e) => {
+            error!("Failed to authorize machine websocket connection: {:?}", e);
+            return CommandResult {
+                success: false,
+                message: "Machine authorization failed".into(),
+                error: Some(AppError::MachineAuthorizationFailed),
+            };
+        }
+    };
+
+    CommandResult {
+        success: true,
+        message: "Machine registered successfully".into(),
+        error: None,
+    }
+}
+
+#[tokio::main]
+#[tauri::command]
+async fn cmd_start_websocket_connection(
     window: Window,
     app_state: State<'_, ApplicationState>,
     auth_session: String,
-) -> String {
-    info!("Starting websocket connection command");
+) -> CommandResult {
+    set_window_application_state(
+        &window,
+        &WindowApplicationState {
+            route: WindowApplicationRoute::MainPage,
+            socket_connected: false,
+        },
+    );
+
     let ws_thread = app_state.ws_thread.lock().await;
 
-    match ws_thread.as_ref() {
-        Some(join_handle) if !join_handle.inner().is_finished() => {
-            warn!("Attempt to start websocket connection when one is already active");
-            window::emit_window_message(
-                &window,
-                window::WindowEventMessage {
-                    success: false,
-                    message: Default::default(),
-                    error: "Websocket connection already started".into(),
-                },
-            );
-            return "Websocket connection already started".into();
-        }
-        _ => {
-            info!("No active websocket connection found. Proceeding to start a new one.");
+    if let Some(join_handle) = ws_thread.as_ref() {
+        if !join_handle.inner().is_finished() {
+            set_window_application_state(&window, &WindowApplicationState{
+                route: WindowApplicationRoute::MainPage,
+                socket_connected: true,
+            });
+        
+            return CommandResult {
+                success: false,
+                message: "Websocket connection already started".into(),
+                error: Some(AppError::WebsocketAlreadyActive),
+            };
         }
     }
 
     drop(ws_thread); // Release the lock
 
-    debug!("Authorizing user websocket connection");
-    let user_auth = ws::authorize_user_websocket_connection(auth_session).await;
+    // Store the auth session
+    app_state.auth_tokens.lock().await.auth_session = Some(auth_session.clone());
+
+    let api_handler = ApiHandler::new("http://localhost:8000".to_string());
+
+    // Authorize user
+    let user_auth = match api_handler
+        .authorize_user_websocket_connection(auth_session)
+        .await
+    {
+        Ok(response) => response,
+        Err(e) => {
+            error!("Failed to authorize user websocket connection: {:?}", e);
+            return CommandResult {
+                success: false,
+                message: "Authorization failed".into(),
+                error: Some(AppError::AuthorizationFailed),
+            };
+        }
+    };
 
     if user_auth.token.is_empty() {
-        error!("Failed to authorize websocket connection. Empty token received.");
-        window::emit_window_message(
-            &window,
-            window::WindowEventMessage {
-                success: false,
-                message: Default::default(),
-                error: "Failed to authorize websocket connection".into(),
-            },
-        );
-
-        return "Failed to authorize websocket connection".into();
+        return CommandResult {
+            success: false,
+            message: "Authorization failed".into(),
+            error: Some(AppError::AuthorizationFailed),
+        };
     }
 
-    let current_machine_id = machine::get_machine_information();
+    // Store the user auth token
+    app_state.auth_tokens.lock().await.user_auth_token = Some(user_auth.token.clone());
 
-    debug!("Authorizing machine websocket connection");
-    let machine_auth = ws::authorize_machine_websocket_connection(user_auth.token, current_machine_id).await;
+    let machine_info = machine::get_machine_information();
 
-    if machine_auth.token.is_empty() {
-        error!("Failed to authorize websocket connection. Empty token received.");
-        window::emit_window_message(
-            &window,
-            window::WindowEventMessage {
+    // Authorize machine
+    let machine_auth = match api_handler
+        .authorize_machine_websocket_connection(user_auth.token, &machine_info)
+        .await
+    {
+        Ok(response) => response,
+        Err(e) => {
+            error!("Failed to authorize machine websocket connection: {:?}", e);
+            return CommandResult {
                 success: false,
-                message: Default::default(),
-                error: "Failed to authorize websocket connection".into(),
-            },
-        );
-
-        return "Failed to authorize websocket connection".into();
-    }
+                message: "Machine authorization failed".into(),
+                error: Some(AppError::MachineAuthorizationFailed),
+            };
+        }
+    };
 
     if machine_auth.status == "unregistered" {
-        error!("Current machine is not registered.");
-        window::emit_window_message(
+        set_window_application_state(
             &window,
-            window::WindowEventMessage {
-                success: true,
-                message: Default::default(),
-                error: "Current machine is not registered. Please register the machine first".into(),
+            &WindowApplicationState {
+                route: WindowApplicationRoute::MachineRegistration,
+                socket_connected: false,
             },
         );
 
-        return "Current machine is not registered. Please register the machine first".into();
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        
+        send_backend_command(
+            &window,
+            "register_machine".into(),
+            serde_json::json!({
+                "machine_id": machine_info.machine_id.clone(),
+                "machine_type": machine_info.machine_type.clone(),
+            }),
+        );
+        return CommandResult {
+            success: false,
+            message: "Machine not registered".into(),
+            error: Some(AppError::MachineNotRegistered),
+        };
     }
 
+    info!("machine auth {:?}", machine_auth);
 
-    info!("Websocket connection authorized successfully");
-    app_state.auth.lock().await.replace(ws::AuthState {
-        token: machine_auth.token,
-        session_id: machine_auth.session_id,
-    });
-    debug!("Emitting authorization success message to window");
-    window::emit_window_message(
-        &window,
-        window::WindowEventMessage {
-            success: true,
-            message: window::WebsocketMessage {
-                message_type: "authorization_success".into(),
-                payload: serde_json::Value::Null,
-            },
-            error: "".into(),
-        },
-    );
+    if machine_auth.token.is_none() {
+        return CommandResult {
+            success: false,
+            message: "Machine authorization failed".into(),
+            error: Some(AppError::MachineAuthorizationFailed),
+        };
+    }
+    let machine_token = machine_auth.token.unwrap();
+    let session_id = machine_auth.session_id.unwrap();
 
-    let auth_state = Arc::clone(&app_state.auth);
+    info!("Machine token: {}", machine_token);
+    // Store the machine auth token
+    app_state.auth_tokens.lock().await.machine_auth_token = Some(machine_token.clone());
 
-    info!("Spawning websocket connection thread");
     let join_handler = tauri::async_runtime::spawn(async move {
-        let auth_state = Arc::clone(&auth_state);
-        debug!("Starting websocket connection");
-        let ws_con = ws::start_websocket_connection(auth_state).await;
-        let (_, mut reader) = ws_con.stream.split();
-
-        info!("Websocket connection opened successfully");
-        debug!("Emitting connection opened message to window");
-        window::emit_window_message(
-            &window,
-            window::WindowEventMessage {
-                success: true,
-                message: window::WebsocketMessage {
-                    message_type: "connection_opened".into(),
-                    payload: serde_json::Value::Null,
+        let ws_handler = WebsocketHandler::new(window.clone(), "ws://localhost:8000".to_string());
+        if let Err(e) = ws_handler.run(machine_token, session_id).await {
+            error!("WebSocket connection error: {:?}", e);
+            set_window_application_state(
+                &window,
+                &WindowApplicationState {
+                    route: WindowApplicationRoute::MainPage,
+                    socket_connected: false,
                 },
-                error: "".into(),
-            },
-        );
-
-        loop {
-            debug!("Waiting for next message");
-            let message = match reader.next().await {
-                Some(msg) => {
-                    debug!("Message received: {:?}", msg);
-                    msg
-                }
-                None => {
-                    debug!("No message received, waiting for 1 second");
-                    sleep(Duration::from_secs(1)).await;
-                    continue;
-                }
-            };
-
-            match message {
-                Ok(Message::Text(msg)) => {
-                    debug!("Text message received: {}", msg);
-                    let parsed_msg = serde_json::from_str::<window::WebsocketMessage>(&msg);
-                    match parsed_msg {
-                        Ok(websocket_msg) => {
-                            debug!("Emitting received message to window");
-                            window::emit_window_message(
-                                &window,
-                                window::WindowEventMessage {
-                                    success: true,
-                                    message: websocket_msg,
-                                    error: "".into(),
-                                },
-                            );
-                        }
-                        Err(e) => {
-                            error!("Failed to parse websocket message: {:?}", e);
-                        }
-                    }
-                }
-                Ok(Message::Close(_)) => {
-                    info!("Websocket connection closed");
-                    debug!("Emitting connection closed message to window");
-                    window::emit_window_message(
-                        &window,
-                        window::WindowEventMessage {
-                            success: true,
-                            message: window::WebsocketMessage {
-                                message_type: "connection_closed".into(),
-                                payload: serde_json::Value::Null,
-                            },
-                            error: "".into(),
-                        },
-                    );
-                    break;
-                }
-                Ok(other) => {
-                    debug!("Received non-text message: {:?}", other);
-                }
-                Err(e) => {
-                    error!("Error receiving message: {:?}", e);
-                }
-            }
+            );
         }
     });
 
     app_state.ws_thread.lock().await.replace(join_handler);
-    info!("Websocket connection thread spawned and stored");
 
-    "Websocket connection started".into()
+    CommandResult {
+        success: true,
+        message: "Command executed successfully".into(),
+        error: None,
+    }
 }
 
 #[tauri::command]
-async fn close_splashscreen(window: Window) {
+async fn cmd_close_splashscreen(window: Window) {
     info!("Attempting to close splashscreen");
     match window.get_window("splashscreen") {
         Some(splashscreen) => {
@@ -243,22 +296,26 @@ fn main() {
     env_logger::init();
     info!("Starting application");
 
-    let app = tauri::Builder::default()
+    tauri::Builder::default()
         .manage(ApplicationState {
-            auth: Default::default(),
-            ws_thread: Default::default(),
+            ws_thread: Arc::new(Mutex::new(None)),
+            auth_tokens: Arc::new(Mutex::new(AuthTokens::default())),
         })
-        .plugin(tauri_plugin_oauth::init())
         .invoke_handler(tauri::generate_handler![
-            start_websocket_connection_command,
-            close_splashscreen
-        ]);
+            cmd_start_websocket_connection,
+            cmd_register_new_machine,
+            cmd_close_splashscreen,
+        ])
+        .setup(|app| {
+            #[cfg(debug_assertions)]
+            {
+                let window = app.get_window("main").unwrap();
+                window.open_devtools();
+            }
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 
-    info!("Application builder configured");
-    debug!("Running application");
-
-    match app.run(tauri::generate_context!()) {
-        Ok(_) => info!("Application exited successfully"),
-        Err(e) => error!("Error while running tauri application: {:?}", e),
-    }
+    info!("Application exited");
 }

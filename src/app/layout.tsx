@@ -23,7 +23,7 @@ export default function RootLayout({
     }
     setTimeout(() => {
       import('@tauri-apps/api').then((tauri) => {
-        tauri.invoke("close_splashscreen").then(() => {
+        tauri.invoke("cmd_close_splashscreen").then(() => {
           setSplashscreenClosed(true)
         });
       });

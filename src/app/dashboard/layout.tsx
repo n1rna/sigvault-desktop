@@ -1,8 +1,8 @@
 "use client";
 
 import { Inter } from "next/font/google";
-import { SocketProvider } from "@/components/providers/socket-provider";
-import { AppStateProvider } from "@/components/providers/appstate-provider";
+import { BackendProvider } from "@/lib/providers/backend-provider";
+import { AppStateProvider } from "@/lib/providers/appstate-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -12,10 +12,10 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <SocketProvider>
+        <BackendProvider>
             <AppStateProvider>
                 {children}
             </AppStateProvider>
-        </SocketProvider>
+        </BackendProvider>
     );
 }
