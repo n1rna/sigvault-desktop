@@ -30,6 +30,7 @@ export const AppStateContext = React.createContext<AppStateContextType>({
     socket: {
         receivedMessages: [],
         tryBackendConnection: () => { },
+        instantiated: false,
     },
     actionCommand: "welcome",
     actionPayload: {},
@@ -95,7 +96,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             console.log("Set Application State: ", lastMessagePayload);
             // setApplicationState(lastMessagePayload);
             setApplicationState(prevState => {
-                const newState: ApplicationState = { ...prevState };
+                const newState: ApplicationState = prevState ? { ...prevState } : {};
 
                 // Only update fields that are present in the payload
                 if ('route' in lastMessagePayload) {
@@ -114,7 +115,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             router.push("/dashboard/devices");
         }
         else if (lastMessage.message.message_type === "device_created") {
-            router.push("/dashboard");
+            router.push("/dashboard/home");
         }
 
     }, [socketState.receivedMessages, router])
@@ -122,7 +123,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
 
     React.useEffect(() => {
         if (applicationState.route === ApplicationStateRoute.MainPage) {
-            router.push("/dashboard");
+            router.push("/dashboard/home");
         }
         else if (applicationState.route === ApplicationStateRoute.MachineRegistration) {
             router.push("/dashboard/register");

@@ -6,9 +6,7 @@ import { useAppState } from "@/lib/providers";
 
 export default function DashboardPage({ children }: { children: React.ReactNode }) {
 
-    const { socket: { tryBackendConnection }, applicationState } = useAppState();
-
-    console.log("aoaoaoa", applicationState)
+    const { socket: { tryBackendConnection }, applicationState: { socket_connected } } = useAppState();
 
     const handleRetry = (e: React.MouseEvent<HTMLSpanElement>) => { e.preventDefault(); tryBackendConnection() } // Remove the second generic type argument from MouseEvent
 
@@ -20,7 +18,7 @@ export default function DashboardPage({ children }: { children: React.ReactNode 
                     <h1 className="ml-2 text-xl font-semibold">qblok</h1>
                 </div>
                 <div className="flex items-center gap-4">
-                    {!applicationState.socket_connected ? (
+                    {!socket_connected ? (
                         <button onClick={handleRetry} className="flex items-center gap-2 text-sm text-muted-foreground">
                             <ReloadIcon className="w-4 h-4" />
                             <span>Retry Connection</span>

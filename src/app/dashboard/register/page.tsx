@@ -30,7 +30,6 @@ export default function Component() {
       tauri.invoke<BackendCommandResult>("cmd_register_new_machine", { machineId: payload.machine_id, machineType: payload.machine_type, machineName }).then((resp) => {
         if (resp.success) {
           console.log("Machine registered successfully", resp);
-          router.push("/dashboard");
         } else {
           console.error("Error registering machine", resp);
         }

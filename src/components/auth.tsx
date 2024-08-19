@@ -129,7 +129,6 @@ export default function Auth() {
         </div>
       ) : (
         <>
-          <h2 className="text-2xl font-bold mb-4">Login</h2>
           <div className="space-y-4 pt-6">
             <form className="space-y-4" onSubmit={handleLogin}>
               <div>

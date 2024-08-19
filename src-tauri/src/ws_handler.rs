@@ -8,27 +8,39 @@ use tauri::Window;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
-use crate::window::{emit_window_message, set_window_application_state, BackendEventMessage, MessageType, WindowApplicationState, WindowEventMessage, WindowApplicationRoute};
+use crate::window::{
+    emit_window_message, set_window_application_state, BackendEventMessage, MessageType,
+    SharedWindowState, WindowApplicationRoute, WindowApplicationState, WindowEventMessage,
+};
 
-pub struct WebsocketHandler {
+pub struct WebsocketHandler<'a> {
     window: Window,
     ws_base_url: String,
+    window_state: &'a SharedWindowState,
 }
 
-impl WebsocketHandler {
-    pub fn new(window: Window, ws_base_url: String) -> Self {
-        Self { window, ws_base_url }
+impl<'a> WebsocketHandler<'a> {
+    pub fn new(window: Window, ws_base_url: String, window_state: &'a SharedWindowState) -> Self {
+        Self {
+            window,
+            ws_base_url,
+            window_state,
+        }
     }
 
-    pub async fn run(&self, token: String, session_id: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(
+        &self,
+        token: String,
+        session_id: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
         debug!("Starting websocket connection");
         debug!("Token: {}", token);
         let url = format!("{}/api/v1/{}?token={}", self.ws_base_url, session_id, token);
-        let (ws_stream, _) = connect_async(url).await?;
+        let (ws_stream, _) = connect_async(url).await.unwrap();
         let (_, mut reader) = ws_stream.split();
 
         info!("Websocket connection opened successfully");
-        self.emit_connection_opened();
+        self.emit_connection_opened().await;
 
         loop {
             debug!("Waiting for next message");
@@ -48,7 +60,10 @@ impl WebsocketHandler {
         Ok(())
     }
 
-    async fn handle_next_message<T>(&self, reader: &mut T) -> Result<bool, Box<dyn std::error::Error>>
+    async fn handle_next_message<T>(
+        &self,
+        reader: &mut T,
+    ) -> Result<bool, Box<dyn std::error::Error>>
     where
         T: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
     {
@@ -56,12 +71,12 @@ impl WebsocketHandler {
             Some(Ok(Message::Text(msg))) => {
                 debug!("Text message received: {}", msg);
                 let parsed_msg: serde_json::Value = serde_json::from_str(&msg)?;
-                self.emit_text_message(parsed_msg);
+                self.emit_text_message(parsed_msg).await;
                 Ok(false)
             }
             Some(Ok(Message::Close(_))) => {
                 info!("Websocket connection closed");
-                self.emit_connection_closed();
+                self.emit_connection_closed().await;
                 Ok(true)
             }
             Some(Ok(other)) => {
@@ -77,23 +92,35 @@ impl WebsocketHandler {
         }
     }
 
-    fn emit_connection_opened(&self) {
+    async fn emit_connection_opened(&self) {
         debug!("Emitting connection opened message to window");
-        set_window_application_state(&self.window, &WindowApplicationState{
-            route: WindowApplicationRoute::MainPage,
-            socket_connected: true,
-        });
+        set_window_application_state(
+            &self.window,
+            &WindowApplicationState {
+                route: WindowApplicationRoute::MainPage,
+                socket_connected: true,
+            },
+            self.window_state,
+        )
+        .await
+        .unwrap();
     }
 
-    fn emit_connection_closed(&self) {
+    async fn emit_connection_closed(&self) {
         debug!("Emitting connection closed message to window");
-        set_window_application_state(&self.window, &WindowApplicationState{
-            route: WindowApplicationRoute::MainPage,
-            socket_connected: false,
-        });
+        set_window_application_state(
+            &self.window,
+            &WindowApplicationState {
+                route: WindowApplicationRoute::MainPage,
+                socket_connected: false,
+            },
+            &self.window_state,
+        )
+        .await
+        .unwrap();
     }
 
-    fn emit_text_message(&self, payload: serde_json::Value) {
+    async fn emit_text_message(&self, payload: serde_json::Value) {
         emit_window_message(
             &self.window,
             WindowEventMessage {
@@ -104,6 +131,9 @@ impl WebsocketHandler {
                 },
                 error: None,
             },
-        );
+            &self.window_state,
+        )
+        .await
+        .unwrap();
     }
 }

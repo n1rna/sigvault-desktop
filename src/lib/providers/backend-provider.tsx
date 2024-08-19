@@ -6,11 +6,13 @@ import { useBackendConnection } from "@/lib/hooks/use-backend-connection";
 export type BackendContextType = {
     receivedMessages: { success: boolean; error?: string; message: { message_type: string; payload: any } }[];
     tryBackendConnection: () => void;
+    instantiated: boolean;
 };
 
 export const BackendContext = React.createContext<BackendContextType>({
     receivedMessages: [],
     tryBackendConnection: () => { },
+    instantiated: false,
 });
 
 interface BackendProviderProps {
@@ -18,11 +20,11 @@ interface BackendProviderProps {
 }
 
 export const BackendProvider = ({ children }: BackendProviderProps) => {
-    const { receivedMessages, tryBackendConnection } = useBackendConnection();
+    const { receivedMessages, tryBackendConnection, instantiated } = useBackendConnection();
 
     return (
         <BackendContext.Provider value={{
-            receivedMessages, tryBackendConnection
+            receivedMessages, tryBackendConnection, instantiated
         }}>
             {children}
         </BackendContext.Provider>

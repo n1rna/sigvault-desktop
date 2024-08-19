@@ -8,11 +8,18 @@ import usePersist from "@/lib/hooks/use-persist";
 
 import { BackendCommandResult, EventPayload } from "@/lib/types";
 
+interface MessageWithId {
+  id: string;
+  message: EventPayload;
+}
+
 export function useBackendConnection(): {
   receivedMessages: EventPayload[];
   tryBackendConnection: () => void;
+  instantiated: boolean;
 } {
 
+  const [instantiated, setInstantiated] = useState(false);
   const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({ name: "receivedMessages", value: [] });
 
   const tryBackendConnection = useCallback(() => {
@@ -23,15 +30,32 @@ export function useBackendConnection(): {
     });
   }, []);
 
+  const processMessage = useCallback((messageWithId: MessageWithId) => {
+    // Process the message here (you can add your logic to handle different message types)
+    console.log("Processing message:", messageWithId);
+
+    // Add the message to the receivedMessages state
+    setReceivedMessages((prev) => prev ? [messageWithId.message as unknown as EventPayload, ...prev] : [messageWithId.message as unknown as EventPayload]);
+
+    // Signal the backend that the message has been processed
+    invoke("cmd_message_processed", { messageId: messageWithId.id }).catch((error) => {
+
+      console.error("Error signaling message processed:", error);
+    });
+  }, [setReceivedMessages]);
+
   console.log("receivedMessages", receivedMessages);
 
   useEffect(() => {
     const unlistenPromise = listen<string>("backend_connection", (event) => {
-      const _message = JSON.parse(event.payload) as EventPayload;
-      setReceivedMessages((prev) => [_message, ...prev]);
+      // const _message = JSON.parse(event.payload) as EventPayload;
+      const messageWithId = event.payload as unknown as MessageWithId;
+      // setReceivedMessages((prev) => [messageWithId, ...prev]);
+      processMessage(messageWithId);
     });
 
     tryBackendConnection();
+    setInstantiated(true);
 
     return () => {
       unlistenPromise.then((unlisten) => {
@@ -39,9 +63,9 @@ export function useBackendConnection(): {
         unlisten();
       });
     };
-  }, [setReceivedMessages, tryBackendConnection]);
+  }, [processMessage, tryBackendConnection]);
 
   return {
-    receivedMessages, tryBackendConnection
+    receivedMessages, tryBackendConnection, instantiated
   };
 }

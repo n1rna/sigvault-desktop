@@ -6,8 +6,8 @@ mod window;
 mod ws_handler;
 
 use crate::window::{
-    send_backend_command, set_window_application_state, WindowApplicationRoute,
-    WindowApplicationState,
+    create_shared_window_state, send_backend_command, set_window_application_state,
+    SharedWindowState, WindowApplicationRoute, WindowApplicationState,
 };
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,9 @@ struct AuthTokens {
 
 struct ApplicationState {
     ws_thread: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+    registration_thread: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     auth_tokens: Arc<Mutex<AuthTokens>>,
+    window_state: SharedWindowState,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -56,13 +58,13 @@ struct CommandResult {
 #[tokio::main]
 #[tauri::command]
 async fn cmd_register_new_machine(
+    window: Window,
     app_state: State<'_, ApplicationState>,
     machine_id: String,
     machine_name: String,
     machine_type: String,
 ) -> CommandResult {
     let api_handler = ApiHandler::new("http://localhost:8000".to_string());
-
     let machine_info = machine::get_machine_information();
 
     if machine_id != machine_info.machine_id || machine_type != machine_info.machine_type {
@@ -88,11 +90,27 @@ async fn cmd_register_new_machine(
         )
         .await
     {
-        Ok(_) => CommandResult {
-            success: true,
-            message: "Machine registered successfully".into(),
-            error: None,
-        },
+        Ok(_) => {
+            let window_clone = window.clone();
+            let window_state_clone = app_state.window_state.clone();
+            let registration_thread = tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                info!("setting application state to mainpage");
+                set_window_application_state(
+                    &window_clone,
+                    &WindowApplicationState {
+                        route: WindowApplicationRoute::MainPage,
+                        socket_connected: false,
+                    },
+                    &window_state_clone,
+                )
+                .await
+                .unwrap();
+            });
+
+            // Store the registration thread in the application state
+            *app_state.registration_thread.lock().await = Some(registration_thread);
+        }
         Err(e) => {
             error!("Failed to authorize machine websocket connection: {:?}", e);
             return CommandResult {
@@ -103,9 +121,11 @@ async fn cmd_register_new_machine(
         }
     };
 
+    info!("Returning command execution");
+
     CommandResult {
         success: true,
-        message: "Machine registered successfully".into(),
+        message: "Command executed successfully".into(),
         error: None,
     }
 }
@@ -117,23 +137,30 @@ async fn cmd_start_websocket_connection(
     app_state: State<'_, ApplicationState>,
     auth_session: String,
 ) -> CommandResult {
-    set_window_application_state(
-        &window,
-        &WindowApplicationState {
-            route: WindowApplicationRoute::MainPage,
-            socket_connected: false,
-        },
-    );
+    // set_window_application_state(
+    //     &window,
+    //     &WindowApplicationState {
+    //         route: WindowApplicationRoute::MainPage,
+    //         socket_connected: false,
+    //     },
+    // );
 
     let ws_thread = app_state.ws_thread.lock().await;
+    let window_state_clone = app_state.window_state.clone();
 
     if let Some(join_handle) = ws_thread.as_ref() {
         if !join_handle.inner().is_finished() {
-            set_window_application_state(&window, &WindowApplicationState{
-                route: WindowApplicationRoute::MainPage,
-                socket_connected: true,
-            });
-        
+            set_window_application_state(
+                &window,
+                &WindowApplicationState {
+                    route: WindowApplicationRoute::MainPage,
+                    socket_connected: true,
+                },
+                &window_state_clone,
+            )
+            .await
+            .unwrap();
+
             return CommandResult {
                 success: false,
                 message: "Websocket connection already started".into(),
@@ -201,10 +228,13 @@ async fn cmd_start_websocket_connection(
                 route: WindowApplicationRoute::MachineRegistration,
                 socket_connected: false,
             },
-        );
+            &window_state_clone,
+        )
+        .await
+        .unwrap();
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        
+
         send_backend_command(
             &window,
             "register_machine".into(),
@@ -212,7 +242,10 @@ async fn cmd_start_websocket_connection(
                 "machine_id": machine_info.machine_id.clone(),
                 "machine_type": machine_info.machine_type.clone(),
             }),
-        );
+            &window_state_clone,
+        )
+        .await
+        .unwrap();
         return CommandResult {
             success: false,
             message: "Machine not registered".into(),
@@ -237,16 +270,25 @@ async fn cmd_start_websocket_connection(
     app_state.auth_tokens.lock().await.machine_auth_token = Some(machine_token.clone());
 
     let join_handler = tauri::async_runtime::spawn(async move {
-        let ws_handler = WebsocketHandler::new(window.clone(), "ws://localhost:8000".to_string());
+        let ws_handler = WebsocketHandler::new(
+            window.clone(),
+            "ws://localhost:8000".to_string(),
+            &window_state_clone,
+        );
+        let window_state_clonecc = window_state_clone.clone();
         if let Err(e) = ws_handler.run(machine_token, session_id).await {
             error!("WebSocket connection error: {:?}", e);
+
             set_window_application_state(
                 &window,
                 &WindowApplicationState {
                     route: WindowApplicationRoute::MainPage,
                     socket_connected: false,
                 },
-            );
+                &window_state_clonecc,
+            )
+            .await
+            .unwrap();
         }
     });
 
@@ -292,19 +334,50 @@ async fn cmd_close_splashscreen(window: Window) {
     }
 }
 
+#[tauri::command]
+async fn cmd_message_processed(
+    window: Window,
+    app_state: State<'_, ApplicationState>,
+    message_id: String,
+) -> Result<(), String> {
+    debug!("Message processed: {}", message_id);
+    let window_state = &app_state.window_state;
+    let mut state = window_state.lock().await;
+
+    // Here you might want to do something with the processed message ID if needed
+
+    // Process the next message if there is one
+    if !state.message_queue.is_empty() {
+        drop(state); // Release the lock before calling process_next_message
+        window::process_next_message(&window, window_state)
+            .await
+            .unwrap();
+    } else {
+        state.is_processing = false;
+    }
+
+    Ok(())
+}
+
 fn main() {
     env_logger::init();
     info!("Starting application");
 
+    let shared_window_state = create_shared_window_state();
+
     tauri::Builder::default()
         .manage(ApplicationState {
             ws_thread: Arc::new(Mutex::new(None)),
+            registration_thread: Arc::new(Mutex::new(None)),
             auth_tokens: Arc::new(Mutex::new(AuthTokens::default())),
+            window_state: shared_window_state.clone(),
         })
+        .plugin(tauri_plugin_oauth::init())
         .invoke_handler(tauri::generate_handler![
             cmd_start_websocket_connection,
             cmd_register_new_machine,
             cmd_close_splashscreen,
+            cmd_message_processed,
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]
