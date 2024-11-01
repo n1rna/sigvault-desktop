@@ -19,8 +19,6 @@ import { BackendCommandResult } from "@/lib/types";
 export default function Component() {
   const { actionPayload } = useAppState();
 
-  const router = useRouter();
-
   const payload = actionPayload && actionPayload.payload;
   const [machineName, setMachineName] = useState("");
 

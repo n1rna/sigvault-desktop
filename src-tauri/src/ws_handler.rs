@@ -19,6 +19,12 @@ pub struct WebsocketHandler<'a> {
     window_state: &'a SharedWindowState,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct GenericWebsocketMessage {
+    message_type: MessageType,
+    payload: serde_json::Value,
+}
+
 impl<'a> WebsocketHandler<'a> {
     pub fn new(window: Window, ws_base_url: String, window_state: &'a SharedWindowState) -> Self {
         Self {
@@ -70,9 +76,20 @@ impl<'a> WebsocketHandler<'a> {
         match reader.next().await {
             Some(Ok(Message::Text(msg))) => {
                 debug!("Text message received: {}", msg);
-                let parsed_msg: serde_json::Value = serde_json::from_str(&msg)?;
-                self.emit_text_message(parsed_msg).await;
-                Ok(false)
+
+                let parsed_msg: Result<GenericWebsocketMessage, serde_json::Error> =
+                    serde_json::from_str(&msg);
+
+                match parsed_msg {
+                    Ok(msg) => {
+                        self.emit_text_message(msg.payload).await;
+                        return Ok(false);
+                    }
+                    Err(e) => {
+                        error!("Error parsing message: {:?}", e);
+                        return Ok(false);
+                    }
+                }
             }
             Some(Ok(Message::Close(_))) => {
                 info!("Websocket connection closed");

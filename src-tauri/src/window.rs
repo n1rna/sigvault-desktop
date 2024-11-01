@@ -25,6 +25,8 @@ pub enum WindowApplicationRoute {
     MainPage,
     #[serde(rename = "MachineRegistration")]
     MachineRegistration,
+    #[serde(rename = "RemoteSessions")]
+    RemoteSessions,
 }
 
 #[derive(Debug, thiserror::Error)]

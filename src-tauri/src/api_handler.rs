@@ -29,6 +29,19 @@ pub struct MachineRegistrationResponse {
     pub status: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RemoteSession {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RemoteSessionsResponse {
+    pub sessions: Vec<RemoteSession>,
+}
+
+
 impl ApiHandler {
     pub fn new(api_base_url: String) -> Self {
         Self {
@@ -93,6 +106,24 @@ impl ApiHandler {
                 "machine_name": machine_name,
                 "machine_type": machine_type,
             }))
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok(response)
+    }
+
+    pub async fn fetch_remote_sessions(
+        &self,
+        auth_token: String,
+    ) -> Result<RemoteSessionsResponse, reqwest::Error> {
+        debug!("Fetching remote sessions");
+        let url = format!("{}/api/v1/remote-sessions", self.api_base_url);
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", auth_token))
             .send()
             .await?
             .json()

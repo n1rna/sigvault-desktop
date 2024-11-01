@@ -90,6 +90,10 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             if (lastMessagePayload.command === "register_machine") {
                 console.log("Register Machine: ", lastMessagePayload);
             }
+            if (lastMessagePayload.command === "update_remote_sessions") {
+                setActionPayload(lastMessage.message.payload);
+                router.push("/dashboard/sessions");
+            }
         }
 
         if (lastMessage.message.message_type === "SetApplicationState") {

@@ -31,13 +31,10 @@ export function useBackendConnection(): {
   }, []);
 
   const processMessage = useCallback((messageWithId: MessageWithId) => {
-    // Process the message here (you can add your logic to handle different message types)
     console.log("Processing message:", messageWithId);
 
-    // Add the message to the receivedMessages state
     setReceivedMessages((prev) => prev ? [messageWithId.message as unknown as EventPayload, ...prev] : [messageWithId.message as unknown as EventPayload]);
 
-    // Signal the backend that the message has been processed
     invoke("cmd_message_processed", { messageId: messageWithId.id }).catch((error) => {
 
       console.error("Error signaling message processed:", error);

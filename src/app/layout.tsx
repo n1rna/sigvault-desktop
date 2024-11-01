@@ -35,7 +35,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <WindowTitlebar />
         <Providers>
-          <div className="flex flex-col items-center justify-center h-[453px] w-[512px] bg-gray-100 dark:bg-gray-950 pt-8">
+          <div className="flex flex-col items-center justify-center min-h-[453px] w-[512px] bg-gray-100 dark:bg-gray-950 pt-8">
             {children}
           </div>
         </Providers>

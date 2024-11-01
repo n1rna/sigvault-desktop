@@ -32,6 +32,8 @@ enum AppError {
     MachineNotRegistered,
     #[serde(rename = "error_websocket_connection")]
     WebsocketConnection,
+    #[serde(rename = "error_fetch_remote_sessions_failed")]
+    FetchRemoteSessionsFailed,
 }
 
 #[derive(Default, Clone)]
@@ -269,30 +271,76 @@ async fn cmd_start_websocket_connection(
     // Store the machine auth token
     app_state.auth_tokens.lock().await.machine_auth_token = Some(machine_token.clone());
 
-    let join_handler = tauri::async_runtime::spawn(async move {
-        let ws_handler = WebsocketHandler::new(
-            window.clone(),
-            "ws://localhost:8000".to_string(),
-            &window_state_clone,
-        );
-        let window_state_clonecc = window_state_clone.clone();
-        if let Err(e) = ws_handler.run(machine_token, session_id).await {
-            error!("WebSocket connection error: {:?}", e);
-
-            set_window_application_state(
-                &window,
-                &WindowApplicationState {
-                    route: WindowApplicationRoute::MainPage,
-                    socket_connected: false,
-                },
-                &window_state_clonecc,
-            )
-            .await
-            .unwrap();
+    // Fetch remote sessions
+    let remote_sessions = match api_handler
+        .fetch_remote_sessions(
+            app_state
+                .auth_tokens
+                .lock()
+                .await
+                .user_auth_token
+                .clone()
+                .unwrap(),
+        )
+        .await
+    {
+        Ok(response) => response,
+        Err(e) => {
+            error!("Failed to fetch remote sessions: {:?}", e);
+            return CommandResult {
+                success: false,
+                message: "Failed to fetch remote sessions".into(),
+                error: Some(AppError::FetchRemoteSessionsFailed),
+            };
         }
-    });
+    };
 
-    app_state.ws_thread.lock().await.replace(join_handler);
+    // Send remote sessions to the frontend
+    send_backend_command(
+        &window,
+        "update_remote_sessions".into(),
+        serde_json::json!(remote_sessions),
+        &window_state_clone,
+    )
+    .await
+    .unwrap();
+
+    // Redirect to sessions page
+    set_window_application_state(
+        &window,
+        &WindowApplicationState {
+            route: WindowApplicationRoute::RemoteSessions,
+            socket_connected: false,
+        },
+        &window_state_clone,
+    )
+    .await
+    .unwrap();
+
+    // let join_handler = tauri::async_runtime::spawn(async move {
+    //     let ws_handler = WebsocketHandler::new(
+    //         window.clone(),
+    //         "ws://localhost:8000".to_string(),
+    //         &window_state_clone,
+    //     );
+    //     let window_state_clonecc = window_state_clone.clone();
+    //     if let Err(e) = ws_handler.run(machine_token, session_id).await {
+    //         error!("WebSocket connection error: {:?}", e);
+
+    //         set_window_application_state(
+    //             &window,
+    //             &WindowApplicationState {
+    //                 route: WindowApplicationRoute::MainPage,
+    //                 socket_connected: false,
+    //             },
+    //             &window_state_clonecc,
+    //         )
+    //         .await
+    //         .unwrap();
+    //     }
+    // });
+
+    // app_state.ws_thread.lock().await.replace(join_handler);
 
     CommandResult {
         success: true,
@@ -359,6 +407,55 @@ async fn cmd_message_processed(
     Ok(())
 }
 
+#[tauri::command]
+async fn cmd_update_remote_sessions(
+    window: Window,
+    app_state: State<'_, ApplicationState>,
+) -> Result<CommandResult, String> {
+    let api_handler = ApiHandler::new("http://localhost:8000".to_string());
+    let window_state_clone = app_state.window_state.clone();
+
+    // Fetch remote sessions
+    let remote_sessions = match api_handler
+        .fetch_remote_sessions(
+            app_state
+                .auth_tokens
+                .lock()
+                .await
+                .user_auth_token
+                .clone()
+                .unwrap(),
+        )
+        .await
+    {
+        Ok(response) => response,
+        Err(e) => {
+            error!("Failed to fetch remote sessions: {:?}", e);
+            return Ok(CommandResult {
+                success: false,
+                message: "Failed to fetch remote sessions".into(),
+                error: Some(AppError::FetchRemoteSessionsFailed),
+            });
+        }
+    };
+
+    // Send remote sessions to the frontend
+    send_backend_command(
+        &window,
+        "update_remote_sessions".into(),
+        serde_json::json!(remote_sessions),
+        &window_state_clone,
+    )
+    .await
+    .unwrap();
+
+    Ok(CommandResult {
+        success: true,
+        message: "Remote sessions updated successfully".into(),
+        error: None,
+    })
+}
+
 fn main() {
     env_logger::init();
     info!("Starting application");
@@ -378,6 +475,7 @@ fn main() {
             cmd_register_new_machine,
             cmd_close_splashscreen,
             cmd_message_processed,
+            cmd_update_remote_sessions
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]
