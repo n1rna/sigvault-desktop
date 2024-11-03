@@ -134,18 +134,11 @@ async fn cmd_register_new_machine(
 
 #[tokio::main]
 #[tauri::command]
-async fn cmd_start_websocket_connection(
+async fn cmd_start_backend_authentication(
     window: Window,
     app_state: State<'_, ApplicationState>,
     auth_session: String,
 ) -> CommandResult {
-    // set_window_application_state(
-    //     &window,
-    //     &WindowApplicationState {
-    //         route: WindowApplicationRoute::MainPage,
-    //         socket_connected: false,
-    //     },
-    // );
 
     let ws_thread = app_state.ws_thread.lock().await;
     let window_state_clone = app_state.window_state.clone();
@@ -471,7 +464,7 @@ fn main() {
         })
         .plugin(tauri_plugin_oauth::init())
         .invoke_handler(tauri::generate_handler![
-            cmd_start_websocket_connection,
+            cmd_start_backend_authentication,
             cmd_register_new_machine,
             cmd_close_splashscreen,
             cmd_message_processed,

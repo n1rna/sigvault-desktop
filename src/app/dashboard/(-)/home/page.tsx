@@ -8,18 +8,31 @@ import { useAppState } from "@/lib/providers";
 
 export default function DashboardPage() {
 
-  const { applicationState: { socket_connected }, socket: { tryBackendConnection, instantiated } } = useAppState();
+  const { applicationState: { socket_connected }, socket: { tryBackendConnection, instantiated, backendAuthenticated } } = useAppState();
 
-  React.useEffect(() => {
-    if (instantiated && !socket_connected) {
-      tryBackendConnection();
-    }
-  }, [socket_connected, instantiated, tryBackendConnection]);
+  // React.useEffect(() => {
+  //   if (instantiated && !socket_connected) {
+  //     tryBackendConnection();
+  //   }
+  // }, [socket_connected, instantiated, tryBackendConnection]);
 
   return (
     <main className="flex-1 w-full p-6 flex flex-col items-center gap-10">
+      {!backendAuthenticated && (
+        <>
           <Lottie animationData={circleGradient} loop className="w-48" />
-          <h2>The application is waiting for commands from the server ...</h2>
-        </main>
+          <h2>Application is disconnected from the server ...</h2>
+          <button
+            onClick={tryBackendConnection}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+          >
+            Retry Connection
+          </button>
+        </>
+      )}
+      {backendAuthenticated && (
+        <h2>Loading ...</h2>
+      )}
+    </main>
   );
 }

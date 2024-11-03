@@ -7,12 +7,14 @@ export type BackendContextType = {
     receivedMessages: { success: boolean; error?: string; message: { message_type: string; payload: any } }[];
     tryBackendConnection: () => void;
     instantiated: boolean;
+    backendAuthenticated: boolean;
 };
 
 export const BackendContext = React.createContext<BackendContextType>({
     receivedMessages: [],
     tryBackendConnection: () => { },
     instantiated: false,
+    backendAuthenticated: false,
 });
 
 interface BackendProviderProps {
@@ -20,11 +22,11 @@ interface BackendProviderProps {
 }
 
 export const BackendProvider = ({ children }: BackendProviderProps) => {
-    const { receivedMessages, tryBackendConnection, instantiated } = useBackendConnection();
+    const { receivedMessages, tryBackendConnection, instantiated, backendAuthenticated } = useBackendConnection();
 
     return (
         <BackendContext.Provider value={{
-            receivedMessages, tryBackendConnection, instantiated
+            receivedMessages, tryBackendConnection, instantiated, backendAuthenticated
         }}>
             {children}
         </BackendContext.Provider>

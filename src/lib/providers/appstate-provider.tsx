@@ -31,6 +31,7 @@ export const AppStateContext = React.createContext<AppStateContextType>({
         receivedMessages: [],
         tryBackendConnection: () => { },
         instantiated: false,
+        backendAuthenticated: false,
     },
     actionCommand: "welcome",
     actionPayload: {},

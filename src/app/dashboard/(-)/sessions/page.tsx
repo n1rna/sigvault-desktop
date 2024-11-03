@@ -31,6 +31,7 @@ export default function SessionsPage() {
 
     const handleRefetchSessions = (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
+        setLoadingSessions(true)
         import('@tauri-apps/api').then((tauri) => {
             tauri.invoke<BackendCommandResult>("cmd_update_remote_sessions").then((resp) => {
                 if (resp.success) {
@@ -38,6 +39,7 @@ export default function SessionsPage() {
                 } else {
                     console.error("Error fetching sessions", resp);
                 }
+                setLoadingSessions(false)
             });
         });
     };
