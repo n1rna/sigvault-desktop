@@ -14,10 +14,18 @@ enum ApplicationStateRoute {
     SessionDetails = "SessionDetails",
 }
 
+interface SessionState {
+    step: string;
+    requirements?: any;
+    lastError?: string;
+}
+
+
 type ApplicationState = {
     route?: ApplicationStateRoute,
     socket_connected?: boolean,
     current_session_id?: string,
+    session_state?: SessionState
 }
 
 
@@ -59,27 +67,25 @@ const SupportedMessageTypes = [
 
 
 export const AppStateProvider = ({ children }: AppStateProviderProps) => {
-    const socketState = useBackend();
+    const backendSocket = useBackend();
     const [actionCommand, setActionCommand] = React.useState<string>("welcome");
     const [actionPayload, setActionPayload] = React.useState<any>({});
     const [applicationState, setApplicationState] = React.useState<ApplicationState>({
         route: ApplicationStateRoute.MainPage,
         socket_connected: false,
-        current_session_id: ""
+        current_session_id: "",
+        session_state: undefined
     });
-
-    const [currentSessionData, setCurrentSessionData] = React.useState<any>({});
-
     const router = useRouter();
 
     React.useEffect(() => {
-        if (!socketState.receivedMessages?.length) {
-            console.log("No messages received", socketState.receivedMessages);
+        if (!backendSocket.receivedMessages?.length) {
+            console.log("No messages received", backendSocket.receivedMessages);
             return;
         }
 
         // handle messages
-        const lastMessage = socketState.receivedMessages[0];
+        const lastMessage = backendSocket.receivedMessages[0];
 
         if (!SupportedMessageTypes.includes(lastMessage.message.message_type)) {
             console.log("Unsupported message type: ", lastMessage.message.message_type);
@@ -102,27 +108,36 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             }
         }
 
+        // Handle Application State Updates
         if (lastMessage.message.message_type === "SetApplicationState") {
-            console.log("Set Application State: ", lastMessagePayload);
-            // setApplicationState(lastMessagePayload);
-            setApplicationState(prevState => {
-                const newState: ApplicationState = prevState ? { ...prevState } : {};
-
-                // Only update fields that are present in the payload
-                if ('route' in lastMessagePayload) {
-                    newState.route = lastMessagePayload.route;
-                }
-                if ('socket_connected' in lastMessagePayload) {
-                    newState.socket_connected = lastMessagePayload.socket_connected;
-                }
-                // Add other fields as needed
-                return newState;
-            });
+            const lastMessagePayload = lastMessage.message.payload;
+            setApplicationState(prevState => ({
+                ...prevState,
+                route: lastMessagePayload.route,
+                socket_connected: lastMessagePayload.socket_connected,
+                current_session_id: lastMessagePayload.current_session_id
+            }));
         }
 
-        if (lastMessage.message.message_type === "SessionSocketMessage") {
-            console.log("Session Socket Message: ", lastMessagePayload);
-            setCurrentSessionData(lastMessagePayload);
+
+        // Handle Session Messages
+        if (lastMessage.message.message_type === "SessionMessage") {
+            const sessionPayload = lastMessage.message.payload;
+            setApplicationState(prevState => ({
+                ...prevState,
+                session_state: {
+                    step: sessionPayload.step,
+                    requirements: sessionPayload.requirements,
+                    lastError: sessionPayload.error
+                }
+            }));
+
+            // If session completed, redirect after a short delay
+            if (sessionPayload.step === "Completed") {
+                setTimeout(() => {
+                    router.push("/dashboard/sessions");
+                }, 1500);
+            }
         }
 
         // Handle Websocket Messages
@@ -133,7 +148,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
         //     router.push("/dashboard/home");
         // }
 
-    }, [socketState.receivedMessages, router])
+    }, [backendSocket.receivedMessages, router])
 
 
     React.useEffect(() => {
@@ -149,7 +164,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
 
     return (
         <AppStateContext.Provider value={{
-            socket: socketState,
+            socket: backendSocket,
             actionCommand,
             actionPayload,
             applicationState

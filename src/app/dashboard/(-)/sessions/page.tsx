@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ShadowNoneIcon, LockClosedIcon, PersonIcon, LockOpen2Icon, ReloadIcon } from "@radix-ui/react-icons";
 import { BackendCommandResult } from "@/lib/types";
+import { useWebSocketConnection } from "@/lib/hooks/use-websocket-connection";
 
 interface RemoteSession {
     id: string;
@@ -15,6 +16,7 @@ interface RemoteSession {
 
 export default function SessionsPage() {
     const { actionPayload } = useAppState();
+    const { connect } = useWebSocketConnection();
     const [sessions, setSessions] = useState<RemoteSession[]>([]);
     const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
 
@@ -27,15 +29,7 @@ export default function SessionsPage() {
     const handleConnectSession = (sessionId: string) => {
         // Implement the logic to connect to a session
         console.log(`Connecting to session: ${sessionId}`);
-        import('@tauri-apps/api').then((tauri) => {
-            tauri.invoke<BackendCommandResult>("cmd_start_session_websocket_connection", { sessionId: sessionId }).then((resp) => {
-                if (resp.success) {
-                    console.log("Websocket connection started successfully", resp);
-                } else {
-                    console.error("Error starting websocket connection", resp);
-                }
-            });
-        });
+        connect(sessionId);
     };
 
     const handleRefetchSessions = (event: React.MouseEvent<HTMLButtonElement>) => {
