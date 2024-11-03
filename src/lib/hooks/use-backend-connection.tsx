@@ -39,7 +39,6 @@ export function useBackendConnection(): {
     setReceivedMessages((prev) => prev ? [messageWithId.message as unknown as EventPayload, ...prev] : [messageWithId.message as unknown as EventPayload]);
 
     invoke("cmd_message_processed", { messageId: messageWithId.id }).catch((error) => {
-
       console.error("Error signaling message processed:", error);
     });
   }, [setReceivedMessages]);

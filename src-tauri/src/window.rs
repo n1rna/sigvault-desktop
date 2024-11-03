@@ -14,7 +14,8 @@ pub enum MessageType {
     TextMessage,
     BackendCommand,
     WebsocketCommand,
-    SetApplicationState, // Add other message types as needed
+    SetApplicationState,
+    SetSessionSocketState,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -47,6 +48,14 @@ pub type WindowResult<T> = Result<T, Box<dyn std::error::Error + Send>>;
 pub struct WindowApplicationState {
     pub route: WindowApplicationRoute,
     pub socket_connected: bool,
+    pub current_session_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SessionSocketState {
+    pub route: WindowApplicationRoute,
+    pub socket_connected: bool,
+    pub current_session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -164,6 +173,27 @@ pub async fn set_window_application_state(
             success: true,
             message: BackendEventMessage {
                 message_type: MessageType::SetApplicationState,
+                payload: serde_json::to_value(state).unwrap(),
+            },
+            error: None,
+        },
+        window_state,
+    )
+    .await
+}
+
+pub async fn set_session_socket_state(
+    window: &Window,
+    state: &WindowApplicationState,
+    window_state: &SharedWindowState,
+) -> WindowResult<()> {
+    debug!("Setting window application state: {:?}", state);
+    emit_window_message(
+        window,
+        WindowEventMessage {
+            success: true,
+            message: BackendEventMessage {
+                message_type: MessageType::SetSessionSocketState,
                 payload: serde_json::to_value(state).unwrap(),
             },
             error: None,

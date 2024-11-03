@@ -17,6 +17,7 @@ enum ApplicationStateRoute {
 type ApplicationState = {
     route?: ApplicationStateRoute,
     socket_connected?: boolean,
+    current_session_id?: string,
 }
 
 
@@ -64,7 +65,10 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
     const [applicationState, setApplicationState] = React.useState<ApplicationState>({
         route: ApplicationStateRoute.MainPage,
         socket_connected: false,
+        current_session_id: ""
     });
+
+    const [currentSessionData, setCurrentSessionData] = React.useState<any>({});
 
     const router = useRouter();
 
@@ -116,13 +120,18 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             });
         }
 
+        if (lastMessage.message.message_type === "SessionSocketMessage") {
+            console.log("Session Socket Message: ", lastMessagePayload);
+            setCurrentSessionData(lastMessagePayload);
+        }
+
         // Handle Websocket Messages
-        if (lastMessage.message.message_type === "create_new_device") {
-            router.push("/dashboard/devices");
-        }
-        else if (lastMessage.message.message_type === "device_created") {
-            router.push("/dashboard/home");
-        }
+        // if (lastMessage.message.message_type === "create_new_device") {
+        //     router.push("/dashboard/devices");
+        // }
+        // else if (lastMessage.message.message_type === "device_created") {
+        //     router.push("/dashboard/home");
+        // }
 
     }, [socketState.receivedMessages, router])
 

@@ -1,8 +1,5 @@
 "use client";
 
-import Lottie from "lottie-react";
-import circleGradient from "@/lib/lottie/circle-gradient-2.json"
-
 import * as React from "react";
 import { useAppState } from "@/lib/providers";
 

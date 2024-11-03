@@ -103,6 +103,7 @@ async fn cmd_register_new_machine(
                     &WindowApplicationState {
                         route: WindowApplicationRoute::MainPage,
                         socket_connected: false,
+                        current_session_id: None,
                     },
                     &window_state_clone,
                 )
@@ -197,6 +198,7 @@ async fn cmd_start_backend_authentication(
             &WindowApplicationState {
                 route: WindowApplicationRoute::MachineRegistration,
                 socket_connected: false,
+                current_session_id: None,
             },
             &window_state_clone,
         )
@@ -278,6 +280,7 @@ async fn cmd_start_backend_authentication(
         &WindowApplicationState {
             route: WindowApplicationRoute::RemoteSessions,
             socket_connected: false,
+            current_session_id: None,
         },
         &window_state_clone,
     )
@@ -327,6 +330,7 @@ async fn cmd_start_session_websocket_connection(
                 &WindowApplicationState {
                     route: WindowApplicationRoute::SessionDetails,
                     socket_connected: true,
+                    current_session_id: Some(session_id.clone()),
                 },
                 &window_state_clone,
             )
@@ -351,7 +355,8 @@ async fn cmd_start_session_websocket_connection(
             &window_state_clone,
         );
         let window_state_clone = window_state_clone.clone();
-        if let Err(e) = ws_handler.run(machine_token, session_id).await {
+        let session_id_clone = session_id.clone();
+        if let Err(e) = ws_handler.run(machine_token, session_id_clone).await {
             error!("WebSocket connection error: {:?}", e);
 
             set_window_application_state(
@@ -359,6 +364,7 @@ async fn cmd_start_session_websocket_connection(
                 &WindowApplicationState {
                     route: WindowApplicationRoute::SessionDetails,
                     socket_connected: false,
+                    current_session_id: Some(session_id.clone()),
                 },
                 &window_state_clone,
             )
@@ -376,6 +382,7 @@ async fn cmd_start_session_websocket_connection(
         &WindowApplicationState {
             route: WindowApplicationRoute::SessionDetails,
             socket_connected: true,
+            current_session_id: None,
         },
         &window_state_clone,
     )
