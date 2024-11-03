@@ -139,32 +139,7 @@ async fn cmd_start_backend_authentication(
     app_state: State<'_, ApplicationState>,
     auth_session: String,
 ) -> CommandResult {
-
-    let ws_thread = app_state.ws_thread.lock().await;
     let window_state_clone = app_state.window_state.clone();
-
-    if let Some(join_handle) = ws_thread.as_ref() {
-        if !join_handle.inner().is_finished() {
-            set_window_application_state(
-                &window,
-                &WindowApplicationState {
-                    route: WindowApplicationRoute::MainPage,
-                    socket_connected: true,
-                },
-                &window_state_clone,
-            )
-            .await
-            .unwrap();
-
-            return CommandResult {
-                success: false,
-                message: "Websocket connection already started".into(),
-                error: Some(AppError::WebsocketAlreadyActive),
-            };
-        }
-    }
-
-    drop(ws_thread); // Release the lock
 
     // Store the auth session
     app_state.auth_tokens.lock().await.auth_session = Some(auth_session.clone());
@@ -258,7 +233,6 @@ async fn cmd_start_backend_authentication(
         };
     }
     let machine_token = machine_auth.token.unwrap();
-    let session_id = machine_auth.session_id.unwrap();
 
     info!("Machine token: {}", machine_token);
     // Store the machine auth token
@@ -310,36 +284,109 @@ async fn cmd_start_backend_authentication(
     .await
     .unwrap();
 
-    // let join_handler = tauri::async_runtime::spawn(async move {
-    //     let ws_handler = WebsocketHandler::new(
-    //         window.clone(),
-    //         "ws://localhost:8000".to_string(),
-    //         &window_state_clone,
-    //     );
-    //     let window_state_clonecc = window_state_clone.clone();
-    //     if let Err(e) = ws_handler.run(machine_token, session_id).await {
-    //         error!("WebSocket connection error: {:?}", e);
-
-    //         set_window_application_state(
-    //             &window,
-    //             &WindowApplicationState {
-    //                 route: WindowApplicationRoute::MainPage,
-    //                 socket_connected: false,
-    //             },
-    //             &window_state_clonecc,
-    //         )
-    //         .await
-    //         .unwrap();
-    //     }
-    // });
-
-    // app_state.ws_thread.lock().await.replace(join_handler);
-
     CommandResult {
         success: true,
         message: "Command executed successfully".into(),
         error: None,
     }
+}
+
+#[tokio::main]
+#[tauri::command]
+async fn cmd_start_session_websocket_connection(
+    window: Window,
+    app_state: State<'_, ApplicationState>,
+    session_id: String,
+) -> CommandResult {
+    let ws_thread = app_state.ws_thread.lock().await;
+    let machine_token = app_state
+        .auth_tokens
+        .lock()
+        .await
+        .machine_auth_token
+        .clone();
+
+    let machine_token = match machine_token {
+        Some(token) => token,
+        None => {
+            return CommandResult {
+                success: false,
+                message: "Machine token not found".into(),
+                error: Some(AppError::EmptyToken),
+            };
+        }
+    };
+
+    let window_state_clone = app_state.window_state.clone();
+    let window_clone = window.clone();
+
+    if let Some(join_handle) = ws_thread.as_ref() {
+        if !join_handle.inner().is_finished() {
+            set_window_application_state(
+                &window_clone,
+                &WindowApplicationState {
+                    route: WindowApplicationRoute::SessionDetails,
+                    socket_connected: true,
+                },
+                &window_state_clone,
+            )
+            .await
+            .unwrap();
+
+            return CommandResult {
+                success: false,
+                message: "Websocket connection already started".into(),
+                error: Some(AppError::WebsocketAlreadyActive),
+            };
+        }
+    }
+
+    drop(ws_thread); // Release the lock
+
+    let window_clone = window.clone();
+    let join_handler = tauri::async_runtime::spawn(async move {
+        let ws_handler = WebsocketHandler::new(
+            window_clone.clone(),
+            "ws://localhost:8000".to_string(),
+            &window_state_clone,
+        );
+        let window_state_clone = window_state_clone.clone();
+        if let Err(e) = ws_handler.run(machine_token, session_id).await {
+            error!("WebSocket connection error: {:?}", e);
+
+            set_window_application_state(
+                &window_clone,
+                &WindowApplicationState {
+                    route: WindowApplicationRoute::SessionDetails,
+                    socket_connected: false,
+                },
+                &window_state_clone,
+            )
+            .await
+            .unwrap();
+        }
+    });
+
+    app_state.ws_thread.lock().await.replace(join_handler);
+
+    let window_clone = window.clone();
+    let window_state_clone = app_state.window_state.clone();
+    set_window_application_state(
+        &window_clone.clone(),
+        &WindowApplicationState {
+            route: WindowApplicationRoute::SessionDetails,
+            socket_connected: true,
+        },
+        &window_state_clone,
+    )
+    .await
+    .unwrap();
+
+    return CommandResult {
+        success: true,
+        message: "Websocket connection started".into(),
+        error: None,
+    };
 }
 
 #[tauri::command]
@@ -468,7 +515,8 @@ fn main() {
             cmd_register_new_machine,
             cmd_close_splashscreen,
             cmd_message_processed,
-            cmd_update_remote_sessions
+            cmd_update_remote_sessions,
+            cmd_start_session_websocket_connection
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

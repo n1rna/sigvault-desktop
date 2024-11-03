@@ -8,13 +8,7 @@ import { useAppState } from "@/lib/providers";
 
 export default function DashboardPage() {
 
-  const { applicationState: { socket_connected }, socket: { tryBackendConnection, instantiated, backendAuthenticated } } = useAppState();
-
-  // React.useEffect(() => {
-  //   if (instantiated && !socket_connected) {
-  //     tryBackendConnection();
-  //   }
-  // }, [socket_connected, instantiated, tryBackendConnection]);
+  const { socket: { tryBackendConnection, backendAuthenticated } } = useAppState();
 
   return (
     <main className="flex-1 w-full p-6 flex flex-col items-center gap-10">

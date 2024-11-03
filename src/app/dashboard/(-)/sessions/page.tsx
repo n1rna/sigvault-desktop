@@ -27,6 +27,15 @@ export default function SessionsPage() {
     const handleConnectSession = (sessionId: string) => {
         // Implement the logic to connect to a session
         console.log(`Connecting to session: ${sessionId}`);
+        import('@tauri-apps/api').then((tauri) => {
+            tauri.invoke<BackendCommandResult>("cmd_start_session_websocket_connection", { sessionId: sessionId }).then((resp) => {
+                if (resp.success) {
+                    console.log("Websocket connection started successfully", resp);
+                } else {
+                    console.error("Error starting websocket connection", resp);
+                }
+            });
+        });
     };
 
     const handleRefetchSessions = (event: React.MouseEvent<HTMLButtonElement>) => {

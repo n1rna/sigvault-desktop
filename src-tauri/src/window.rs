@@ -27,6 +27,8 @@ pub enum WindowApplicationRoute {
     MachineRegistration,
     #[serde(rename = "RemoteSessions")]
     RemoteSessions,
+    #[serde(rename = "SessionDetails")]
+    SessionDetails,
 }
 
 #[derive(Debug, thiserror::Error)]

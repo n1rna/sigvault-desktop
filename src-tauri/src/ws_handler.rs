@@ -46,7 +46,7 @@ impl<'a> WebsocketHandler<'a> {
         let (_, mut reader) = ws_stream.split();
 
         info!("Websocket connection opened successfully");
-        self.emit_connection_opened().await;
+        // self.emit_connection_opened().await;
 
         loop {
             debug!("Waiting for next message");

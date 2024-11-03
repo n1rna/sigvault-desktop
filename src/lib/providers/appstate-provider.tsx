@@ -11,6 +11,7 @@ enum ApplicationStateRoute {
     Loading = "Loading",
     MainPage = "MainPage",
     MachineRegistration = "MachineRegistration",
+    SessionDetails = "SessionDetails",
 }
 
 type ApplicationState = {
@@ -132,6 +133,8 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
         }
         else if (applicationState.route === ApplicationStateRoute.MachineRegistration) {
             router.push("/dashboard/register");
+        } else if (applicationState.route === ApplicationStateRoute.SessionDetails) {
+            router.push("/dashboard/session-details");
         }
     }, [applicationState, router])
 
