@@ -1,5 +1,6 @@
 // src/ws_handler.rs
 
+use futures::SinkExt;
 use futures_util::StreamExt;
 use log::{debug, error, info};
 use serde_json;
@@ -18,6 +19,21 @@ pub struct WebsocketHandler<'a> {
     window: WebviewWindow,
     ws_base_url: String,
     window_state: &'a SharedWindowState,
+    sender: Option<
+        futures_util::stream::SplitSink<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+            Message,
+        >,
+    >,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct InitializeSessionMessage {
+    r#type: String,
+    action: String,
+    payload: serde_json::Value,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -36,11 +52,27 @@ impl<'a> WebsocketHandler<'a> {
             window,
             ws_base_url,
             window_state,
+            sender: None,
         }
     }
 
+    async fn send_initialize_message(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
+        if let Some(sender) = &mut self.sender {
+            let init_message = InitializeSessionMessage {
+                r#type: "session".to_string(),
+                action: "initialize".to_string(),
+                payload: serde_json::json!({}),
+            };
+
+            let message = Message::Text(serde_json::to_string(&init_message).unwrap());
+            sender.send(message).await.unwrap();
+            debug!("Sent initialization message");
+        }
+        Ok(())
+    }
+
     pub async fn run(
-        &self,
+        &mut self,
         token: String,
         session_id: String,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
@@ -48,7 +80,10 @@ impl<'a> WebsocketHandler<'a> {
         debug!("Token: {}", token);
         let url = format!("{}/api/v1/{}?token={}", self.ws_base_url, session_id, token);
         let (ws_stream, _) = connect_async(url).await.unwrap();
-        let (_, mut reader) = ws_stream.split();
+        let (sender, mut reader) = ws_stream.split();
+
+        // Store sender for later use
+        self.sender = Some(sender);
 
         info!("Websocket connection opened successfully");
         self.emit_connection_opened().await;
@@ -72,7 +107,7 @@ impl<'a> WebsocketHandler<'a> {
     }
 
     async fn handle_next_message<T>(
-        &self,
+        &mut self,
         reader: &mut T,
     ) -> Result<bool, Box<dyn std::error::Error>>
     where
@@ -87,7 +122,17 @@ impl<'a> WebsocketHandler<'a> {
 
                 match parsed_msg {
                     Ok(msg) => {
-                        info!("Parsed message: {:?}", msg);
+                        match msg.message_type {
+                            SessionMessageType::AuthorizationSuccess => {
+                                debug!(
+                                    "Authorization success received, sending initialize message"
+                                );
+                                if let Err(e) = self.send_initialize_message().await {
+                                    error!("Failed to send initialize message: {:?}", e);
+                                }
+                            }
+                            _ => {}
+                        };
                         self.emit_session_message(serde_json::to_value(msg)?).await;
                         return Ok(false);
                     }

@@ -349,7 +349,7 @@ async fn cmd_start_session_websocket_connection(
 
     let window_clone = window.clone();
     let join_handler = tauri::async_runtime::spawn(async move {
-        let ws_handler = WebsocketHandler::new(
+        let mut ws_handler = WebsocketHandler::new(
             window_clone.clone(),
             "ws://localhost:8000".to_string(),
             &window_state_clone,

@@ -19,6 +19,7 @@ pub enum MessageType {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum SessionMessageType {
     AuthorizationSuccess,
+    WorkflowSession,
     DeviceCreation,
     DeviceDeletion,
     SignTransaction,
