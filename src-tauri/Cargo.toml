@@ -12,13 +12,13 @@ rust-version = "1.60"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "1.5.2", features = [] }
+tauri-build = { version = "2", features = [] }
 cxx-build = "1.0"
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.6.5", features = [ "window-show", "window-maximize", "window-start-dragging", "window-unminimize", "window-close", "window-minimize", "window-hide", "window-unmaximize"] }
+tauri = { version = "2", features = [] }
 tauri-plugin-oauth = { git = "https://github.com/FabianLars/tauri-plugin-oauth", version = "0.0.0-alpha.0" }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.23.1"
@@ -31,8 +31,9 @@ log = "0.4"
 env_logger = "0.10"
 cxx = "1.0"
 machine-uid = "0.5.2"
-uuid = "1.10.0"
+uuid = { version = "1.10.0", features = ["v4"] }
 thiserror = "1.0.63"
+tauri-plugin-log = "2"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

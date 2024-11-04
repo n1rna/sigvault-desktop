@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { supabase } from "@/lib/supabase-client";
 import usePersist from "@/lib/hooks/use-persist";
@@ -33,24 +33,22 @@ export function useBackendConnection(): {
     });
   }, []);
 
-  const processMessage = useCallback((messageWithId: MessageWithId) => {
+  const processMessage = useCallback(async (messageWithId: MessageWithId) => {
     console.log("Processing message:", messageWithId);
 
     setReceivedMessages((prev) => prev ? [messageWithId.message as unknown as EventPayload, ...prev] : [messageWithId.message as unknown as EventPayload]);
 
-    invoke("cmd_message_processed", { messageId: messageWithId.id }).catch((error) => {
-      console.error("Error signaling message processed:", error);
-    });
+    await invoke("cmd_message_processed", { messageId: messageWithId.id });
   }, [setReceivedMessages]);
 
   console.log("receivedMessages", receivedMessages);
 
   useEffect(() => {
-    const unlistenPromise = listen<string>("backend_connection", (event) => {
+    const unlistenPromise = listen<string>("backend_connection", async (event) => {
       // const _message = JSON.parse(event.payload) as EventPayload;
       const messageWithId = event.payload as unknown as MessageWithId;
       // setReceivedMessages((prev) => [messageWithId, ...prev]);
-      processMessage(messageWithId);
+      await processMessage(messageWithId);
     });
 
     tryBackendConnection();

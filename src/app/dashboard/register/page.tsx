@@ -24,7 +24,7 @@ export default function Component() {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    import('@tauri-apps/api').then((tauri) => {
+    import('@tauri-apps/api/core').then((tauri) => {
       tauri.invoke<BackendCommandResult>("cmd_register_new_machine", { machineId: payload.machine_id, machineType: payload.machine_type, machineName }).then((resp) => {
         if (resp.success) {
           console.log("Machine registered successfully", resp);

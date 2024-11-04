@@ -35,7 +35,7 @@ export default function SessionsPage() {
     const handleRefetchSessions = (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
         setLoadingSessions(true)
-        import('@tauri-apps/api').then((tauri) => {
+        import('@tauri-apps/api/core').then((tauri) => {
             tauri.invoke<BackendCommandResult>("cmd_update_remote_sessions").then((resp) => {
                 if (resp.success) {
                     console.log("remote sessions updated successfully", resp);

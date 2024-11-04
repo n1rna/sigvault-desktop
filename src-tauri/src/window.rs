@@ -2,20 +2,26 @@ use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tauri::Window;
+use tauri::{Emitter, WebviewWindow};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum MessageType {
-    AuthorizationSuccess,
     ConnectionOpened,
     ConnectionClosed,
     TextMessage,
+    SessionMessage,
     BackendCommand,
-    WebsocketCommand,
     SetApplicationState,
-    SetSessionSocketState,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum SessionMessageType {
+    AuthorizationSuccess,
+    DeviceCreation,
+    DeviceDeletion,
+    SignTransaction,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -46,7 +52,7 @@ pub type WindowResult<T> = Result<T, Box<dyn std::error::Error + Send>>;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WindowApplicationState {
-    pub route: WindowApplicationRoute,
+    pub route: Option<WindowApplicationRoute>,
     pub socket_connected: bool,
     pub current_session_id: Option<String>,
 }
@@ -128,7 +134,7 @@ pub fn create_shared_window_state() -> SharedWindowState {
 }
 
 pub async fn emit_window_message(
-    window: &Window,
+    window: &WebviewWindow,
     message: WindowEventMessage,
     state: &SharedWindowState,
 ) -> WindowResult<()> {
@@ -144,17 +150,22 @@ pub async fn emit_window_message(
     Ok(())
 }
 
-pub async fn process_next_message(window: &Window, state: &SharedWindowState) -> WindowResult<()> {
+pub async fn process_next_message(
+    window: &WebviewWindow,
+    state: &SharedWindowState,
+) -> WindowResult<()> {
     let mut window_state = state.lock().await;
     if let Some(queued_message) = window_state.message_queue.pop() {
         debug!("Processing message: {:?}", queued_message);
-        window.emit(
-            "backend_connection",
-            serde_json::json!({
-                "id": queued_message.id,
-                "message": queued_message.message,
-            }),
-        ).unwrap();
+        window
+            .emit(
+                "backend_connection",
+                serde_json::json!({
+                    "id": queued_message.id,
+                    "message": queued_message.message,
+                }),
+            )
+            .unwrap();
     } else {
         window_state.is_processing = false;
     }
@@ -162,7 +173,7 @@ pub async fn process_next_message(window: &Window, state: &SharedWindowState) ->
 }
 
 pub async fn set_window_application_state(
-    window: &Window,
+    window: &WebviewWindow,
     state: &WindowApplicationState,
     window_state: &SharedWindowState,
 ) -> WindowResult<()> {
@@ -182,29 +193,8 @@ pub async fn set_window_application_state(
     .await
 }
 
-pub async fn set_session_socket_state(
-    window: &Window,
-    state: &WindowApplicationState,
-    window_state: &SharedWindowState,
-) -> WindowResult<()> {
-    debug!("Setting window application state: {:?}", state);
-    emit_window_message(
-        window,
-        WindowEventMessage {
-            success: true,
-            message: BackendEventMessage {
-                message_type: MessageType::SetSessionSocketState,
-                payload: serde_json::to_value(state).unwrap(),
-            },
-            error: None,
-        },
-        window_state,
-    )
-    .await
-}
-
 pub async fn send_backend_command(
-    window: &Window,
+    window: &WebviewWindow,
     command: String,
     command_payload: serde_json::Value,
     window_state: &SharedWindowState,

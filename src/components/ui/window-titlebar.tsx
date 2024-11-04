@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Cross1Icon, MinusIcon } from "@radix-ui/react-icons";
-import { WebviewWindow } from '@tauri-apps/api/window';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 
 export function WindowTitlebar() {
@@ -10,7 +10,7 @@ export function WindowTitlebar() {
 
     // Import appWindow and save it inside the state for later usage
     async function setupAppWindow() {
-        const appWindow = (await import('@tauri-apps/api/window')).appWindow
+        const appWindow = (await import('@tauri-apps/api/webviewWindow')).getCurrentWebviewWindow()
         setAppWindow(appWindow)
     }
 
@@ -19,14 +19,11 @@ export function WindowTitlebar() {
     }, [])
 
     // These 3 functions will see the "appWindow" stored inside the state
-    function windowMinimize() {
-        appWindow?.minimize()
+    async function windowMinimize() {
+        await appWindow?.minimize()
     }
-    function windowToggleMaximize() {
-        appWindow?.toggleMaximize()
-    }
-    function windowClose() {
-        appWindow?.close()
+    async function windowClose() {
+        await appWindow?.close()
     }
 
     // Use "onClick" on buttons and call the 3 functions above

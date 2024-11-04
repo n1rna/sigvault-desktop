@@ -62,7 +62,8 @@ const SupportedMessageTypes = [
     "sign_transaction",
     "BackendCommand",
     "SetApplicationState",
-    "TextMessage"
+    "TextMessage",
+    "SessionMessage"
 ]
 
 
@@ -113,9 +114,9 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             const lastMessagePayload = lastMessage.message.payload;
             setApplicationState(prevState => ({
                 ...prevState,
-                route: lastMessagePayload.route,
-                socket_connected: lastMessagePayload.socket_connected,
-                current_session_id: lastMessagePayload.current_session_id
+                route: lastMessagePayload.route ?? prevState.route,
+                socket_connected: lastMessagePayload.socket_connected ?? prevState.socket_connected,
+                current_session_id: lastMessagePayload.current_session_id ?? prevState.current_session_id
             }));
         }
 

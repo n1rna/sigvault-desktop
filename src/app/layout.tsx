@@ -22,7 +22,7 @@ export default function RootLayout({
       return;
     }
     setTimeout(() => {
-      import('@tauri-apps/api').then((tauri) => {
+      import('@tauri-apps/api/core').then((tauri) => {
         tauri.invoke("cmd_close_splashscreen").then(() => {
           setSplashscreenClosed(true)
         });
@@ -33,12 +33,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <WindowTitlebar />
-        <Providers>
-          <div className="flex flex-col items-center justify-center min-h-[453px] w-[512px] bg-gray-100 dark:bg-gray-950 pt-8">
-            {children}
-          </div>
-        </Providers>
+        <main className="flex flex-col flex-1 h-[477px] w-[512px] overflow-hidden">
+          <WindowTitlebar />
+          <div className="min-h-8 w-full"></div>
+          <Providers>
+            <div className="bg-gray-100 dark:bg-gray-950 overflow-auto">
+              {children}
+            </div>
+          </Providers>
+
+        </main>
       </body>
     </html>
   );

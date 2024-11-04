@@ -4,29 +4,34 @@ use futures_util::StreamExt;
 use log::{debug, error, info};
 use serde_json;
 use std::time::Duration;
-use tauri::Window;
+use tauri::WebviewWindow;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use crate::window::{
     emit_window_message, set_window_application_state, BackendEventMessage, MessageType,
-    SharedWindowState, WindowApplicationRoute, WindowApplicationState, WindowEventMessage,
+    SessionMessageType, SharedWindowState, WindowApplicationRoute, WindowApplicationState,
+    WindowEventMessage,
 };
 
 pub struct WebsocketHandler<'a> {
-    window: Window,
+    window: WebviewWindow,
     ws_base_url: String,
     window_state: &'a SharedWindowState,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GenericWebsocketMessage {
-    message_type: MessageType,
+    message_type: SessionMessageType,
     payload: serde_json::Value,
 }
 
 impl<'a> WebsocketHandler<'a> {
-    pub fn new(window: Window, ws_base_url: String, window_state: &'a SharedWindowState) -> Self {
+    pub fn new(
+        window: WebviewWindow,
+        ws_base_url: String,
+        window_state: &'a SharedWindowState,
+    ) -> Self {
         Self {
             window,
             ws_base_url,
@@ -46,7 +51,7 @@ impl<'a> WebsocketHandler<'a> {
         let (_, mut reader) = ws_stream.split();
 
         info!("Websocket connection opened successfully");
-        // self.emit_connection_opened().await;
+        self.emit_connection_opened().await;
 
         loop {
             debug!("Waiting for next message");
@@ -82,7 +87,8 @@ impl<'a> WebsocketHandler<'a> {
 
                 match parsed_msg {
                     Ok(msg) => {
-                        self.emit_text_message(msg.payload).await;
+                        info!("Parsed message: {:?}", msg);
+                        self.emit_session_message(serde_json::to_value(msg)?).await;
                         return Ok(false);
                     }
                     Err(e) => {
@@ -114,8 +120,9 @@ impl<'a> WebsocketHandler<'a> {
         set_window_application_state(
             &self.window,
             &WindowApplicationState {
-                route: WindowApplicationRoute::MainPage,
+                route: None,
                 socket_connected: true,
+                current_session_id: None,
             },
             self.window_state,
         )
@@ -128,8 +135,9 @@ impl<'a> WebsocketHandler<'a> {
         set_window_application_state(
             &self.window,
             &WindowApplicationState {
-                route: WindowApplicationRoute::MainPage,
+                route: Some(WindowApplicationRoute::RemoteSessions),
                 socket_connected: false,
+                current_session_id: None,
             },
             &self.window_state,
         )
@@ -137,13 +145,13 @@ impl<'a> WebsocketHandler<'a> {
         .unwrap();
     }
 
-    async fn emit_text_message(&self, payload: serde_json::Value) {
+    async fn emit_session_message(&self, payload: serde_json::Value) {
         emit_window_message(
             &self.window,
             WindowEventMessage {
                 success: true,
                 message: BackendEventMessage {
-                    message_type: MessageType::TextMessage,
+                    message_type: MessageType::SessionMessage,
                     payload,
                 },
                 error: None,

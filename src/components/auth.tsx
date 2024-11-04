@@ -30,7 +30,7 @@ export default function Auth() {
 
     const startOAuth = async () => {
       const { listen } = await import('@tauri-apps/api/event');
-      const { invoke } = await import('@tauri-apps/api');
+      const { invoke } = await import('@tauri-apps/api/core');
 
       unlisten = await listen("oauth://url", (data) => {
         if (!data.payload) return;
@@ -64,7 +64,7 @@ export default function Auth() {
         unlisten();
       }
       if (port) {
-        import('@tauri-apps/api').then((tauri) => {
+        import('@tauri-apps/api/core').then((tauri) => {
           console.log("Cancelling OAuth flow", port);
           tauri.invoke("plugin:oauth|cancel", { port: port });
         });

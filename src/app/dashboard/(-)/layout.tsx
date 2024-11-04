@@ -6,7 +6,7 @@ import { ShadowNoneIcon, PersonIcon } from "@radix-ui/react-icons";
 export default function DashboardPage({ children }: { children: React.ReactNode }) {
 
     return (
-        <div className="w-full min-h-screen">
+        <div className="w-full flex flex-col flex-1">
             <div className="flex items-center justify-between px-6 py-4 border-b">
                 <div className="flex items-center">
                     <ShadowNoneIcon className="w-4 h-4 text-primary" />

@@ -12,7 +12,7 @@ use crate::window::{
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::{Manager, State, Window};
+use tauri::{Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
 
 use api_handler::ApiHandler;
@@ -60,7 +60,7 @@ struct CommandResult {
 #[tokio::main]
 #[tauri::command]
 async fn cmd_register_new_machine(
-    window: Window,
+    window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
     machine_id: String,
     machine_name: String,
@@ -101,7 +101,7 @@ async fn cmd_register_new_machine(
                 set_window_application_state(
                     &window_clone,
                     &WindowApplicationState {
-                        route: WindowApplicationRoute::MainPage,
+                        route: Some(WindowApplicationRoute::MainPage),
                         socket_connected: false,
                         current_session_id: None,
                     },
@@ -136,7 +136,7 @@ async fn cmd_register_new_machine(
 #[tokio::main]
 #[tauri::command]
 async fn cmd_start_backend_authentication(
-    window: Window,
+    window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
     auth_session: String,
 ) -> CommandResult {
@@ -196,7 +196,7 @@ async fn cmd_start_backend_authentication(
         set_window_application_state(
             &window,
             &WindowApplicationState {
-                route: WindowApplicationRoute::MachineRegistration,
+                route: Some(WindowApplicationRoute::MachineRegistration),
                 socket_connected: false,
                 current_session_id: None,
             },
@@ -278,7 +278,7 @@ async fn cmd_start_backend_authentication(
     set_window_application_state(
         &window,
         &WindowApplicationState {
-            route: WindowApplicationRoute::RemoteSessions,
+            route: Some(WindowApplicationRoute::RemoteSessions),
             socket_connected: false,
             current_session_id: None,
         },
@@ -297,7 +297,7 @@ async fn cmd_start_backend_authentication(
 #[tokio::main]
 #[tauri::command]
 async fn cmd_start_session_websocket_connection(
-    window: Window,
+    window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
     session_id: String,
 ) -> CommandResult {
@@ -328,7 +328,7 @@ async fn cmd_start_session_websocket_connection(
             set_window_application_state(
                 &window_clone,
                 &WindowApplicationState {
-                    route: WindowApplicationRoute::SessionDetails,
+                    route: Some(WindowApplicationRoute::SessionDetails),
                     socket_connected: true,
                     current_session_id: Some(session_id.clone()),
                 },
@@ -362,7 +362,7 @@ async fn cmd_start_session_websocket_connection(
             set_window_application_state(
                 &window_clone,
                 &WindowApplicationState {
-                    route: WindowApplicationRoute::SessionDetails,
+                    route: Some(WindowApplicationRoute::SessionDetails),
                     socket_connected: false,
                     current_session_id: Some(session_id.clone()),
                 },
@@ -380,7 +380,7 @@ async fn cmd_start_session_websocket_connection(
     set_window_application_state(
         &window_clone.clone(),
         &WindowApplicationState {
-            route: WindowApplicationRoute::SessionDetails,
+            route: Some(WindowApplicationRoute::SessionDetails),
             socket_connected: true,
             current_session_id: None,
         },
@@ -397,9 +397,9 @@ async fn cmd_start_session_websocket_connection(
 }
 
 #[tauri::command]
-async fn cmd_close_splashscreen(window: Window) {
+async fn cmd_close_splashscreen(window: WebviewWindow) {
     info!("Attempting to close splashscreen");
-    match window.get_window("splashscreen") {
+    match window.get_webview_window("splashscreen") {
         Some(splashscreen) => {
             debug!("Splashscreen window found, closing");
             if let Err(e) = splashscreen.close() {
@@ -414,7 +414,7 @@ async fn cmd_close_splashscreen(window: Window) {
     }
 
     info!("Attempting to show main window");
-    match window.get_window("main") {
+    match window.get_webview_window("main") {
         Some(main_window) => {
             debug!("Main window found, showing");
             if let Err(e) = main_window.show() {
@@ -431,7 +431,7 @@ async fn cmd_close_splashscreen(window: Window) {
 
 #[tauri::command]
 async fn cmd_message_processed(
-    window: Window,
+    window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
     message_id: String,
 ) -> Result<(), String> {
@@ -456,7 +456,7 @@ async fn cmd_message_processed(
 
 #[tauri::command]
 async fn cmd_update_remote_sessions(
-    window: Window,
+    window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
     let api_handler = ApiHandler::new("http://localhost:8000".to_string());
@@ -504,12 +504,12 @@ async fn cmd_update_remote_sessions(
 }
 
 fn main() {
-    env_logger::init();
     info!("Starting application");
 
     let shared_window_state = create_shared_window_state();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_log::Builder::new().build())
         .manage(ApplicationState {
             ws_thread: Arc::new(Mutex::new(None)),
             registration_thread: Arc::new(Mutex::new(None)),
@@ -528,7 +528,7 @@ fn main() {
         .setup(|app| {
             #[cfg(debug_assertions)]
             {
-                let window = app.get_window("main").unwrap();
+                let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
             Ok(())

@@ -41,7 +41,6 @@ pub struct RemoteSessionsResponse {
     pub sessions: Vec<RemoteSession>,
 }
 
-
 impl ApiHandler {
     pub fn new(api_base_url: String) -> Self {
         Self {
