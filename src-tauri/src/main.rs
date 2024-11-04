@@ -104,6 +104,7 @@ async fn cmd_register_new_machine(
                         route: Some(WindowApplicationRoute::MainPage),
                         socket_connected: false,
                         current_session_id: None,
+                        current_session_type: None,
                     },
                     &window_state_clone,
                 )
@@ -199,6 +200,7 @@ async fn cmd_start_backend_authentication(
                 route: Some(WindowApplicationRoute::MachineRegistration),
                 socket_connected: false,
                 current_session_id: None,
+                current_session_type: None,
             },
             &window_state_clone,
         )
@@ -281,6 +283,7 @@ async fn cmd_start_backend_authentication(
             route: Some(WindowApplicationRoute::RemoteSessions),
             socket_connected: false,
             current_session_id: None,
+            current_session_type: None,
         },
         &window_state_clone,
     )
@@ -331,6 +334,7 @@ async fn cmd_start_session_websocket_connection(
                     route: Some(WindowApplicationRoute::SessionDetails),
                     socket_connected: true,
                     current_session_id: Some(session_id.clone()),
+                    current_session_type: None,
                 },
                 &window_state_clone,
             )
@@ -348,6 +352,7 @@ async fn cmd_start_session_websocket_connection(
     drop(ws_thread); // Release the lock
 
     let window_clone = window.clone();
+    let session_id_clone = session_id.clone();
     let join_handler = tauri::async_runtime::spawn(async move {
         let mut ws_handler = WebsocketHandler::new(
             window_clone.clone(),
@@ -355,8 +360,7 @@ async fn cmd_start_session_websocket_connection(
             &window_state_clone,
         );
         let window_state_clone = window_state_clone.clone();
-        let session_id_clone = session_id.clone();
-        if let Err(e) = ws_handler.run(machine_token, session_id_clone).await {
+        if let Err(e) = ws_handler.run(machine_token, session_id_clone.clone()).await {
             error!("WebSocket connection error: {:?}", e);
 
             set_window_application_state(
@@ -364,7 +368,8 @@ async fn cmd_start_session_websocket_connection(
                 &WindowApplicationState {
                     route: Some(WindowApplicationRoute::SessionDetails),
                     socket_connected: false,
-                    current_session_id: Some(session_id.clone()),
+                    current_session_id: Some(session_id_clone.clone()),
+                    current_session_type: None,
                 },
                 &window_state_clone,
             )
@@ -377,12 +382,14 @@ async fn cmd_start_session_websocket_connection(
 
     let window_clone = window.clone();
     let window_state_clone = app_state.window_state.clone();
+    let session_id_clone = session_id.clone();
     set_window_application_state(
         &window_clone.clone(),
         &WindowApplicationState {
             route: Some(WindowApplicationRoute::SessionDetails),
             socket_connected: true,
-            current_session_id: None,
+            current_session_id: Some(session_id_clone.clone()),
+            current_session_type: None,
         },
         &window_state_clone,
     )

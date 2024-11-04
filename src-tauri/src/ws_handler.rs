@@ -127,9 +127,28 @@ impl<'a> WebsocketHandler<'a> {
                                 debug!(
                                     "Authorization success received, sending initialize message"
                                 );
+                                set_window_application_state(
+                                    &self.window,
+                                    &WindowApplicationState {
+                                        route: None,
+                                        socket_connected: true,
+                                        current_session_id: None,
+                                        current_session_type: Some(
+                                            msg.payload["session_type"]
+                                                .as_str()
+                                                .unwrap()
+                                                .to_string(),
+                                        ),
+                                    },
+                                    self.window_state,
+                                )
+                                .await
+                                .unwrap();
+
                                 if let Err(e) = self.send_initialize_message().await {
                                     error!("Failed to send initialize message: {:?}", e);
                                 }
+                                return Ok(false);
                             }
                             _ => {}
                         };
@@ -168,6 +187,7 @@ impl<'a> WebsocketHandler<'a> {
                 route: None,
                 socket_connected: true,
                 current_session_id: None,
+                current_session_type: None,
             },
             self.window_state,
         )
@@ -183,6 +203,7 @@ impl<'a> WebsocketHandler<'a> {
                 route: Some(WindowApplicationRoute::RemoteSessions),
                 socket_connected: false,
                 current_session_id: None,
+                current_session_type: None,
             },
             &self.window_state,
         )

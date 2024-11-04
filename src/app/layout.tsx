@@ -33,11 +33,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <main className="flex flex-col flex-1 h-[477px] w-[512px] overflow-hidden">
+        <main className="flex flex-col flex-1 bg-gray-100 dark:bg-gray-950 h-[477px] w-[512px] overflow-hidden">
           <WindowTitlebar />
           <div className="min-h-8 w-full"></div>
           <Providers>
-            <div className="bg-gray-100 dark:bg-gray-950 overflow-auto">
+            <div className="overflow-auto">
               {children}
             </div>
           </Providers>

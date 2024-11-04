@@ -25,6 +25,7 @@ type ApplicationState = {
     route?: ApplicationStateRoute,
     socket_connected?: boolean,
     current_session_id?: string,
+    current_session_type?: string,
     session_state?: SessionState
 }
 
@@ -75,6 +76,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
         route: ApplicationStateRoute.MainPage,
         socket_connected: false,
         current_session_id: "",
+        current_session_type: "",
         session_state: undefined
     });
     const router = useRouter();
@@ -116,7 +118,8 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
                 ...prevState,
                 route: lastMessagePayload.route ?? prevState.route,
                 socket_connected: lastMessagePayload.socket_connected ?? prevState.socket_connected,
-                current_session_id: lastMessagePayload.current_session_id ?? prevState.current_session_id
+                current_session_id: lastMessagePayload.current_session_id ?? prevState.current_session_id,
+                current_session_type: lastMessagePayload.current_session_type ?? prevState.current_session_type
             }));
         }
 
@@ -124,20 +127,23 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
         // Handle Session Messages
         if (lastMessage.message.message_type === "SessionMessage") {
             const sessionPayload = lastMessage.message.payload;
-            setApplicationState(prevState => ({
-                ...prevState,
-                session_state: {
-                    step: sessionPayload.step,
-                    requirements: sessionPayload.requirements,
-                    lastError: sessionPayload.error
+            if (sessionPayload.message_type === "WorkflowSession") {
+                const workflowPayload = sessionPayload?.payload?.payload;
+                setApplicationState(prevState => ({
+                    ...prevState,
+                    session_state: {
+                        step: workflowPayload.step,
+                        requirements: workflowPayload.requirements,
+                        lastError: workflowPayload.error
+                    }
+                }));
+    
+                // If session completed, redirect after a short delay
+                if (workflowPayload.step === "Completed") {
+                    setTimeout(() => {
+                        router.push("/dashboard/sessions");
+                    }, 1500);
                 }
-            }));
-
-            // If session completed, redirect after a short delay
-            if (sessionPayload.step === "Completed") {
-                setTimeout(() => {
-                    router.push("/dashboard/sessions");
-                }, 1500);
             }
         }
 

@@ -56,6 +56,7 @@ pub struct WindowApplicationState {
     pub route: Option<WindowApplicationRoute>,
     pub socket_connected: bool,
     pub current_session_id: Option<String>,
+    pub current_session_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
