@@ -10,6 +10,9 @@
     "log:default",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
-    "core:window:allow-minimize"
+    "core:window:allow-minimize",
+    "deep-link:default",
+    "oauth:allow-cancel",
+    "oauth:allow-start"
   ]
 }

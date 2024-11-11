@@ -34,6 +34,7 @@ machine-uid = "0.5.2"
 uuid = { version = "1.10.0", features = ["v4"] }
 thiserror = "1.0.63"
 tauri-plugin-log = "2"
+tauri-plugin-deep-link = "2"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

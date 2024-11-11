@@ -360,7 +360,10 @@ async fn cmd_start_session_websocket_connection(
             &window_state_clone,
         );
         let window_state_clone = window_state_clone.clone();
-        if let Err(e) = ws_handler.run(machine_token, session_id_clone.clone()).await {
+        if let Err(e) = ws_handler
+            .run(machine_token, session_id_clone.clone())
+            .await
+        {
             error!("WebSocket connection error: {:?}", e);
 
             set_window_application_state(
@@ -516,6 +519,7 @@ fn main() {
     let shared_window_state = create_shared_window_state();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_log::Builder::new().build())
         .manage(ApplicationState {
             ws_thread: Arc::new(Mutex::new(None)),

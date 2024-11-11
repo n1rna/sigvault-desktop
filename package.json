@@ -15,6 +15,7 @@
     "@radix-ui/react-slot": "^1.0.2",
     "@supabase/supabase-js": "^2.43.4",
     "@tauri-apps/api": "^2.0.3",
+    "@tauri-apps/plugin-deep-link": "^2.0.0",
     "@tauri-apps/plugin-log": "~2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
