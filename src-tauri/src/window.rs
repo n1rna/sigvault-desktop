@@ -140,11 +140,11 @@ pub async fn emit_window_message(
     message: WindowEventMessage,
     window_state: &mut WindowState,
 ) -> WindowResult<()> {
-    let _id = window_state.message_queue.push(message);
-
-    if !window_state.is_processing {
-        window_state.is_processing = true;
+    if window_state.message_queue.is_empty() {
+        let _id = window_state.message_queue.push(message);
         process_next_message(window, window_state).await?;
+    } else {
+        window_state.message_queue.push(message);
     }
 
     Ok(())
@@ -165,8 +165,6 @@ pub async fn process_next_message(
                 }),
             )
             .unwrap();
-    } else {
-        window_state.is_processing = false;
     }
     Ok(())
 }

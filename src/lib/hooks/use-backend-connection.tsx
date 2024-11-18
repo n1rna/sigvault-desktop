@@ -19,14 +19,18 @@ export function useBackendConnection(): {
   instantiated: boolean;
   backendAuthenticated: boolean;
 } {
-
   const [instantiated, setInstantiated] = useState(false);
   const [backendAuthenticated, setBackendAuthenticated] = useState(false);
-  const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({ name: "receivedMessages", value: [] });
+  const [receivedMessages, setReceivedMessages] = usePersist<EventPayload[]>({
+    name: "receivedMessages",
+    value: [],
+  });
 
   const tryBackendConnection = useCallback(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      invoke<BackendCommandResult>("cmd_start_backend_authentication", { authSession: JSON.stringify(session) }).then((resp) => {
+      invoke<BackendCommandResult>("cmd_start_backend_authentication", {
+        authSession: JSON.stringify(session),
+      }).then((resp) => {
         console.log("cmd_start_backend_authentication", resp);
         setBackendAuthenticated(resp.success);
       });
@@ -36,10 +40,14 @@ export function useBackendConnection(): {
   const processMessage = useCallback(async (messageWithId: MessageWithId) => {
     console.log("Processing message:", messageWithId);
 
-    setReceivedMessages((prev) => prev ? [messageWithId.message as unknown as EventPayload, ...prev] : [messageWithId.message as unknown as EventPayload]);
+    setReceivedMessages((prev) =>
+      prev
+        ? [messageWithId.message as unknown as EventPayload, ...prev]
+        : [messageWithId.message as unknown as EventPayload]
+    );
 
     await invoke("cmd_message_processed", { messageId: messageWithId.id });
-  }, [setReceivedMessages]);
+  }, []);
 
   console.log("receivedMessages", receivedMessages);
 
@@ -60,9 +68,12 @@ export function useBackendConnection(): {
         unlisten();
       });
     };
-  }, [processMessage, tryBackendConnection]);
+  }, []);
 
   return {
-    receivedMessages, tryBackendConnection, instantiated, backendAuthenticated
+    receivedMessages,
+    tryBackendConnection,
+    instantiated,
+    backendAuthenticated,
   };
 }

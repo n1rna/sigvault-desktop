@@ -12,6 +12,7 @@ enum ApplicationStateRoute {
     MainPage = "MainPage",
     MachineRegistration = "MachineRegistration",
     SessionDetails = "SessionDetails",
+    RemoteSessions = "RemoteSessions"
 }
 
 interface SessionState {
@@ -166,6 +167,8 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             router.push("/dashboard/register");
         } else if (applicationState.route === ApplicationStateRoute.SessionDetails) {
             router.push("/dashboard/session-details");
+        } else if (applicationState.route === ApplicationStateRoute.RemoteSessions) {
+            router.push("/dashboard/sessions");
         }
     }, [applicationState, router])
 

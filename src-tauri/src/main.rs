@@ -7,14 +7,13 @@ mod ws_handler;
 
 use crate::window::{
     create_shared_window_state, send_backend_command, set_window_application_state,
-    SharedWindowState, WindowApplicationRoute, WindowApplicationState,
+    WindowApplicationRoute, WindowApplicationState, WindowState,
 };
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
-use window::WindowState;
 
 use api_handler::ApiHandler;
 use ws_handler::WebsocketHandler;
@@ -495,7 +494,7 @@ async fn cmd_message_processed(
     let mut window_state = app_state.window_state.lock().await;
 
     // Here you might want to do something with the processed message ID if needed
-
+    debug!("CALLLLLLLLLLLLLLED Message processed: {}", message_id);
     // Process the next message if there is one
     if !window_state.message_queue.is_empty() {
         window::process_next_message(&window, &mut window_state)

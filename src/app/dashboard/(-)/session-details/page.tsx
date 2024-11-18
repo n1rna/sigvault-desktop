@@ -28,6 +28,8 @@ export default function DashboardPage() {
     },
   } = useAppState();
 
+  console.log("aoaoaoaoaoa", { socket_connected, current_session_id, current_session_type, session_state})
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Submitted:", { xpub, derivationPath });
@@ -50,8 +52,8 @@ export default function DashboardPage() {
   return (
     <main className="flex-1 overflow-auto pb-6">
       {!socket_connected && <h2>Connection failed!</h2>}
-      {socket_connected && !current_session_type && loading()}
-      {Boolean(socket_connected && current_session_type) && (
+      {socket_connected && !session_state && loading()}
+      {Boolean(socket_connected && session_state) && (
         <Card className="w-full max-w-md mx-auto mt-8">
           <CardHeader>
             <CardTitle>Device Creation</CardTitle>
