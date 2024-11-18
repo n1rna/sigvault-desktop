@@ -1,0 +1,10 @@
+node_modules/
+contrib/
+.next/
+public/
+contrib/
+src-tauri/target/
+src-tauri/icons/
+src-tauri/gen/
+src-tauri/capabilities/
+src/lib/lottie/

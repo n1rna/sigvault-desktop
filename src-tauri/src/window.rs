@@ -138,15 +138,13 @@ pub fn create_shared_window_state() -> SharedWindowState {
 pub async fn emit_window_message(
     window: &WebviewWindow,
     message: WindowEventMessage,
-    state: &SharedWindowState,
+    window_state: &mut WindowState,
 ) -> WindowResult<()> {
-    let mut window_state = state.lock().await;
     let _id = window_state.message_queue.push(message);
 
     if !window_state.is_processing {
         window_state.is_processing = true;
-        drop(window_state); // Release the lock before calling process_next_message
-        process_next_message(window, state).await?;
+        process_next_message(window, window_state).await?;
     }
 
     Ok(())
@@ -154,9 +152,8 @@ pub async fn emit_window_message(
 
 pub async fn process_next_message(
     window: &WebviewWindow,
-    state: &SharedWindowState,
+    window_state: &mut WindowState,
 ) -> WindowResult<()> {
-    let mut window_state = state.lock().await;
     if let Some(queued_message) = window_state.message_queue.pop() {
         debug!("Processing message: {:?}", queued_message);
         window
@@ -177,7 +174,7 @@ pub async fn process_next_message(
 pub async fn set_window_application_state(
     window: &WebviewWindow,
     state: &WindowApplicationState,
-    window_state: &SharedWindowState,
+    window_state: &mut WindowState,
 ) -> WindowResult<()> {
     debug!("Setting window application state: {:?}", state);
     emit_window_message(
@@ -199,7 +196,7 @@ pub async fn send_backend_command(
     window: &WebviewWindow,
     command: String,
     command_payload: serde_json::Value,
-    window_state: &SharedWindowState,
+    window_state: &mut WindowState,
 ) -> WindowResult<()> {
     emit_window_message(
         window,

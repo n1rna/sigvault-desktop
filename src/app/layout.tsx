@@ -6,7 +6,8 @@ import "./globals.css";
 
 import { WindowTitlebar } from "@/components/ui/window-titlebar";
 import { useEffect, useState } from "react";
-import { ShadowNoneIcon, PersonIcon } from "@radix-ui/react-icons";
+import { ShadowNoneIcon, GearIcon } from "@radix-ui/react-icons";
+import { Button } from "@/components/ui/button";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -38,15 +39,18 @@ export default function RootLayout({
           <Providers>
             <div className="overflow-auto">
               <div className="w-full flex flex-col flex-1">
-                <div className="flex items-center justify-between px-6 py-4 border-b">
-                  <div className="flex items-center">
+                <header className="flex h-16 items-center justify-between border-b px-6">
+                  <div className="flex items-center gap-2 font-semibold">
                     <ShadowNoneIcon className="w-4 h-4 text-primary" />
                     <h1 className="ml-2 text-xl font-semibold">qblok</h1>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <PersonIcon className="w-4 h-4" />
-                  </div>
-                </div>
+                  <nav className="flex items-center gap-4">
+                    <Button variant="ghost" size="icon">
+                      <GearIcon className="h-5 w-5" />
+                      <span className="sr-only">Settings</span>
+                    </Button>
+                  </nav>
+                </header>
                 {children}
               </div>
             </div>

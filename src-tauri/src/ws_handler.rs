@@ -1,32 +1,36 @@
 // src/ws_handler.rs
 
-use futures::SinkExt;
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt,
+};
 use futures_util::StreamExt;
 use log::{debug, error, info};
 use serde_json;
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::WebviewWindow;
+use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use crate::window::{
     emit_window_message, set_window_application_state, BackendEventMessage, MessageType,
-    SessionMessageType, SharedWindowState, WindowApplicationRoute, WindowApplicationState,
-    WindowEventMessage,
+    SessionMessageType, WindowApplicationRoute, WindowApplicationState, WindowEventMessage,
+    WindowState,
 };
 
-pub struct WebsocketHandler<'a> {
+type WebSocketStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+type WsSender = SplitSink<WebSocketStream, Message>;
+type WsReceiver = SplitStream<WebSocketStream>;
+
+#[derive(Clone)]
+pub struct WebsocketHandler {
     window: WebviewWindow,
     ws_base_url: String,
-    window_state: &'a SharedWindowState,
-    sender: Option<
-        futures_util::stream::SplitSink<
-            tokio_tungstenite::WebSocketStream<
-                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-            >,
-            Message,
-        >,
-    >,
+    window_state: Arc<Mutex<WindowState>>,
+    sender: Arc<tokio::sync::Mutex<Option<WsSender>>>, // Changed to tokio::sync::Mutex
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -42,22 +46,24 @@ pub struct GenericWebsocketMessage {
     payload: serde_json::Value,
 }
 
-impl<'a> WebsocketHandler<'a> {
+impl WebsocketHandler {
     pub fn new(
         window: WebviewWindow,
         ws_base_url: String,
-        window_state: &'a SharedWindowState,
+        window_state: Arc<Mutex<WindowState>>,
     ) -> Self {
         Self {
             window,
             ws_base_url,
-            window_state,
-            sender: None,
+            window_state: window_state,
+            sender: Arc::new(Mutex::new(None)),
         }
     }
 
     async fn send_initialize_message(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
-        if let Some(sender) = &mut self.sender {
+        let mut sender_lock = self.sender.lock().await;
+
+        if let Some(sender) = &mut *sender_lock {
             let init_message = InitializeSessionMessage {
                 r#type: "session".to_string(),
                 action: "initialize".to_string(),
@@ -80,17 +86,19 @@ impl<'a> WebsocketHandler<'a> {
         debug!("Token: {}", token);
         let url = format!("{}/api/v1/{}?token={}", self.ws_base_url, session_id, token);
         let (ws_stream, _) = connect_async(url).await.unwrap();
-        let (sender, mut reader) = ws_stream.split();
+        let (sender, mut receiver) = ws_stream.split();
 
-        // Store sender for later use
-        self.sender = Some(sender);
+        {
+            let mut sender_lock = self.sender.lock().await;
+            *sender_lock = Some(sender);
+        }
 
         info!("Websocket connection opened successfully");
         self.emit_connection_opened().await;
 
         loop {
             debug!("Waiting for next message");
-            match self.handle_next_message(&mut reader).await {
+            match self.handle_next_message(&mut receiver).await {
                 Ok(should_break) => {
                     if should_break {
                         break;
@@ -127,6 +135,8 @@ impl<'a> WebsocketHandler<'a> {
                                 debug!(
                                     "Authorization success received, sending initialize message"
                                 );
+                                let self_clone = self.clone();
+                                let mut window_state = self_clone.window_state.lock().await;
                                 set_window_application_state(
                                     &self.window,
                                     &WindowApplicationState {
@@ -140,7 +150,7 @@ impl<'a> WebsocketHandler<'a> {
                                                 .to_string(),
                                         ),
                                     },
-                                    self.window_state,
+                                    &mut window_state,
                                 )
                                 .await
                                 .unwrap();
@@ -179,8 +189,27 @@ impl<'a> WebsocketHandler<'a> {
         }
     }
 
+    pub async fn send_message(
+        &self,
+        payload: &serde_json::Value,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        if let Some(sender) = &mut *self.sender.lock().await {
+            let message = Message::Text(serde_json::to_string(payload).unwrap());
+            sender.send(message).await.unwrap();
+            debug!("Message sent successfully: {:?}", payload);
+            Ok(())
+        } else {
+            error!("No active websocket connection");
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "No active websocket connection",
+            )))
+        }
+    }
+
     async fn emit_connection_opened(&self) {
         debug!("Emitting connection opened message to window");
+        let mut window_state = self.window_state.lock().await;
         set_window_application_state(
             &self.window,
             &WindowApplicationState {
@@ -189,7 +218,7 @@ impl<'a> WebsocketHandler<'a> {
                 current_session_id: None,
                 current_session_type: None,
             },
-            self.window_state,
+            &mut window_state,
         )
         .await
         .unwrap();
@@ -197,6 +226,7 @@ impl<'a> WebsocketHandler<'a> {
 
     async fn emit_connection_closed(&self) {
         debug!("Emitting connection closed message to window");
+        let mut window_state = self.window_state.lock().await;
         set_window_application_state(
             &self.window,
             &WindowApplicationState {
@@ -205,13 +235,14 @@ impl<'a> WebsocketHandler<'a> {
                 current_session_id: None,
                 current_session_type: None,
             },
-            &self.window_state,
+            &mut window_state,
         )
         .await
         .unwrap();
     }
 
     async fn emit_session_message(&self, payload: serde_json::Value) {
+        let mut window_state = self.window_state.lock().await;
         emit_window_message(
             &self.window,
             WindowEventMessage {
@@ -222,7 +253,7 @@ impl<'a> WebsocketHandler<'a> {
                 },
                 error: None,
             },
-            &self.window_state,
+            &mut window_state,
         )
         .await
         .unwrap();

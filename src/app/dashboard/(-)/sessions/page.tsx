@@ -4,82 +4,109 @@ import { useEffect, useState } from "react";
 import { useAppState } from "@/lib/providers";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ShadowNoneIcon, LockClosedIcon, PersonIcon, LockOpen2Icon, ReloadIcon } from "@radix-ui/react-icons";
+import {
+  ShadowNoneIcon,
+  LockClosedIcon,
+  PersonIcon,
+  LockOpen2Icon,
+  ReloadIcon,
+} from "@radix-ui/react-icons";
 import { BackendCommandResult } from "@/lib/types";
 import { useWebSocketConnection } from "@/lib/hooks/use-websocket-connection";
 
 interface RemoteSession {
-    id: string;
-    name: string;
-    status: string;
+  id: string;
+  name: string;
+  status: string;
 }
 
 export default function SessionsPage() {
-    const { actionPayload } = useAppState();
-    const { connect } = useWebSocketConnection();
-    const [sessions, setSessions] = useState<RemoteSession[]>([]);
-    const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
+  const { actionPayload } = useAppState();
+  const { connect } = useWebSocketConnection();
+  const [sessions, setSessions] = useState<RemoteSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
 
-    useEffect(() => {
-        if (actionPayload && actionPayload.payload && actionPayload.payload.sessions) {
-            setSessions(actionPayload.payload.sessions);
-        }
-    }, [actionPayload]);
+  useEffect(() => {
+    if (
+      actionPayload &&
+      actionPayload.payload &&
+      actionPayload.payload.sessions
+    ) {
+      setSessions(actionPayload.payload.sessions);
+    }
+  }, [actionPayload]);
 
-    const handleConnectSession = (sessionId: string) => {
-        // Implement the logic to connect to a session
-        console.log(`Connecting to session: ${sessionId}`);
-        connect(sessionId);
-    };
+  const handleConnectSession = (sessionId: string) => {
+    // Implement the logic to connect to a session
+    console.log(`Connecting to session: ${sessionId}`);
+    connect(sessionId);
+  };
 
-    const handleRefetchSessions = (event: React.MouseEvent<HTMLButtonElement>) => {
-        event.preventDefault();
-        setLoadingSessions(true)
-        import('@tauri-apps/api/core').then((tauri) => {
-            tauri.invoke<BackendCommandResult>("cmd_update_remote_sessions").then((resp) => {
-                if (resp.success) {
-                    console.log("remote sessions updated successfully", resp);
-                } else {
-                    console.error("Error fetching sessions", resp);
-                }
-                setLoadingSessions(false)
-            });
+  const handleRefetchSessions = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    event.preventDefault();
+    setLoadingSessions(true);
+    import("@tauri-apps/api/core").then((tauri) => {
+      tauri
+        .invoke<BackendCommandResult>("cmd_update_remote_sessions")
+        .then((resp) => {
+          if (resp.success) {
+            console.log("remote sessions updated successfully", resp);
+          } else {
+            console.error("Error fetching sessions", resp);
+          }
+          setLoadingSessions(false);
         });
-    };
+    });
+  };
 
-    return (
-        <div className="container mx-auto p-4">
-            <div className="flex items-center mb-4 gap-4">
-                <h1 className="text-2xl font-bold">Remote Sessions</h1>
-                {!loadingSessions ? (
-                    <button onClick={handleRefetchSessions} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <ReloadIcon className="w-4 h-4" />
-                        <span>Reload</span>
-                    </button>
-                ) : (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>Loading ...</span>
-                    </div>
-                )}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {sessions.map((session) => (
-                    <Card key={session.id}>
-                        <CardHeader>
-                            <CardTitle>{session.name}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p>Status: {session.status}</p>
-                            <Button
-                                className="mt-2"
-                                onClick={() => handleConnectSession(session.id)}
-                            >
-                                Connect
-                            </Button>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
+  return (
+    <main className="flex-1 overflow-auto p-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Remote Sessions
+          </h1>
+          {!loadingSessions ? (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleRefetchSessions}
+            >
+              <ReloadIcon className="h-4 w-4" />
+              <span className="sr-only">Reload</span>
+            </Button>
+          ) : (
+            <Button variant="outline" size="icon" disabled>
+              <ReloadIcon className="h-4 w-4" />
+              <span className="sr-only">Loading</span>
+            </Button>
+          )}
         </div>
-    );
+
+        <div className="mt-8 grid gap-4">
+          {sessions.map((session) => (
+            <Card key={session.id} className="p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <h2 className="font-mono text-lg">{session.id}</h2>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>Status:</span>
+                    <span className="capitalize">{session.status}</span>
+                  </div>
+                </div>
+                <Button
+                  className="sm:w-[100px]"
+                  onClick={() => handleConnectSession(session.id)}
+                >
+                  Connect
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </main>
+  );
 }

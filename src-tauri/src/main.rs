@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
+use window::WindowState;
 
 use api_handler::ApiHandler;
 use ws_handler::WebsocketHandler;
@@ -43,11 +44,13 @@ struct AuthTokens {
     machine_auth_token: Option<String>,
 }
 
+#[derive(Clone)]
 struct ApplicationState {
     ws_thread: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+    ws_handler: Arc<Mutex<Option<WebsocketHandler>>>, // Add this line
     registration_thread: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     auth_tokens: Arc<Mutex<AuthTokens>>,
-    window_state: SharedWindowState,
+    window_state: Arc<Mutex<WindowState>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -77,15 +80,11 @@ async fn cmd_register_new_machine(
         };
     }
 
+    let auth_token = app_state.auth_tokens.clone();
+
     match api_handler
         .register_new_machine(
-            app_state
-                .auth_tokens
-                .lock()
-                .await
-                .user_auth_token
-                .clone()
-                .unwrap(),
+            auth_token.lock().await.user_auth_token.clone().unwrap(),
             machine_id.clone(),
             machine_name.clone(),
             machine_type.clone(),
@@ -95,9 +94,9 @@ async fn cmd_register_new_machine(
         Ok(_) => {
             let window_clone = window.clone();
             let window_state_clone = app_state.window_state.clone();
+
             let registration_thread = tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                info!("setting application state to mainpage");
+                let mut window_state = window_state_clone.lock().await;
                 set_window_application_state(
                     &window_clone,
                     &WindowApplicationState {
@@ -106,7 +105,7 @@ async fn cmd_register_new_machine(
                         current_session_id: None,
                         current_session_type: None,
                     },
-                    &window_state_clone,
+                    &mut window_state,
                 )
                 .await
                 .unwrap();
@@ -141,7 +140,7 @@ async fn cmd_start_backend_authentication(
     app_state: State<'_, ApplicationState>,
     auth_session: String,
 ) -> CommandResult {
-    let window_state_clone = app_state.window_state.clone();
+    let mut window_state = app_state.window_state.lock().await;
 
     // Store the auth session
     app_state.auth_tokens.lock().await.auth_session = Some(auth_session.clone());
@@ -202,7 +201,7 @@ async fn cmd_start_backend_authentication(
                 current_session_id: None,
                 current_session_type: None,
             },
-            &window_state_clone,
+            &mut window_state,
         )
         .await
         .unwrap();
@@ -216,7 +215,7 @@ async fn cmd_start_backend_authentication(
                 "machine_id": machine_info.machine_id.clone(),
                 "machine_type": machine_info.machine_type.clone(),
             }),
-            &window_state_clone,
+            &mut window_state,
         )
         .await
         .unwrap();
@@ -271,7 +270,7 @@ async fn cmd_start_backend_authentication(
         &window,
         "update_remote_sessions".into(),
         serde_json::json!(remote_sessions),
-        &window_state_clone,
+        &mut window_state,
     )
     .await
     .unwrap();
@@ -285,7 +284,7 @@ async fn cmd_start_backend_authentication(
             current_session_id: None,
             current_session_type: None,
         },
-        &window_state_clone,
+        &mut window_state,
     )
     .await
     .unwrap();
@@ -304,8 +303,10 @@ async fn cmd_start_session_websocket_connection(
     app_state: State<'_, ApplicationState>,
     session_id: String,
 ) -> CommandResult {
-    let ws_thread = app_state.ws_thread.lock().await;
-    let machine_token = app_state
+    let app_state_clone = app_state.clone();
+    let ws_thread = app_state_clone.ws_thread.lock().await;
+
+    let machine_token = app_state_clone
         .auth_tokens
         .lock()
         .await
@@ -323,7 +324,7 @@ async fn cmd_start_session_websocket_connection(
         }
     };
 
-    let window_state_clone = app_state.window_state.clone();
+    let mut window_state = app_state_clone.window_state.lock().await;
     let window_clone = window.clone();
 
     if let Some(join_handle) = ws_thread.as_ref() {
@@ -336,7 +337,7 @@ async fn cmd_start_session_websocket_connection(
                     current_session_id: Some(session_id.clone()),
                     current_session_type: None,
                 },
-                &window_state_clone,
+                &mut window_state,
             )
             .await
             .unwrap();
@@ -353,13 +354,20 @@ async fn cmd_start_session_websocket_connection(
 
     let window_clone = window.clone();
     let session_id_clone = session_id.clone();
+    let window_state_clone = app_state.window_state.clone();
+    let ws_handler_clone = app_state.ws_handler.clone();
+
     let join_handler = tauri::async_runtime::spawn(async move {
         let mut ws_handler = WebsocketHandler::new(
             window_clone.clone(),
             "ws://localhost:8000".to_string(),
-            &window_state_clone,
+            window_state_clone.clone(),
         );
-        let window_state_clone = window_state_clone.clone();
+
+        let mut window_state = window_state_clone.lock().await;
+
+        ws_handler_clone.lock().await.replace(ws_handler.clone());
+
         if let Err(e) = ws_handler
             .run(machine_token, session_id_clone.clone())
             .await
@@ -374,7 +382,7 @@ async fn cmd_start_session_websocket_connection(
                     current_session_id: Some(session_id_clone.clone()),
                     current_session_type: None,
                 },
-                &window_state_clone,
+                &mut window_state,
             )
             .await
             .unwrap();
@@ -384,7 +392,6 @@ async fn cmd_start_session_websocket_connection(
     app_state.ws_thread.lock().await.replace(join_handler);
 
     let window_clone = window.clone();
-    let window_state_clone = app_state.window_state.clone();
     let session_id_clone = session_id.clone();
     set_window_application_state(
         &window_clone.clone(),
@@ -394,7 +401,7 @@ async fn cmd_start_session_websocket_connection(
             current_session_id: Some(session_id_clone.clone()),
             current_session_type: None,
         },
-        &window_state_clone,
+        &mut window_state,
     )
     .await
     .unwrap();
@@ -404,6 +411,47 @@ async fn cmd_start_session_websocket_connection(
         message: "Websocket connection started".into(),
         error: None,
     };
+}
+
+// In cmd_submituserinput_session_websocket implementation
+#[tokio::main]
+#[tauri::command]
+async fn cmd_submituserinput_session_websocket(
+    window: WebviewWindow,
+    app_state: State<'_, ApplicationState>,
+    session_id: String,
+    input: String,
+) -> CommandResult {
+    let ws_handler = app_state.ws_handler.lock().await;
+
+    if let Some(handler) = &*ws_handler {
+        let message = serde_json::json!({
+            "type": "session",
+            "action": "submit",
+            "payload": input
+        });
+
+        if let Err(e) = handler.send_message(&message).await {
+            error!("Failed to send message: {:?}", e);
+            return CommandResult {
+                success: false,
+                message: "Failed to send message".into(),
+                error: Some(AppError::WebsocketConnection),
+            };
+        }
+
+        return CommandResult {
+            success: true,
+            message: "Message sent successfully".into(),
+            error: None,
+        };
+    }
+
+    CommandResult {
+        success: false,
+        message: "No active websocket connection".into(),
+        error: Some(AppError::WebsocketConnection),
+    }
 }
 
 #[tauri::command]
@@ -446,19 +494,17 @@ async fn cmd_message_processed(
     message_id: String,
 ) -> Result<(), String> {
     debug!("Message processed: {}", message_id);
-    let window_state = &app_state.window_state;
-    let mut state = window_state.lock().await;
+    let mut window_state = app_state.window_state.lock().await;
 
     // Here you might want to do something with the processed message ID if needed
 
     // Process the next message if there is one
-    if !state.message_queue.is_empty() {
-        drop(state); // Release the lock before calling process_next_message
-        window::process_next_message(&window, window_state)
+    if !window_state.message_queue.is_empty() {
+        window::process_next_message(&window, &mut window_state)
             .await
             .unwrap();
     } else {
-        state.is_processing = false;
+        window_state.is_processing = false;
     }
 
     Ok(())
@@ -470,7 +516,7 @@ async fn cmd_update_remote_sessions(
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
     let api_handler = ApiHandler::new("http://localhost:8000".to_string());
-    let window_state_clone = app_state.window_state.clone();
+    let mut window_state = app_state.window_state.lock().await;
 
     // Fetch remote sessions
     let remote_sessions = match api_handler
@@ -501,7 +547,7 @@ async fn cmd_update_remote_sessions(
         &window,
         "update_remote_sessions".into(),
         serde_json::json!(remote_sessions),
-        &window_state_clone,
+        &mut window_state,
     )
     .await
     .unwrap();
@@ -523,9 +569,10 @@ fn main() {
         .plugin(tauri_plugin_log::Builder::new().build())
         .manage(ApplicationState {
             ws_thread: Arc::new(Mutex::new(None)),
+            ws_handler: Arc::new(Mutex::new(None)),
             registration_thread: Arc::new(Mutex::new(None)),
             auth_tokens: Arc::new(Mutex::new(AuthTokens::default())),
-            window_state: shared_window_state.clone(),
+            window_state: shared_window_state,
         })
         .plugin(tauri_plugin_oauth::init())
         .invoke_handler(tauri::generate_handler![
@@ -534,7 +581,8 @@ fn main() {
             cmd_close_splashscreen,
             cmd_message_processed,
             cmd_update_remote_sessions,
-            cmd_start_session_websocket_connection
+            cmd_start_session_websocket_connection,
+            cmd_submituserinput_session_websocket
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]
