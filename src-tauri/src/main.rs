@@ -358,20 +358,18 @@ async fn cmd_start_session_websocket_connection(
     let ws_handler_clone = app_state.ws_handler.clone();
 
     let join_handler = tauri::async_runtime::spawn(async move {
+        let mut window_state = window_state_clone.lock().await;
+
         let mut ws_handler = WebsocketHandler::new(
             window_clone.clone(),
             "ws://localhost:8000".to_string(),
-            window_state_clone.clone(),
+            session_id_clone.clone(),
+            machine_token,
         );
-
-        let mut window_state = window_state_clone.lock().await;
 
         ws_handler_clone.lock().await.replace(ws_handler.clone());
 
-        if let Err(e) = ws_handler
-            .run(machine_token, session_id_clone.clone())
-            .await
-        {
+        if let Err(e) = ws_handler.run(&mut window_state).await {
             error!("WebSocket connection error: {:?}", e);
 
             set_window_application_state(
