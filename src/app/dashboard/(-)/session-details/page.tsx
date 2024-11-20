@@ -13,11 +13,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Loader2, Usb } from "lucide-react";
+import { BackendCommandResult } from "@/lib/types";
 
 export default function DashboardPage() {
   const [manualEntry, setManualEntry] = React.useState(false);
   const [xpub, setXpub] = React.useState("");
   const [derivationPath, setDerivationPath] = React.useState("");
+  const [fingerprint, setFingerPrint] = React.useState("");
+
+  const [loadingSubmission, setLoadingSubmission] = React.useState(false);
 
   const {
     applicationState: {
@@ -28,12 +32,33 @@ export default function DashboardPage() {
     },
   } = useAppState();
 
-  console.log("aoaoaoaoaoa", { socket_connected, current_session_id, current_session_type, session_state})
+  console.log("aoaoaoaoaoa", {
+    socket_connected,
+    current_session_id,
+    current_session_type,
+    session_state,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Submitted:", { xpub, derivationPath });
-    // Here you would handle the submission logic
+    console.log("Submitted:", { xpub, derivationPath, fingerprint });
+    setLoadingSubmission(true);
+
+    import("@tauri-apps/api/core").then((tauri) => {
+      tauri
+        .invoke<BackendCommandResult>("cmd_submituserinput_session_websocket", {
+          input: JSON.stringify({ xpub, derivationPath, fingerprint }),
+          sessionId: current_session_id,
+        })
+        .then((resp) => {
+          if (resp.success) {
+            console.log("device creation submitted successfully", resp);
+          } else {
+            console.error("Error submitting", resp);
+          }
+          setLoadingSubmission(false);
+        });
+    });
   };
 
   const loading = () => {
@@ -91,10 +116,25 @@ export default function DashboardPage() {
                       onChange={(e) => setDerivationPath(e.target.value)}
                     />
                   </div>
+                  <div className="flex flex-col space-y-1.5">
+                    <Label htmlFor="fingerprint">Finger Print</Label>
+                    <Input
+                      id="fingerprint"
+                      placeholder="Enter fingerprint"
+                      value={fingerprint}
+                      onChange={(e) => setFingerPrint(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <Button className="w-full mt-6" type="submit">
-                  Submit
-                </Button>
+                {loadingSubmission ? (
+                  <p className="mt-4 text-center text-sm text-muted-foreground">
+                    Submitting...
+                  </p>
+                ) : (
+                  <Button className="w-full mt-6" type="submit">
+                    Submit
+                  </Button>
+                )}
               </form>
             )}
           </CardContent>
