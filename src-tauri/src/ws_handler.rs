@@ -12,7 +12,9 @@ use std::time::Duration;
 use tauri::WebviewWindow;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tungstenite::{
+    connect_async, tungstenite::protocol::frame::CloseFrame, tungstenite::protocol::Message,
+};
 
 use crate::window::{
     emit_window_message, set_window_application_state, BackendEventMessage, MessageType,
@@ -32,13 +34,14 @@ pub struct WebsocketHandler {
     sender: Arc<tokio::sync::Mutex<Option<WsSender>>>, // Changed to tokio::sync::Mutex
     session_id: String,
     token: String,
+    is_connected: Arc<tokio::sync::Mutex<bool>>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct InitializeSessionMessage {
     r#type: String,
     action: String,
-    payload: serde_json::Value,
+    payload: String,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -60,7 +63,33 @@ impl WebsocketHandler {
             sender: Arc::new(Mutex::new(None)),
             session_id,
             token,
+            is_connected: Arc::new(Mutex::new(false)),
         }
+    }
+
+    pub async fn close(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
+        debug!("Initiating websocket connection closure");
+        let mut sender_lock = self.sender.lock().await;
+        if let Some(sender) = &mut *sender_lock {
+            // Send close frame with normal closure status code (1000)
+            let close_frame = Message::Close(Some(CloseFrame {
+                code: 1000u16.into(),
+                reason: "Client initiated closure".into(),
+            }));
+
+            if let Err(e) = sender.send(close_frame).await {
+                error!("Error sending close frame: {:?}", e);
+            }
+
+            // Clear the sender
+            *sender_lock = None;
+
+            // Update connection status
+            *self.is_connected.lock().await = false;
+
+            debug!("Websocket connection closed successfully");
+        }
+        Ok(())
     }
 
     async fn send_initialize_message(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
@@ -70,7 +99,7 @@ impl WebsocketHandler {
             let init_message = InitializeSessionMessage {
                 r#type: "session".to_string(),
                 action: "initialize".to_string(),
-                payload: serde_json::json!({}),
+                payload: "{}".to_string(),
             };
 
             let message = Message::Text(serde_json::to_string(&init_message).unwrap());
@@ -91,9 +120,11 @@ impl WebsocketHandler {
             self.ws_base_url, self.session_id, self.token
         );
         let (ws_stream, _) = connect_async(url).await.unwrap();
+
         let (sender, mut receiver) = ws_stream.split();
 
         self.sender.lock().await.replace(sender);
+        *self.is_connected.lock().await = true;
 
         info!("Websocket connection opened successfully");
         self.emit_connection_opened(window_state).await;
@@ -113,7 +144,31 @@ impl WebsocketHandler {
             }
         }
 
+        self.cleanup(window_state).await;
         Ok(())
+    }
+
+    async fn cleanup(&mut self, window_state: &mut WindowState) {
+        debug!("Performing websocket cleanup");
+
+        // Close the connection if it hasn't been closed already
+        if *self.is_connected.lock().await {
+            if let Err(e) = self.close().await {
+                error!("Error during connection closure: {:?}", e);
+            }
+        }
+
+        // Clear the sender
+        *self.sender.lock().await = None;
+
+        // Emit connection closed event
+        self.emit_connection_closed(window_state).await;
+
+        debug!("Websocket cleanup completed");
+    }
+
+    pub async fn is_connected(&self) -> bool {
+        *self.is_connected.lock().await
     }
 
     async fn handle_next_message<T>(
@@ -158,8 +213,12 @@ impl WebsocketHandler {
 
                                 if let Err(e) = self.send_initialize_message().await {
                                     error!("Failed to send initialize message: {:?}", e);
+                                    return Ok(true);
                                 }
-                                return Ok(false);
+                            }
+                            SessionMessageType::SessionSuccess => {
+                                debug!("Session success received");
+                                return Ok(true);
                             }
                             _ => {
                                 debug!("Emitting session message to window");

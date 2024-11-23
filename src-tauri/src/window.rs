@@ -20,6 +20,8 @@ pub enum MessageType {
 pub enum SessionMessageType {
     AuthorizationSuccess,
     WorkflowSession,
+    SessionSuccess,
+    SessionFailure,
     DeviceCreation,
     DeviceDeletion,
     SignTransaction,

@@ -494,7 +494,6 @@ async fn cmd_message_processed(
     let mut window_state = app_state.window_state.lock().await;
 
     // Here you might want to do something with the processed message ID if needed
-    debug!("CALLLLLLLLLLLLLLED Message processed: {}", message_id);
     // Process the next message if there is one
     if !window_state.message_queue.is_empty() {
         window::process_next_message(&window, &mut window_state)

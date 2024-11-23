@@ -32,13 +32,6 @@ export default function DashboardPage() {
     },
   } = useAppState();
 
-  console.log("aoaoaoaoaoa", {
-    socket_connected,
-    current_session_id,
-    current_session_type,
-    session_state,
-  });
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Submitted:", { xpub, derivationPath, fingerprint });
@@ -47,7 +40,7 @@ export default function DashboardPage() {
     import("@tauri-apps/api/core").then((tauri) => {
       tauri
         .invoke<BackendCommandResult>("cmd_submituserinput_session_websocket", {
-          input: JSON.stringify({ xpub, derivationPath, fingerprint }),
+          input: JSON.stringify({ xpub, derivation_path: derivationPath, fingerprint }),
           sessionId: current_session_id,
         })
         .then((resp) => {
