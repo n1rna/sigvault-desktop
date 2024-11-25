@@ -34,6 +34,7 @@ pub struct RemoteSession {
     pub id: String,
     pub name: String,
     pub status: String,
+    pub session_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

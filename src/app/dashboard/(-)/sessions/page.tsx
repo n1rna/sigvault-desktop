@@ -18,6 +18,7 @@ interface RemoteSession {
   id: string;
   name: string;
   status: string;
+  session_type: string;
 }
 
 export default function SessionsPage() {
@@ -92,16 +93,21 @@ export default function SessionsPage() {
                 <div className="space-y-1">
                   <h2 className="font-mono text-lg">{session.id}</h2>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="capitalize">{session.session_type}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span>Status:</span>
                     <span className="capitalize">{session.status}</span>
                   </div>
                 </div>
-                <Button
-                  className="sm:w-[100px]"
-                  onClick={() => handleConnectSession(session.id)}
-                >
-                  Connect
-                </Button>
+                {session.status === "Pending" && (
+                  <Button
+                    className="sm:w-[100px]"
+                    onClick={() => handleConnectSession(session.id)}
+                  >
+                    Connect
+                  </Button>
+                )}
               </div>
             </Card>
           ))}
