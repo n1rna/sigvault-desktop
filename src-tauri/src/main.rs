@@ -240,40 +240,6 @@ async fn cmd_start_backend_authentication(
     // Store the machine auth token
     app_state.auth_tokens.lock().await.machine_auth_token = Some(machine_token.clone());
 
-    // Fetch remote sessions
-    let remote_sessions = match api_handler
-        .fetch_remote_sessions(
-            app_state
-                .auth_tokens
-                .lock()
-                .await
-                .user_auth_token
-                .clone()
-                .unwrap(),
-        )
-        .await
-    {
-        Ok(response) => response,
-        Err(e) => {
-            error!("Failed to fetch remote sessions: {:?}", e);
-            return CommandResult {
-                success: false,
-                message: "Failed to fetch remote sessions".into(),
-                error: Some(AppError::FetchRemoteSessionsFailed),
-            };
-        }
-    };
-
-    // Send remote sessions to the frontend
-    send_backend_command(
-        &window,
-        "update_remote_sessions".into(),
-        serde_json::json!(remote_sessions),
-        &mut window_state,
-    )
-    .await
-    .unwrap();
-
     // Redirect to sessions page
     set_window_application_state(
         &window,

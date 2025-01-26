@@ -5,7 +5,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast, Flip } from "react-toastify";
 import { useBackendConnection } from "@/lib/hooks/use-backend-connection";
-import { BackendCommandResult } from "@/lib/types";
+import { BackendCommandResult, RemoteSession } from "@/lib/types";
 
 export type BackendContextType = {
   receivedMessages: {
@@ -42,6 +42,7 @@ type ApplicationState = {
 
 type AppStateContextType = {
   socket: BackendContextType;
+  remoteSessions: RemoteSession[];
   cleanupSession: () => void;
   actionCommand: string;
   actionPayload: any;
@@ -55,6 +56,7 @@ export const AppStateContext = React.createContext<AppStateContextType>({
     instantiated: false,
     backendAuthenticated: false,
   },
+  remoteSessions: [],
   cleanupSession: () => {},
   actionCommand: "welcome",
   actionPayload: {},
@@ -88,6 +90,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
   } = useBackendConnection();
   const [actionCommand, setActionCommand] = React.useState<string>("welcome");
   const [actionPayload, setActionPayload] = React.useState<any>({});
+  const [remoteSessions, setRemoteSessions] = React.useState<RemoteSession[]>([]);
   const [applicationState, setApplicationState] =
     React.useState<ApplicationState>({
       route: ApplicationStateRoute.MainPage,
@@ -126,8 +129,8 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
         console.log("Register Machine: ", lastMessagePayload);
       }
       if (lastMessagePayload.command === "update_remote_sessions") {
-        setActionPayload(lastMessage.message.payload);
-        router.push("/dashboard/sessions");
+        setRemoteSessions(lastMessagePayload.payload.sessions);
+        // router.push("/dashboard/sessions");
       }
     }
 
@@ -213,7 +216,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
 
   React.useEffect(() => {
     if (applicationState.route === ApplicationStateRoute.MainPage) {
-      router.push("/dashboard/home");
+      router.push("/dashboard");
     } else if (
       applicationState.route === ApplicationStateRoute.MachineRegistration
     ) {
@@ -238,6 +241,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
           instantiated,
           backendAuthenticated,
         },
+        remoteSessions,
         actionCommand,
         actionPayload,
         applicationState,

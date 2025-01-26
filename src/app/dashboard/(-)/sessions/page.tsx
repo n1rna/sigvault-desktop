@@ -11,31 +11,13 @@ import {
   LockOpen2Icon,
   ReloadIcon,
 } from "@radix-ui/react-icons";
-import { BackendCommandResult } from "@/lib/types";
+import { BackendCommandResult, RemoteSession } from "@/lib/types";
 import { useWebSocketConnection } from "@/lib/hooks/use-websocket-connection";
 
-interface RemoteSession {
-  id: string;
-  name: string;
-  status: string;
-  session_type: string;
-}
-
 export default function SessionsPage() {
-  const { actionPayload } = useAppState();
+  const { remoteSessions } = useAppState();
   const { connect } = useWebSocketConnection();
-  const [sessions, setSessions] = useState<RemoteSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (
-      actionPayload &&
-      actionPayload.payload &&
-      actionPayload.payload.sessions
-    ) {
-      setSessions(actionPayload.payload.sessions);
-    }
-  }, [actionPayload]);
 
   const handleConnectSession = (sessionId: string) => {
     // Implement the logic to connect to a session
@@ -44,9 +26,9 @@ export default function SessionsPage() {
   };
 
   const handleRefetchSessions = (
-    event: React.MouseEvent<HTMLButtonElement>
+    event?: React.MouseEvent<HTMLButtonElement>
   ) => {
-    event.preventDefault();
+    event?.preventDefault();
     setLoadingSessions(true);
     import("@tauri-apps/api/core").then((tauri) => {
       tauri
@@ -61,6 +43,12 @@ export default function SessionsPage() {
         });
     });
   };
+
+  useEffect(() => {
+    if (remoteSessions.length === 0) {
+      handleRefetchSessions();
+    }
+  }, [remoteSessions])
 
   return (
     <main className="flex-1 overflow-auto p-6">
@@ -87,7 +75,7 @@ export default function SessionsPage() {
         </div>
 
         <div className="mt-8 grid gap-4">
-          {sessions.map((session) => (
+          {remoteSessions.map((session) => (
             <Card key={session.id} className="p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">

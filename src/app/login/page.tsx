@@ -21,7 +21,7 @@ export default function LoginPage() {
   }, []);
 
   if (session) {
-    return redirect("/dashboard/home");
+    return redirect("/dashboard");
   }
 
   return (
