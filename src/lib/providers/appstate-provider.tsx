@@ -2,10 +2,21 @@
 
 import * as React from "react";
 
-import { BackendContextType } from "@/lib/providers/backend-provider";
-import { useBackend } from "@/lib/providers";
 import { useRouter } from "next/navigation";
 import { toast, Flip } from "react-toastify";
+import { useBackendConnection } from "@/lib/hooks/use-backend-connection";
+import { BackendCommandResult } from "@/lib/types";
+
+export type BackendContextType = {
+  receivedMessages: {
+    success: boolean;
+    error?: string;
+    message: { message_type: string; payload: any };
+  }[];
+  tryBackendConnection: () => void;
+  instantiated: boolean;
+  backendAuthenticated: boolean;
+};
 
 enum ApplicationStateRoute {
   Loading = "Loading",
@@ -31,6 +42,7 @@ type ApplicationState = {
 
 type AppStateContextType = {
   socket: BackendContextType;
+  cleanupSession: () => void;
   actionCommand: string;
   actionPayload: any;
   applicationState: ApplicationState;
@@ -43,6 +55,7 @@ export const AppStateContext = React.createContext<AppStateContextType>({
     instantiated: false,
     backendAuthenticated: false,
   },
+  cleanupSession: () => {},
   actionCommand: "welcome",
   actionPayload: {},
   applicationState: {
@@ -67,7 +80,12 @@ const SupportedMessageTypes = [
 ];
 
 export const AppStateProvider = ({ children }: AppStateProviderProps) => {
-  const backendSocket = useBackend();
+  const {
+    receivedMessages,
+    tryBackendConnection,
+    instantiated,
+    backendAuthenticated,
+  } = useBackendConnection();
   const [actionCommand, setActionCommand] = React.useState<string>("welcome");
   const [actionPayload, setActionPayload] = React.useState<any>({});
   const [applicationState, setApplicationState] =
@@ -81,13 +99,13 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
   const router = useRouter();
 
   React.useEffect(() => {
-    if (!backendSocket.receivedMessages?.length) {
-      console.log("No messages received", backendSocket.receivedMessages);
+    if (!receivedMessages?.length) {
+      console.log("No messages received", receivedMessages);
       return;
     }
 
     // handle messages
-    const lastMessage = backendSocket.receivedMessages[0];
+    const lastMessage = receivedMessages[0];
 
     if (!SupportedMessageTypes.includes(lastMessage.message.message_type)) {
       console.log(
@@ -152,6 +170,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
         const workflowPayload = sessionPayload?.payload?.payload;
         setApplicationState((prevState) => ({
           ...prevState,
+          current_session_type: workflowPayload?.type,
           session_state: {
             step: workflowPayload?.step,
             requirements: workflowPayload?.requirements,
@@ -175,7 +194,22 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
     // else if (lastMessage.message.message_type === "device_created") {
     //     router.push("/dashboard/home");
     // }
-  }, [backendSocket.receivedMessages, router]);
+  }, [receivedMessages, router]);
+
+  const cleanupSession = async () => {
+    const tauri = await import("@tauri-apps/api/core");
+    const resp = await tauri.invoke<BackendCommandResult>("cmd_exit_session");
+    if (!resp.success) {
+      console.error("Error exiting session", resp);
+    }
+    setApplicationState((prevState) => ({
+      ...prevState,
+      route: ApplicationStateRoute.RemoteSessions,
+      current_session_id: "",
+      current_session_type: "",
+      session_state: undefined,
+    }));
+  };
 
   React.useEffect(() => {
     if (applicationState.route === ApplicationStateRoute.MainPage) {
@@ -198,10 +232,16 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
   return (
     <AppStateContext.Provider
       value={{
-        socket: backendSocket,
+        socket: {
+          receivedMessages,
+          tryBackendConnection,
+          instantiated,
+          backendAuthenticated,
+        },
         actionCommand,
         actionPayload,
         applicationState,
+        cleanupSession,
       }}
     >
       {children}

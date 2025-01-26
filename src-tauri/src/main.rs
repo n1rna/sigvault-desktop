@@ -410,6 +410,57 @@ async fn cmd_start_session_websocket_connection(
     };
 }
 
+#[tokio::main]
+#[tauri::command]
+async fn cmd_exit_session(
+    window: WebviewWindow,
+    app_state: State<'_, ApplicationState>,
+) -> CommandResult {
+    // First, close the WebSocket connection
+    {
+    let mut ws_handler = app_state.ws_handler.lock().await;
+    if let Some(mut handler) = ws_handler.take() {
+        if let Err(e) = handler.close().await {
+            error!("Failed to close websocket connection: {:?}", e);
+        }
+    }
+    }
+
+    // Then, abort the WebSocket thread and wait for it to finish
+    {
+        let mut ws_thread = app_state.ws_thread.lock().await;
+        if let Some(thread) = ws_thread.take() {
+            thread.abort();
+            // Optional: Add a timeout for the thread to finish
+            match tokio::time::timeout(std::time::Duration::from_secs(5), thread).await {
+                Ok(_) => debug!("WebSocket thread cleaned up successfully"),
+                Err(e) => warn!("WebSocket thread cleanup timed out: {:?}", e),
+            }
+        }
+    }
+
+    // Finally, update the window state
+    let mut window_state = app_state.window_state.lock().await;
+    set_window_application_state(
+        &window,
+        &WindowApplicationState {
+            route: Some(WindowApplicationRoute::RemoteSessions),
+            socket_connected: false,
+            current_session_id: None,
+            current_session_type: None,
+        },
+        &mut window_state,
+    )
+    .await
+    .unwrap();
+
+    CommandResult {
+        success: true,
+        message: "Session exited successfully".into(),
+        error: None,
+    }
+}
+
 // In cmd_submituserinput_session_websocket implementation
 #[tokio::main]
 #[tauri::command]
@@ -578,7 +629,8 @@ fn main() {
             cmd_message_processed,
             cmd_update_remote_sessions,
             cmd_start_session_websocket_connection,
-            cmd_submituserinput_session_websocket
+            cmd_submituserinput_session_websocket,
+            cmd_exit_session
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]
