@@ -20,9 +20,9 @@ export default function DashboardPage() {
   const renderSessionComponent = () => {
     console.log("current_session_type", current_session_type);
     switch (current_session_type) {
-      case "device_creation":
+      case "DeviceCreation":
         return <DeviceCreationForm />;
-      case "transaction_signing":
+      case "TransactionSigning":
         return <TransactionSigningForm />;
       default:
         return null;

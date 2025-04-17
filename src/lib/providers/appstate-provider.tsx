@@ -30,6 +30,7 @@ interface SessionState {
   step: string;
   requirements?: any;
   lastError?: string;
+  data?: any;
 }
 
 type ApplicationState = {
@@ -178,6 +179,7 @@ export const AppStateProvider = ({ children }: AppStateProviderProps) => {
             step: workflowPayload?.step,
             requirements: workflowPayload?.requirements,
             lastError: workflowPayload?.error,
+            data: workflowPayload?.data,
           },
         }));
 

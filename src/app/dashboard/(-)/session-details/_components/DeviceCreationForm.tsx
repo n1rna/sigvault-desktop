@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Usb } from "lucide-react";
-import { BackendCommandResult } from "@/lib/types";
+import type { BackendCommandResult } from "@/lib/types";
 import { useAppState } from "@/lib/providers";
 
 export default function DeviceCreationForm() {

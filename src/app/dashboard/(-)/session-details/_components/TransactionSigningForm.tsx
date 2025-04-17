@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Usb } from "lucide-react";
-import { BackendCommandResult } from "@/lib/types";
+import type { BackendCommandResult } from "@/lib/types";
 import { useAppState } from "@/lib/providers";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -21,7 +21,7 @@ export default function TransactionSigningForm() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const {
-    applicationState: { current_session_id },
+    applicationState: { current_session_id, session_state },
     cleanupSession,
   } = useAppState();
 
@@ -34,7 +34,12 @@ export default function TransactionSigningForm() {
         "cmd_submituserinput_session_websocket",
         {
           input: JSON.stringify({
-            signed_payload: signedPayload,
+            signed_psbt: signedPayload,
+            txid: session_state?.data?.transaction?.txid,
+            device_info: {
+              fingerprint: "",
+              derivation_path: "",
+            }
           }),
           sessionId: current_session_id,
         }
@@ -74,6 +79,7 @@ export default function TransactionSigningForm() {
     await cleanupSession();
   };
 
+
   return (
     <Card className="w-full max-w-md mx-auto mt-8">
       <CardHeader>
@@ -95,7 +101,12 @@ export default function TransactionSigningForm() {
           <form onSubmit={handleSubmit}>
             <div className="grid w-full items-center gap-4">
               <div className="flex flex-col space-y-1.5">
-                <Button onClick={handleDownloadPsbt}>Download PSBT</Button>
+                {/* <Button onClick={handleDownloadPsbt}>Download PSBT</Button> */}
+                <Textarea
+                  id="psbt"
+                  value={session_state?.data?.transaction?.psbt}
+                  className="min-h-[100px]"
+                />
               </div>
               <div className="flex flex-col space-y-1.5">
                 <Label htmlFor="signed-payload">Signed Transaction</Label>
