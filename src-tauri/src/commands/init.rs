@@ -1,6 +1,7 @@
 // Application initialization commands
 
 use log::{debug, error, info};
+use std::error::Error;
 use tauri::{AppHandle, Manager, State};
 
 use crate::state::ApplicationState;
@@ -32,14 +33,15 @@ pub async fn cmd_initialize_app(
         error!("Failed to initialize storage: {}", e);
 
         // Route to login on storage error
-        let event = StateUpdateEvent::builder()
-            .route(WindowApplicationRoute::Login)
-            .build();
 
-        let mut window_state = app_state.window_state.lock().await;
-        update_state(&window, event, &mut window_state)
-            .await
-            .map_err(|e| format!("Failed to update state: {}", e))?;
+        update_state(
+            &window,
+            StateUpdateEvent::builder()
+                .route(WindowApplicationRoute::Login)
+                .build(),
+        )
+        .await
+        .map_err(|e: Box<dyn Error + Send + 'static>| format!("Failed to update state: {}", e))?;
 
         return Ok(CommandResult::success(
             "Initialization complete - login required",
@@ -77,14 +79,14 @@ pub async fn cmd_initialize_app(
     if !authenticated {
         debug!("No OAuth access token found, routing to login");
 
-        let event = StateUpdateEvent::builder()
-            .route(WindowApplicationRoute::Login)
-            .build();
-
-        let mut window_state = app_state.window_state.lock().await;
-        update_state(&window, event, &mut window_state)
-            .await
-            .map_err(|e| format!("Failed to update state: {}", e))?;
+        update_state(
+            &window,
+            StateUpdateEvent::builder()
+                .route(WindowApplicationRoute::Login)
+                .build(),
+        )
+        .await
+        .map_err(|e| format!("Failed to update state: {}", e))?;
     }
 
     Ok(CommandResult::success(

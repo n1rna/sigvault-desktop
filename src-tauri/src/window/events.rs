@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::types::{SessionMessageType, WindowApplicationRoute};
+use super::types::WindowApplicationRoute;
 use crate::api::types::RemoteSession;
 
 /// State update event - updates the global application state

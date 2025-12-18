@@ -62,7 +62,6 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .manage(ApplicationState::new())
-        .manage(window::create_shared_window_state())
         .manage(oauth_state)
         .invoke_handler(tauri::generate_handler![
             cmd_initialize_app,
@@ -72,7 +71,6 @@ pub fn run() {
             cmd_logout,
             cmd_navigate,
             cmd_close_splashscreen,
-            cmd_message_processed,
             cmd_get_current_user,
             cmd_get_remote_sessions,
             cmd_update_remote_sessions,

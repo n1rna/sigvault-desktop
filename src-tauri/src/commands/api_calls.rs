@@ -17,7 +17,6 @@ pub async fn cmd_update_remote_sessions(
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
     let api_client = ApiClient::new();
-    let mut window_state = app_state.window_state.lock().await;
 
     // Get OAuth access token from app state
     let oauth_access_token = app_state
@@ -57,7 +56,6 @@ pub async fn cmd_update_remote_sessions(
             // .route(WindowApplicationRoute::RemoteSessions)
             .socket_connected(false)
             .build(),
-        &mut window_state,
     )
     .await
     .map_err(|e| e.to_string())?;

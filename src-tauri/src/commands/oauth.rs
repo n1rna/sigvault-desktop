@@ -19,7 +19,6 @@ use tokio::sync::Mutex;
 
 use crate::api::ApiClient;
 use crate::error::AppErrorCode;
-use crate::machine;
 use crate::oauth::OAuthState;
 use crate::state::ApplicationState;
 use crate::storage::SecureStorage;
@@ -213,7 +212,6 @@ pub(super) async fn authenticate_user(
         .set_from_profile(user_profile);
 
     // Update window state to show logged in
-    let mut window_state = app_state.window_state.lock().await;
     if let Some(window) = app.get_webview_window("main") {
         update_state(
             &window,
@@ -221,7 +219,6 @@ pub(super) async fn authenticate_user(
                 .route(WindowApplicationRoute::MainPage)
                 .socket_connected(false)
                 .build(),
-            &mut window_state,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -270,14 +267,12 @@ pub async fn cmd_logout(
     app_state.remote_sessions.lock().await.clear();
 
     // Navigate to loading/login
-    let mut window_state = app_state.window_state.lock().await;
     if let Some(window) = app.get_webview_window("main") {
         update_state(
             &window,
             StateUpdateEvent::builder()
                 .route(WindowApplicationRoute::Loading)
                 .build(),
-            &mut window_state,
         )
         .await
         .map_err(|e| e.to_string())?;

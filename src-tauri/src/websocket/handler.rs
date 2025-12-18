@@ -1,6 +1,5 @@
 // WebSocket connection handler
 
-use axum::extract::State;
 use futures::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -23,11 +22,7 @@ use crate::{
 };
 use crate::{
     websocket::types::WorkflowMessagePayload,
-    window::{
-        emit_window_message, set_window_application_state, BackendEventMessage, MessageType,
-        SessionMessageType, WindowApplicationRoute, WindowApplicationState, WindowEventMessage,
-        WindowState,
-    },
+    window::{SessionMessageType, WindowApplicationRoute},
 };
 
 use super::types::{GenericWebsocketMessage, InitializeSessionMessage};
@@ -102,7 +97,7 @@ impl WebsocketHandler {
         Ok(())
     }
 
-    pub async fn run(&mut self, window_state: &mut WindowState) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         debug!("Starting websocket connection");
         debug!("Token: {}", self.token);
 
@@ -121,11 +116,11 @@ impl WebsocketHandler {
         *self.is_connected.lock().await = true;
 
         info!("Websocket connection opened successfully");
-        self.emit_connection_opened(&mut *window_state).await?;
+        self.emit_connection_opened().await?;
 
         loop {
             debug!("Waiting for next message");
-            match self.handle_next_message(&mut receiver, window_state).await {
+            match self.handle_next_message(&mut receiver).await {
                 Ok(should_break) => {
                     if should_break {
                         break;
@@ -138,11 +133,11 @@ impl WebsocketHandler {
             }
         }
 
-        self.cleanup(window_state).await?;
+        self.cleanup().await?;
         Ok(())
     }
 
-    async fn cleanup(&mut self, window_state: &mut WindowState) -> Result<()> {
+    async fn cleanup(&mut self) -> Result<()> {
         debug!("Performing websocket cleanup");
 
         if *self.is_connected.lock().await {
@@ -152,7 +147,7 @@ impl WebsocketHandler {
         }
 
         *self.sender.lock().await = None;
-        self.emit_connection_closed(&mut *window_state).await?;
+        self.emit_connection_closed().await?;
 
         debug!("Websocket cleanup completed");
         Ok(())
@@ -162,11 +157,7 @@ impl WebsocketHandler {
         *self.is_connected.lock().await
     }
 
-    async fn handle_next_message(
-        &mut self,
-        reader: &mut WsReceiver,
-        window_state: &mut WindowState,
-    ) -> Result<bool> {
+    async fn handle_next_message(&mut self, reader: &mut WsReceiver) -> Result<bool> {
         match reader.next().await {
             Some(Ok(Message::Text(msg))) => {
                 debug!("Text message received: {}", msg);
@@ -197,7 +188,6 @@ impl WebsocketHandler {
                                         .session_id(self.session_id.clone())
                                         .route(WindowApplicationRoute::SessionDetails)
                                         .build(),
-                                    &mut *window_state,
                                 )
                                 .await
                                 .map_err(|e| {
@@ -223,7 +213,7 @@ impl WebsocketHandler {
                                 // eventually we will update the state based on the workflow message
                                 match msg.payload {
                                     Some(payload) => {
-                                        self.handle_workflow_message(payload, window_state).await?;
+                                        self.handle_workflow_message(payload).await?;
                                     }
                                     None => {
                                         if msg.success == false {
@@ -252,7 +242,7 @@ impl WebsocketHandler {
             }
             Some(Ok(Message::Close(_))) => {
                 info!("Websocket connection closed");
-                self.emit_connection_closed(&mut *window_state).await?;
+                self.emit_connection_closed().await?;
                 Ok(true)
             }
             Some(Ok(other)) => {
@@ -271,14 +261,9 @@ impl WebsocketHandler {
         }
     }
 
-    async fn handle_workflow_message(
-        &mut self,
-        payload: WorkflowMessagePayload,
-        window_state: &mut WindowState,
-    ) -> Result<()> {
+    async fn handle_workflow_message(&mut self, payload: WorkflowMessagePayload) -> Result<()> {
         debug!("Handling workflow message: {:?}", payload);
         // Process the workflow message here
-        // self.emit_session_message(payload, window_state).await?;
         update_session_state(
             &self.window,
             SessionEvent::builder()
@@ -303,7 +288,6 @@ impl WebsocketHandler {
                 StateUpdateEvent::builder()
                     .route(WindowApplicationRoute::RemoteSessions)
                     .build(),
-                window_state,
             )
             .await
             .map_err(|e| {
@@ -330,7 +314,7 @@ impl WebsocketHandler {
         }
     }
 
-    async fn emit_connection_opened(&self, window_state: &mut WindowState) -> Result<()> {
+    async fn emit_connection_opened(&self) -> Result<()> {
         debug!("Emitting connection opened message to window");
 
         update_state(
@@ -339,7 +323,6 @@ impl WebsocketHandler {
                 .socket_connected(true)
                 .session_id(self.session_id.clone())
                 .build(),
-            &mut *window_state,
         )
         .await
         .map_err(|e| crate::error::AppError::WindowError(format!("Failed to set state: {}", e)))?;
@@ -348,7 +331,7 @@ impl WebsocketHandler {
         Ok(())
     }
 
-    async fn emit_connection_closed(&self, window_state: &mut WindowState) -> Result<()> {
+    async fn emit_connection_closed(&self) -> Result<()> {
         debug!("Emitting connection closed message to window");
         update_state(
             &self.window,
@@ -356,35 +339,10 @@ impl WebsocketHandler {
                 .socket_connected(false)
                 .route(WindowApplicationRoute::RemoteSessions)
                 .build(),
-            &mut *window_state,
         )
         .await
         .map_err(|e| crate::error::AppError::WindowError(format!("Failed to set state: {}", e)))?;
 
-        Ok(())
-    }
-
-    async fn emit_session_message(
-        &self,
-        payload: serde_json::Value,
-        window_state: &mut WindowState,
-    ) -> Result<()> {
-        emit_window_message(
-            &self.window,
-            WindowEventMessage {
-                success: true,
-                message: BackendEventMessage {
-                    message_type: MessageType::SessionMessage,
-                    payload,
-                },
-                error: None,
-            },
-            window_state,
-        )
-        .await
-        .map_err(|e| {
-            crate::error::AppError::WindowError(format!("Failed to emit message: {}", e))
-        })?;
         Ok(())
     }
 }

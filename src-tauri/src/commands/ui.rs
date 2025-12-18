@@ -49,27 +49,6 @@ pub async fn cmd_close_splashscreen(window: WebviewWindow) {
 }
 
 #[tauri::command]
-pub async fn cmd_message_processed(
-    window: WebviewWindow,
-    app_state: State<'_, ApplicationState>,
-    message_id: String,
-) -> Result<(), String> {
-    debug!("Message processed: {}", message_id);
-    let mut window_state = app_state.window_state.lock().await;
-
-    // Process the next message if there is one
-    if !window_state.message_queue.is_empty() {
-        window::process_next_message(&window, &mut window_state)
-            .await
-            .map_err(|e| e.to_string())?;
-    } else {
-        window_state.is_processing = false;
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn cmd_get_current_user(
     app_state: State<'_, ApplicationState>,
 ) -> Result<UserInfo, String> {
@@ -99,8 +78,6 @@ pub async fn cmd_navigate(
 ) -> Result<(), String> {
     use crate::window::{update_state, StateUpdateEvent, WindowApplicationRoute};
 
-    let mut window_state = app_state.window_state.lock().await;
-
     // Parse the route string to WindowApplicationRoute
     let app_route = match route.as_str() {
         "Loading" => WindowApplicationRoute::Loading,
@@ -115,7 +92,6 @@ pub async fn cmd_navigate(
     update_state(
         &window,
         StateUpdateEvent::builder().route(app_route).build(),
-        &mut window_state,
     )
     .await
     .map_err(|e| e.to_string())?;

@@ -8,10 +8,7 @@ use crate::error::AppErrorCode;
 use crate::machine::get_machine_information;
 use crate::state::ApplicationState;
 use crate::websocket::WebsocketHandler;
-use crate::window::{
-    set_window_application_state, update_state, StateUpdateEvent, WindowApplicationRoute,
-    WindowApplicationState,
-};
+use crate::window::{update_state, StateUpdateEvent, WindowApplicationRoute};
 
 use super::types::CommandResult;
 
@@ -32,8 +29,6 @@ pub async fn cmd_start_session_websocket_connection(
         .get_oauth_access_token()
         .ok_or("No OAuth access token available - user not authenticated")?;
 
-    let mut window_state = app_state_clone.window_state.lock().await;
-
     // Check if WebSocket is already running
     if let Some(join_handle) = ws_thread.as_ref() {
         if !join_handle.inner().is_finished() {
@@ -43,7 +38,6 @@ pub async fn cmd_start_session_websocket_connection(
                     .socket_connected(true)
                     .session_id(session_id.clone())
                     .build(),
-                &mut window_state,
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -75,13 +69,10 @@ pub async fn cmd_start_session_websocket_connection(
     drop(ws_thread); // Release the lock
     let window_clone = window.clone();
     let session_id_clone = session_id.clone();
-    let window_state_clone = app_state.window_state.clone();
     let ws_handler_clone = app_state.ws_handler.clone();
 
     // Start WebSocket connection in a new async task
     let join_handler = tauri::async_runtime::spawn(async move {
-        let mut window_state = window_state_clone.lock().await;
-
         let mut ws_handler = WebsocketHandler::new(
             window_clone.clone(),
             "ws://localhost:8000".to_string(),
@@ -91,7 +82,7 @@ pub async fn cmd_start_session_websocket_connection(
 
         ws_handler_clone.lock().await.replace(ws_handler.clone());
 
-        if let Err(e) = ws_handler.run(&mut window_state).await {
+        if let Err(e) = ws_handler.run().await {
             error!("WebSocket connection error: {:?}", e);
 
             update_state(
@@ -100,7 +91,6 @@ pub async fn cmd_start_session_websocket_connection(
                     .socket_connected(false)
                     .session_id(session_id_clone.clone())
                     .build(),
-                &mut window_state,
             )
             .await
             .map_err(|update_err| {
@@ -120,7 +110,6 @@ pub async fn cmd_start_session_websocket_connection(
         StateUpdateEvent::builder()
             .route(WindowApplicationRoute::SessionDetails)
             .build(),
-        &mut window_state,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -156,7 +145,6 @@ pub async fn cmd_exit_session(
     }
 
     // Finally, update the window state
-    let mut window_state = app_state.window_state.lock().await;
 
     update_state(
         &window.clone(),
@@ -164,7 +152,6 @@ pub async fn cmd_exit_session(
             .route(WindowApplicationRoute::RemoteSessions)
             .socket_connected(false)
             .build(),
-        &mut window_state,
     )
     .await
     .map_err(|e| e.to_string())?;
