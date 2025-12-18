@@ -1,76 +1,37 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "sigvault-desktop",
+  "version": "0.1.0",
+  "identifier": "com.nima.sigvault-desktop",
   "build": {
-    "beforeBuildCommand": "npm run build",
-    "beforeDevCommand": "npm run dev",
-    "frontendDist": "../out",
-    "devUrl": "http://localhost:3080"
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "sigvault-desktop",
+        "width": 800,
+        "height": 600,
+        "resizable": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "category": "DeveloperTool",
-    "copyright": "",
     "targets": "all",
-    "externalBin": [],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": ""
-    },
-    "longDescription": "",
-    "macOS": {
-      "entitlements": null,
-      "exceptionDomain": "",
-      "frameworks": [],
-      "providerShortName": null,
-      "signingIdentity": null
-    },
-    "resources": [],
-    "shortDescription": "",
-    "linux": {
-      "deb": {
-        "depends": []
-      }
-    }
-  },
-  "productName": "qblok-desktop-next",
-  "mainBinaryName": "qblok-desktop-next",
-  "version": "0.1.0",
-  "identifier": "com.qblok.io",
-  "plugins": {},
-  "app": {
-    "windows": [
-      {
-        "label": "main",
-        "fullscreen": false,
-        "width": 512,
-        "height": 416,
-        "center": true,
-        "resizable": false,
-        "title": "qblok wallet",
-        "decorations": false,
-        "visible": false,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OverscrollHistoryNavigation,msExperimentalScrollin --disable-pinch"
-      },
-      {
-        "fullscreen": false,
-        "width": 256,
-        "height": 192,
-        "center": true,
-        "decorations": false,
-        "url": "splashscreen.html",
-        "label": "splashscreen"
-      }
-    ],
-    "security": {
-      "csp": null
-    }
+    ]
   }
 }

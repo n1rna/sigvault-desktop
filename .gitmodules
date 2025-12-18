@@ -1,3 +1,0 @@
-[submodule "contrib/libnunchuk"]
-	path = contrib/libnunchuk
-	url = https://github.com/nunchuk-io/libnunchuk

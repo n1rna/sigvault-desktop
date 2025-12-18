@@ -1,44 +1,42 @@
 [package]
-name = "app"
+name = "sigvault-desktop"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
-license = ""
-repository = ""
-default-run = "app"
 edition = "2021"
-rust-version = "1.60"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "sigvault_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-cxx-build = "1.0"
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2", features = [] }
-tauri-plugin-oauth = { git = "https://github.com/FabianLars/tauri-plugin-oauth", version = "0.0.0-alpha.0" }
+tauri-plugin-opener = "2"
+tauri-plugin-log = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-stronghold = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.23.1"
 tungstenite = "0.23.0"
-reqwest = {version = "0.12.5", features = ["json"] }
+reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls", "json"] }
 futures-util = "0.3.30"
 futures = "0.3.30"
-futures-sink = "0.3.30"
 log = "0.4"
-env_logger = "0.10"
-cxx = "1.0"
 machine-uid = "0.5.2"
 uuid = { version = "1.10.0", features = ["v4"] }
 thiserror = "1.0.63"
-tauri-plugin-log = "2"
-tauri-plugin-deep-link = "2"
-hwi = "0.10.0"
+oauth2 = "4.4"
+axum = { version = "0.7", features = ["tokio"] }
+tower = "0.5"
+open = "5.0"
 
-[features]
-# this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.
-# If you use cargo directly instead of tauri's cli you can use this feature flag to switch between tauri's `dev` and `build` modes.
-# DO NOT REMOVE!!
-custom-protocol = [ "tauri/custom-protocol" ]
