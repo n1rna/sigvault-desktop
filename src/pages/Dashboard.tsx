@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAppState } from "../contexts/AppStateContext";
+import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
 
 interface UserInfo {
 	id?: string;
@@ -12,7 +12,6 @@ interface UserInfo {
 }
 
 export default function Dashboard() {
-	const { activeSession } = useAppState();
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 	const [loading, setLoading] = useState(true);
 
@@ -39,6 +38,14 @@ export default function Dashboard() {
 		}
 	};
 
+	const openUrl = async (url: string) => {
+		try {
+			await openExternal(url);
+		} catch (error) {
+			console.error("Failed to open URL:", error);
+		}
+	};
+
 	const getDisplayName = () => {
 		if (userInfo?.name) return userInfo.name;
 		if (userInfo?.username) return userInfo.username;
@@ -48,62 +55,44 @@ export default function Dashboard() {
 
 	return (
 		<div className="page dashboard-page">
-			<div className="dashboard-header">
-				<h1>Welcome back, {loading ? "..." : getDisplayName()}!</h1>
-				<p className="subtitle">Sigvault Desktop</p>
-			</div>
-
-			<div className="dashboard-content">
-				<div className="user-info-card">
-					<h2>Your Profile</h2>
-					{loading ? (
-						<p>Loading user information...</p>
-					) : userInfo ? (
-						<div className="user-details">
-							{userInfo.name && (
-								<div className="user-field">
-									<span className="field-label">Name:</span>
-									<span className="field-value">{userInfo.name}</span>
-								</div>
-							)}
-							{userInfo.username && (
-								<div className="user-field">
-									<span className="field-label">Username:</span>
-									<span className="field-value">{userInfo.username}</span>
-								</div>
-							)}
-							{userInfo.email && (
-								<div className="user-field">
-									<span className="field-label">Email:</span>
-									<span className="field-value">{userInfo.email}</span>
-								</div>
-							)}
-						</div>
-					) : (
-						<p>Unable to load user information</p>
-					)}
+			<div className="dashboard-container">
+				<div className="dashboard-welcome">
+					<h1>Welcome, {loading ? "..." : getDisplayName()}</h1>
 				</div>
 
-				<div className="status-card">
-					<h2>Connection Status</h2>
-					<div className="status-indicator">
-						<span
-							className={`status-dot ${activeSession.isConnected ? "connected" : "disconnected"}`}
-						></span>
-						<span className="status-text">
-							{activeSession.isConnected ? "Connected" : "Disconnected"}
-						</span>
-					</div>
-				</div>
-
-				<div className="actions-card">
-					<h2>Quick Actions</h2>
+				<div className="dashboard-links">
 					<button
 						type="button"
-						className="primary-button"
+						className="dashboard-link"
 						onClick={navigateToRemoteSessions}
 					>
-						View Remote Sessions
+						<span>Remote Sessions</span>
+					</button>
+
+					<button
+						type="button"
+						className="dashboard-link external"
+						onClick={() => openUrl("https://docs.sigvault.com")}
+					>
+						<span>Documentation</span>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+							<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+							<polyline points="15 3 21 3 21 9" />
+							<line x1="10" y1="14" x2="21" y2="3" />
+						</svg>
+					</button>
+
+					<button
+						type="button"
+						className="dashboard-link external"
+						onClick={() => openUrl("https://app.sigvault.com/dash/settings")}
+					>
+						<span>Profile Settings</span>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+							<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+							<polyline points="15 3 21 3 21 9" />
+							<line x1="10" y1="14" x2="21" y2="3" />
+						</svg>
 					</button>
 				</div>
 			</div>
