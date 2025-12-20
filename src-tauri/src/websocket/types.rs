@@ -29,7 +29,7 @@ impl Default for InitializeSessionMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowMessagePayload {
-    pub r#type: String,
+    pub session_type: String,
     pub step: u32,
     pub requirements: serde_json::Value,
     pub finished: bool,

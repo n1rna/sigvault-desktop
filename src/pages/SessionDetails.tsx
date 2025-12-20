@@ -1,23 +1,36 @@
 // Session details page
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAppState } from "../contexts/AppStateContext";
 import { invoke } from "@tauri-apps/api/core";
 import type { CommandResult } from "../types/events";
+import type { DeviceInfo } from "../types/hardware";
 import PageLayout from "../components/PageLayout";
+import DeviceDiscovery from "../components/DeviceDiscovery";
 
 export default function SessionDetails() {
 	const { activeSession } = useAppState();
 	const [userInput, setUserInput] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 
-	const handleExit = async () => {
+	const handleExit = useCallback(async () => {
 		try {
 			await invoke<CommandResult>("cmd_exit_session");
 		} catch (error) {
 			console.error("Failed to exit session:", error);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		const handleBeforeUnload = () => {
+			invoke("cmd_exit_session").catch(console.error);
+		};
+
+		window.addEventListener("beforeunload", handleBeforeUnload);
+		return () => {
+			window.removeEventListener("beforeunload", handleBeforeUnload);
+		};
+	}, []);
 
 	const handleSubmitInput = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -36,6 +49,31 @@ export default function SessionDetails() {
 			setSubmitting(false);
 		}
 	};
+
+	const handleDeviceSelected = async (deviceInfo: DeviceInfo) => {
+		setSubmitting(true);
+		try {
+			await invoke<CommandResult>("cmd_submit_device_registration", {
+				sessionId: activeSession.sessionId || "",
+				deviceInfo: {
+					xpub: deviceInfo.xpub,
+					fingerprint: deviceInfo.fingerprint,
+					derivation_path: deviceInfo.derivation_path,
+					device_type: deviceInfo.device_type,
+				},
+			});
+		} catch (error) {
+			console.error("Failed to submit device registration:", error);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	const isDeviceCreationSession =
+		activeSession.sessionState?.sessionType === "DEVICE_REGISTRATION";
+	const network =
+		activeSession.sessionState?.requirements?.network || "testnet";
+	const derivationPath = "m/48'/0'/0'/2'";
 
 	return (
 		<div className="page session-details-page">
@@ -57,7 +95,9 @@ export default function SessionDetails() {
 					</div>
 					<div className="info-row">
 						<span className="label">Type:</span>
-						<span className="value">{activeSession.sessionType || "N/A"}</span>
+						<span className="value">
+							{activeSession.sessionState?.sessionType || "N/A"}
+						</span>
 					</div>
 					<div className="info-row">
 						<span className="label">Status:</span>
@@ -94,7 +134,15 @@ export default function SessionDetails() {
 					</div>
 				)}
 
-				{activeSession.isConnected && (
+				{activeSession.isConnected && isDeviceCreationSession && (
+					<DeviceDiscovery
+						network={network}
+						derivationPath={derivationPath}
+						onDeviceSelected={handleDeviceSelected}
+					/>
+				)}
+
+				{activeSession.isConnected && !isDeviceCreationSession && (
 					<div className="input-panel">
 						<h3>Submit Input</h3>
 						<form onSubmit={handleSubmitInput}>

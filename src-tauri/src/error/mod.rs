@@ -26,6 +26,9 @@ pub enum AppError {
     #[error("Failed to fetch remote sessions")]
     FetchRemoteSessionsFailed,
 
+    #[error("Hardware wallet error: {0}")]
+    HardwareWalletError(String),
+
     #[error("API request failed: {0}")]
     ApiError(#[from] reqwest::Error),
 
@@ -52,6 +55,8 @@ pub enum AppErrorCode {
     WebsocketConnection,
     #[serde(rename = "error_fetch_remote_sessions_failed")]
     FetchRemoteSessionsFailed,
+    #[serde(rename = "error_hardware_wallet")]
+    HardwareWalletError,
 }
 
 impl From<AppError> for AppErrorCode {
@@ -64,6 +69,7 @@ impl From<AppError> for AppErrorCode {
             AppError::MachineNotRegistered => AppErrorCode::MachineNotRegistered,
             AppError::WebsocketConnection(_) => AppErrorCode::WebsocketConnection,
             AppError::FetchRemoteSessionsFailed => AppErrorCode::FetchRemoteSessionsFailed,
+            AppError::HardwareWalletError(_) => AppErrorCode::HardwareWalletError,
             _ => AppErrorCode::AuthorizationFailed,
         }
     }

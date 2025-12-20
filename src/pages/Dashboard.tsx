@@ -12,7 +12,7 @@ interface UserInfo {
 }
 
 export default function Dashboard() {
-	const { socketConnected } = useAppState();
+	const { activeSession } = useAppState();
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 	const [loading, setLoading] = useState(true);
 
@@ -88,10 +88,10 @@ export default function Dashboard() {
 					<h2>Connection Status</h2>
 					<div className="status-indicator">
 						<span
-							className={`status-dot ${socketConnected ? "connected" : "disconnected"}`}
+							className={`status-dot ${activeSession.isConnected ? "connected" : "disconnected"}`}
 						></span>
 						<span className="status-text">
-							{socketConnected ? "Connected" : "Disconnected"}
+							{activeSession.isConnected ? "Connected" : "Disconnected"}
 						</span>
 					</div>
 				</div>

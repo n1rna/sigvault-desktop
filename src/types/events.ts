@@ -34,10 +34,19 @@ export interface CommandEvent {
 	payload: any;
 }
 
-export interface SessionEvent {
-	message_type: SessionMessageType;
-	payload: any;
+export interface SessionWorkflowPayload {
+	session_type: string;
+	step: number;
+	requirements?: any;
+	finished?: boolean;
+	message?: string;
+	success?: boolean;
 }
+
+// export interface SessionEvent {
+// 	message_type: SessionMessageType;
+// 	payload: SessionWorkflowPayload;
+// }
 
 export interface NotificationEvent {
 	level: NotificationLevel;
@@ -49,7 +58,7 @@ export interface NotificationEvent {
 export type AppEvent =
 	| { type: "state_update"; data: StateUpdateEvent }
 	| { type: "command"; data: CommandEvent }
-	| { type: "session"; data: SessionEvent }
+	| { type: "session"; data: SessionWorkflowPayload }
 	| { type: "notification"; data: NotificationEvent };
 
 export interface AppState {
@@ -57,8 +66,8 @@ export interface AppState {
 	activeSession: {
 		isConnected: boolean;
 		sessionId?: string;
-		sessionType?: string;
 		sessionState?: {
+			sessionType?: string;
 			step?: number;
 			requirements?: any;
 			finished?: boolean;
@@ -75,9 +84,10 @@ export interface RemoteSession {
 	session_type: string;
 }
 
-export interface CommandResult {
+export interface CommandResult<T = any> {
 	success: boolean;
 	message: string;
+	data?: T;
 	error?: {
 		code: string;
 		message: string;

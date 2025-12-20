@@ -7,7 +7,7 @@ import PageLayout from "../components/PageLayout";
 import { useAppState } from "../contexts/AppStateContext";
 
 export default function RemoteSessions() {
-	const { activeSession } = useAppState();
+	useAppState();
 	const [remoteSessions, setRemoteSessions] = useState<RemoteSession[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [connectingTo, setConnectingTo] = useState<string | null>(null);

@@ -269,6 +269,7 @@ impl WebsocketHandler {
             SessionEvent::builder()
                 .requirements(payload.requirements)
                 .step(payload.step)
+                .session_type(payload.session_type)
                 .finished(payload.finished)
                 .success(payload.success)
                 .message(payload.message.unwrap_or_default())

@@ -10,6 +10,7 @@ mod state;
 mod storage;
 mod websocket;
 mod window;
+mod hwi;
 
 use log::info;
 use tauri::Manager;
@@ -76,7 +77,10 @@ pub fn run() {
             cmd_update_remote_sessions,
             cmd_start_session_websocket_connection,
             cmd_submit_user_input_session_websocket,
-            cmd_exit_session
+            cmd_exit_session,
+            cmd_discover_hardware_wallets,
+            cmd_get_device_xpub,
+            cmd_submit_device_registration
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

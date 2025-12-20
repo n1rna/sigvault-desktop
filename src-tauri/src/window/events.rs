@@ -94,6 +94,7 @@ pub struct SessionEvent {
     pub finished: bool,
     pub success: bool,
     pub message: Option<String>,
+    pub session_type: String,
 }
 
 impl SessionEvent {
@@ -104,6 +105,7 @@ impl SessionEvent {
 
 #[derive(Default)]
 pub struct SessionEventBuilder {
+    session_type: Option<String>,
     step: Option<u32>,
     requirements: Option<serde_json::Value>,
     finished: Option<bool>,
@@ -120,6 +122,11 @@ impl SessionEventBuilder {
 
     pub fn step(mut self, step: u32) -> Self {
         self.step = Some(step);
+        self
+    }
+
+    pub fn session_type(mut self, session_type: String) -> Self {
+        self.session_type = Some(session_type);
         self
     }
 
@@ -145,6 +152,7 @@ impl SessionEventBuilder {
             finished: self.finished.expect("finished is required"),
             success: self.success.expect("success is required"),
             message: self.message,
+            session_type: self.session_type.expect("session_type is required"),
         }
     }
 }

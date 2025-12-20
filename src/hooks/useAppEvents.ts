@@ -7,8 +7,8 @@ import type {
 	AppState,
 	StateUpdateEvent,
 	CommandEvent,
-	SessionEvent,
 	NotificationEvent,
+	SessionWorkflowPayload,
 } from "../types/events";
 
 const initialState: AppState = {
@@ -16,7 +16,6 @@ const initialState: AppState = {
 	activeSession: {
 		isConnected: false,
 		sessionId: undefined,
-		sessionType: undefined,
 		sessionState: {},
 	},
 	remoteSessions: [],
@@ -73,7 +72,6 @@ export function useAppEvents() {
 			updates.activeSession = {
 				...updates.activeSession,
 				isConnected: data.active_session.is_connected,
-				sessionType: data.active_session.session_type,
 			};
 		if (data.remote_sessions !== undefined)
 			updates.remoteSessions = data.remote_sessions;
@@ -103,32 +101,27 @@ export function useAppEvents() {
 		}
 	}, []);
 
-	const handleSession = useCallback((data: SessionEvent) => {
-		console.log("Session event:", data.message_type, data.payload);
+	const handleSession = useCallback((data: SessionWorkflowPayload) => {
+		console.log("Session event:", data);
 
-		if (data.message_type === "WorkflowSession") {
-			const payload = data.payload;
-
-			if (payload?.success) {
-				const workflowData = payload.payload || {};
-				dispatch({
-					type: "UPDATE_SESSION_STATE",
-					payload: {
-						step: workflowData.step,
-						requirements: workflowData.requirements,
-						finished: workflowData.finished,
-						message: workflowData.message,
-						error: undefined,
-					},
-				});
-			} else {
-				dispatch({
-					type: "UPDATE_SESSION_STATE",
-					payload: {
-						error: payload?.error || "Unknown error",
-					},
-				});
-			}
+		if (data?.success) {
+			dispatch({
+				type: "UPDATE_SESSION_STATE",
+				payload: {
+					sessionType: data.session_type,
+					step: data.step,
+					requirements: data.requirements,
+					finished: data.finished,
+					message: data.message,
+				},
+			});
+		} else {
+			dispatch({
+				type: "UPDATE_SESSION_STATE",
+				payload: {
+					error: data?.message || "Unknown error",
+				},
+			});
 		}
 	}, []);
 
