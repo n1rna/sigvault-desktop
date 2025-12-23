@@ -17,14 +17,11 @@ pub async fn cmd_discover_hardware_wallets(
 ) -> Result<CommandResult, String> {
     info!("Starting hardware wallet discovery");
 
-    let btc_network = Network::Testnet; // Default to testnet for discovery
-
-    match HwiService::discover_devices(btc_network).await {
+    match HwiService::discover_devices(CONFIG.network()).await {
         Ok(devices) => {
             info!("Successfully discovered {} device(s)", devices.len());
             let devices_json = serde_json::to_value(&devices)
                 .map_err(|e| format!("Failed to serialize devices: {}", e))?;
-
             Ok(CommandResult {
                 success: true,
                 message: format!("Found {} hardware wallet(s)", devices.len()),
