@@ -12,6 +12,7 @@ import type {
 } from "../types/events";
 
 const initialState: AppState = {
+	authenticated: false,
 	route: "Loading",
 	activeSession: {
 		isConnected: false,
@@ -56,25 +57,29 @@ export function useAppEvents() {
 
 		const updates: Partial<AppState> = {};
 
-		if (data.route !== undefined) updates.route = data.route;
-		if (data.active_session?.is_connected !== undefined)
-			updates.activeSession = {
-				...updates.activeSession,
-				isConnected: data.active_session.is_connected,
-			};
-		if (data.active_session?.session_id !== undefined)
-			updates.activeSession = {
-				...updates.activeSession,
-				isConnected: data.active_session.is_connected,
-				sessionId: data.active_session.session_id,
-			};
-		if (data.active_session?.session_type !== undefined)
-			updates.activeSession = {
-				...updates.activeSession,
-				isConnected: data.active_session.is_connected,
-			};
-		if (data.remote_sessions !== undefined)
+		if (data.authenticated != null) {
+			updates.authenticated = data.authenticated;
+		}
+		if (data.route != null) {
+			updates.route = data.route;
+		}
+		if (data.active_session != null) {
+			const activeSession: Partial<AppState["activeSession"]> = {};
+
+			if (data.active_session.is_connected != null) {
+				activeSession.isConnected = data.active_session.is_connected;
+			}
+			if (data.active_session.session_id != null) {
+				activeSession.sessionId = data.active_session.session_id;
+			}
+
+			if (Object.keys(activeSession).length > 0) {
+				updates.activeSession = activeSession as AppState["activeSession"];
+			}
+		}
+		if (data.remote_sessions != null) {
 			updates.remoteSessions = data.remote_sessions;
+		}
 
 		if (Object.keys(updates).length > 0) {
 			dispatch({ type: "UPDATE_STATE", payload: updates });

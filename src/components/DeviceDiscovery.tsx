@@ -13,7 +13,7 @@ interface DeviceDiscoveryProps {
 export default function DeviceDiscovery({
 	network = "testnet",
 	onDeviceSelected,
-	derivationPath = "m/48'/0'/0'/2'",
+	derivationPath,
 }: DeviceDiscoveryProps) {
 	const [discovering, setDiscovering] = useState(false);
 	const [devices, setDevices] = useState<HardwareWallet[]>([]);

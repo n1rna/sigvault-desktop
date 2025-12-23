@@ -17,6 +17,7 @@ pub struct ActiveSession {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StateUpdateEvent {
+    pub authenticated: Option<bool>,
     pub route: Option<WindowApplicationRoute>,
     pub active_session: Option<ActiveSession>,
     pub remote_sessions: Option<Vec<RemoteSession>>,
@@ -30,6 +31,7 @@ impl StateUpdateEvent {
 
 #[derive(Default)]
 pub struct StateUpdateEventBuilder {
+    authenticated: Option<bool>,
     route: Option<WindowApplicationRoute>,
     active_session: ActiveSession,
     remote_sessions: Option<Vec<RemoteSession>>,
@@ -61,8 +63,14 @@ impl StateUpdateEventBuilder {
         self
     }
 
+    pub fn authenticated(mut self, authenticated: bool) -> Self {
+        self.authenticated = Some(authenticated);
+        self
+    }
+
     pub fn build(self) -> StateUpdateEvent {
         StateUpdateEvent {
+            authenticated: self.authenticated,
             route: self.route,
             active_session: Some(self.active_session),
             remote_sessions: self.remote_sessions,

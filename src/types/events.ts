@@ -20,6 +20,7 @@ export type SessionMessageType =
 export type NotificationLevel = "info" | "success" | "warning" | "error";
 
 export interface StateUpdateEvent {
+	authenticated?: boolean;
 	route?: WindowApplicationRoute;
 	active_session?: {
 		is_connected: boolean;
@@ -62,6 +63,7 @@ export type AppEvent =
 	| { type: "notification"; data: NotificationEvent };
 
 export interface AppState {
+	authenticated: boolean;
 	route: WindowApplicationRoute;
 	activeSession: {
 		isConnected: boolean;

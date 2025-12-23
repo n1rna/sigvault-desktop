@@ -216,6 +216,7 @@ pub(super) async fn authenticate_user(
         update_state(
             &window,
             StateUpdateEvent::builder()
+                .authenticated(true)
                 .route(WindowApplicationRoute::MainPage)
                 .socket_connected(false)
                 .build(),

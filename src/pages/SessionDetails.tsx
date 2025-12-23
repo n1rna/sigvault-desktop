@@ -73,7 +73,8 @@ export default function SessionDetails() {
 		activeSession.sessionState?.sessionType === "DEVICE_REGISTRATION";
 	const network =
 		activeSession.sessionState?.requirements?.network || "testnet";
-	const derivationPath = "m/48'/0'/0'/2'";
+	const derivationPath =
+		activeSession.sessionState?.requirements?.derivation_path || "m/84'/1'/0'";
 
 	return (
 		<div className="page session-details-page">

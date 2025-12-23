@@ -13,7 +13,7 @@ import SessionDetails from "./pages/SessionDetails";
 import "./App.css";
 
 function AppRouter() {
-	const { route } = useAppState();
+	const { route, authenticated } = useAppState();
 	const navigate = useNavigate();
 
 	// Initialize app on mount
@@ -26,6 +26,10 @@ function AppRouter() {
 	// Navigate based on backend-controlled route
 	useEffect(() => {
 		console.log("Route changed to:", route);
+
+		if (!authenticated && route !== "Login" && route !== "Loading") {
+			navigate("/login");
+		}
 
 		switch (route) {
 			case "Loading":
@@ -47,7 +51,7 @@ function AppRouter() {
 				navigate("/session-details");
 				break;
 		}
-	}, [route, navigate]);
+	}, [route, navigate, authenticated]);
 
 	return (
 		<Routes>

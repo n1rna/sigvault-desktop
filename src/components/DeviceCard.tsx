@@ -11,7 +11,6 @@ export default function DeviceCard({
 	onSelect,
 	isSelected = false,
 }: DeviceCardProps) {
-
 	console.log("Rendering DeviceCard for device:", device);
 	return (
 		<div
