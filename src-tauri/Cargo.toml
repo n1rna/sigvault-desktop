@@ -42,4 +42,5 @@ open = "5.0"
 async-hwi = { git = "https://github.com/wizardsardine/async-hwi.git", version = "0.0.29" }
 bitcoin = "0.32.8"
 async-trait = "0.1.89"
+once_cell = "1.21.3"
 

@@ -11,7 +11,6 @@ interface DeviceDiscoveryProps {
 }
 
 export default function DeviceDiscovery({
-	network = "testnet",
 	onDeviceSelected,
 	derivationPath,
 }: DeviceDiscoveryProps) {
@@ -30,7 +29,6 @@ export default function DeviceDiscovery({
 		try {
 			const result = await invoke<CommandResult<HardwareWallet[]>>(
 				"cmd_discover_hardware_wallets",
-				{ network },
 			);
 
 			if (result.success && result.data) {
@@ -62,7 +60,6 @@ export default function DeviceDiscovery({
 				{
 					fingerprint: selectedDevice.fingerprint,
 					derivationPath,
-					network,
 				},
 			);
 

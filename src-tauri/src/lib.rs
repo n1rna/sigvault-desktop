@@ -3,14 +3,15 @@
 
 mod api;
 mod commands;
+mod config;
 mod error;
+mod hwi;
 mod machine;
 mod oauth;
 mod state;
 mod storage;
 mod websocket;
 mod window;
-mod hwi;
 
 use log::info;
 use tauri::Manager;

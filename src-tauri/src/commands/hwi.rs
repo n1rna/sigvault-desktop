@@ -1,10 +1,11 @@
 use bitcoin::Network;
-use log::{debug, error, info};
+use log::{error, info};
 use serde_json;
 use tauri::{State, WebviewWindow};
 
+use crate::config::CONFIG;
 use crate::error::AppErrorCode;
-use crate::hwi::{DeviceInfo, HardwareWalletDevice, HwiService};
+use crate::hwi::{DeviceInfo, HwiService};
 use crate::state::ApplicationState;
 
 use super::types::CommandResult;
@@ -13,20 +14,10 @@ use super::types::CommandResult;
 pub async fn cmd_discover_hardware_wallets(
     _window: WebviewWindow,
     _app_state: State<'_, ApplicationState>,
-    network: Option<String>,
 ) -> Result<CommandResult, String> {
     info!("Starting hardware wallet discovery");
 
-    let btc_network = match network.as_deref() {
-        Some("mainnet") => Network::Bitcoin,
-        Some("testnet") => Network::Testnet,
-        Some("regtest") => Network::Regtest,
-        Some("signet") => Network::Signet,
-        _ => {
-            debug!("No network specified, defaulting to testnet");
-            Network::Testnet
-        }
-    };
+    let btc_network = Network::Testnet; // Default to testnet for discovery
 
     match HwiService::discover_devices(btc_network).await {
         Ok(devices) => {
@@ -57,25 +48,14 @@ pub async fn cmd_get_device_xpub(
     _app_state: State<'_, ApplicationState>,
     fingerprint: String,
     derivation_path: String,
-    network: Option<String>,
 ) -> Result<CommandResult, String> {
     info!(
         "Extracting xpub for device {} at path {}",
         fingerprint, derivation_path
     );
 
-    let btc_network = match network.as_deref() {
-        Some("mainnet") => Network::Bitcoin,
-        Some("testnet") => Network::Testnet,
-        Some("regtest") => Network::Regtest,
-        Some("signet") => Network::Signet,
-        _ => {
-            debug!("No network specified, defaulting to testnet");
-            Network::Testnet
-        }
-    };
-
-    match HwiService::get_device_info(btc_network, fingerprint.clone(), derivation_path).await {
+    match HwiService::get_device_info(CONFIG.network(), fingerprint.clone(), derivation_path).await
+    {
         Ok(device_info) => {
             info!("Successfully extracted device info for {}", fingerprint);
             let device_info_json = serde_json::to_value(&device_info)

@@ -5448,6 +5448,7 @@ dependencies = [
  "log",
  "machine-uid",
  "oauth2",
+ "once_cell",
  "open",
  "reqwest 0.12.24",
  "serde",
