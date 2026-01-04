@@ -18,9 +18,11 @@ function AppRouter() {
 
 	// Initialize app on mount
 	useEffect(() => {
-		invoke("cmd_initialize_app")
-			.then(() => console.log("App initialized"))
-			.catch((err) => console.error("Initialization error:", err));
+		const initializeApp = async () => {
+			await invoke("cmd_initialize_app");
+			console.log("App initialized");
+		};
+		initializeApp();
 	}, []);
 
 	// Navigate based on backend-controlled route
