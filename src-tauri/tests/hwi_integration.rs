@@ -705,14 +705,20 @@ async fn test_get_device_xpubs() {
     init_logging();
     let network = test_network();
 
-    let derivation_path = match network {
-        Network::Bitcoin => "m/84'/0'/0'",
-        _ => "m/84'/1'/0'",
+    let derivation_paths: Vec<&str> = match network {
+        Network::Bitcoin => vec![
+            "m/84'/0'/0'", "m/86'/0'/0'", "m/48'/0'/0'/2'",
+            "m/84'/1'/0'", "m/86'/1'/0'", "m/48'/1'/0'/2'",
+        ],
+        _ => vec![
+            "m/84'/1'/0'", "m/86'/1'/0'", "m/48'/1'/0'/2'",
+            "m/84'/0'/0'", "m/86'/0'/0'", "m/48'/0'/0'/2'",
+        ],
     };
 
     print_separator(&format!(
-        "EXTRACT XPUBS (network: {:?}, path: {})",
-        network, derivation_path
+        "EXTRACT XPUBS (network: {:?}, paths: {:?})",
+        network, derivation_paths
     ));
 
     let manager = HardwareWalletManager::new(network);
@@ -738,18 +744,18 @@ async fn test_get_device_xpubs() {
             device.device_type, device.id, fingerprint
         );
 
-        let start = Instant::now();
-        match manager.get_device_info(fingerprint, derivation_path).await {
-            Ok(info) => {
-                println!("  Extracted in {:.2?}", start.elapsed());
-                println!("  Xpub:        {}", info.xpub);
-                println!("  Fingerprint: {}", info.fingerprint);
-                println!("  Path:        {}", info.derivation_path);
-                println!("  Device Type: {}", info.device_type);
-            }
-            Err(e) => {
-                println!("  FAILED after {:.2?}", start.elapsed());
-                println!("  Error: {:?}", e);
+        for derivation_path in &derivation_paths {
+            let start = Instant::now();
+            match manager.get_device_info(fingerprint, derivation_path).await {
+                Ok(info) => {
+                    println!("  [{}] Extracted in {:.2?}", derivation_path, start.elapsed());
+                    println!("    Xpub:        {}", info.xpub);
+                    println!("    Fingerprint: {}", info.fingerprint);
+                    println!("    Device Type: {}", info.device_type);
+                }
+                Err(e) => {
+                    println!("  [{}] FAILED after {:.2?}: {:?}", derivation_path, start.elapsed(), e);
+                }
             }
         }
         println!();
@@ -1491,6 +1497,42 @@ async fn test_jade_diagnostics() {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Specifically test Trezor device discovery.
+#[tokio::test]
+#[ignore]
+async fn test_trezor_diagnostics() {
+    init_logging();
+    let network = test_network();
+
+    print_separator(&format!("TREZOR DIAGNOSTICS (network: {:?})", network));
+
+    println!("  Prerequisites:");
+    println!("  1. Trezor connected via USB");
+    println!("  2. Device unlocked (PIN entered)");
+    println!();
+
+    let manager = HardwareWalletManager::new(network);
+    let devices = manager
+        .discover_devices(None)
+        .await
+        .expect("Discovery failed");
+
+    let trezors: Vec<_> = devices.iter().filter(|d| d.device_type == "Trezor").collect();
+
+    if trezors.is_empty() {
+        println!("  No Trezor devices found.");
+        println!();
+        println!("  Troubleshooting:");
+        println!("  - Is the device connected via USB?");
+        println!("  - Is trezord (Trezor Bridge) running?");
+        println!("  - Try: lsusb | grep -i trezor");
+    } else {
+        for device in &trezors {
+            print_device_details(device);
         }
     }
 }

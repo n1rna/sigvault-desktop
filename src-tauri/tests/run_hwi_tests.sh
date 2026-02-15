@@ -62,6 +62,7 @@ resolve_test_name() {
         bitbox02)   echo "test_bitbox02_diagnostics" ;;
         coldcard)   echo "test_coldcard_diagnostics" ;;
         jade)       echo "test_jade_diagnostics" ;;
+        trezor)     echo "test_trezor_diagnostics" ;;
         *)          echo "$1" ;;  # pass through raw test name
     esac
 }

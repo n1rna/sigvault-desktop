@@ -9,6 +9,7 @@ use async_hwi::{
     jade::{self, Jade},
     ledger::{HidApi, Ledger, LedgerSimulator, TransportHID},
     specter::{Specter, SpecterSimulator},
+    trezor::Trezor,
     Error as HWIError, Version, HWI,
 };
 use bitcoin::{
@@ -372,6 +373,32 @@ impl HardwareWalletManager {
             }
         }
 
+        // Enumerate Trezor devices
+        for available in async_hwi::trezor::api::find_devices(false) {
+            let id = format!("trezor-{}", available.model);
+            match available.connect() {
+                Ok(mut client) => {
+                    if let Err(e) = client.init_device(None) {
+                        warn!("Trezor init error: {:?}", e);
+                        continue;
+                    }
+                    let trezor_network = match self.network {
+                        Network::Regtest | Network::Signet => Network::Testnet,
+                        other => other,
+                    };
+                    let trezor = Trezor::new(client, trezor_network);
+                    match self
+                        .handle_trezor_device(id, trezor, &mut supported_devices)
+                        .await
+                    {
+                        Ok(discovered) => devices.push(discovered),
+                        Err(e) => warn!("Trezor error: {:?}", e),
+                    }
+                }
+                Err(e) => warn!("Trezor connection error: {:?}", e),
+            }
+        }
+
         info!("Discovered {} hardware wallet(s)", devices.len());
         Ok(devices)
     }
@@ -650,25 +677,12 @@ impl HardwareWalletManager {
         let info = jade.get_info().await?;
         let version = async_hwi::parse_version(&info.jade_version).ok();
 
-        // Check network compatibility
-        let is_mainnet = self.network == Network::Bitcoin;
-        let network_ok = match info.jade_networks {
-            jade::api::JadeNetworks::Main => is_mainnet,
-            jade::api::JadeNetworks::Test => !is_mainnet,
-            jade::api::JadeNetworks::All => true,
+        // Use the device's own network for auth so it works regardless of app network
+        let device_network = match info.jade_networks {
+            jade::api::JadeNetworks::Main => Network::Bitcoin,
+            jade::api::JadeNetworks::Test | jade::api::JadeNetworks::All => self.network,
         };
-
-        if !network_ok {
-            return Ok(DiscoveredDevice {
-                id,
-                device_type: "Jade".to_string(),
-                model: "Jade".to_string(),
-                state: DeviceState::Unsupported {
-                    reason: UnsupportedReason::WrongNetwork,
-                    version: version.map(|v| v.to_string()),
-                },
-            });
-        }
+        let jade = jade.with_network(device_network);
 
         // Check if device needs unlocking
         match info.jade_state {
@@ -776,6 +790,69 @@ impl HardwareWalletManager {
                 model: "Ledger".to_string(),
                 state: DeviceState::Unsupported {
                     reason: UnsupportedReason::AppNotOpen,
+                    version: None,
+                },
+            }),
+        }
+    }
+
+    async fn handle_trezor_device(
+        &self,
+        id: String,
+        trezor: Trezor,
+        supported_devices: &mut std::collections::HashMap<String, Arc<dyn HWI + Send + Sync>>,
+    ) -> Result<DiscoveredDevice, HWIError> {
+        match (
+            trezor.get_master_fingerprint().await,
+            trezor.get_version().await,
+        ) {
+            (Ok(fingerprint), Ok(version)) => {
+                let device: Arc<dyn HWI + Send + Sync> = Arc::new(trezor);
+                supported_devices.insert(id.clone(), device);
+
+                Ok(DiscoveredDevice {
+                    id,
+                    device_type: "Trezor".to_string(),
+                    model: "Trezor".to_string(),
+                    state: DeviceState::Supported {
+                        fingerprint: fingerprint.to_string(),
+                        version: Some(version.to_string()),
+                        registered: None,
+                    },
+                })
+            }
+            (Err(e), _) => {
+                let msg = format!("{}", e);
+                if msg.contains("PIN required") || msg.contains("locked") {
+                    Ok(DiscoveredDevice {
+                        id,
+                        device_type: "Trezor".to_string(),
+                        model: "Trezor".to_string(),
+                        state: DeviceState::Unsupported {
+                            reason: UnsupportedReason::InitializationError(
+                                "Device is locked (enter PIN on device)".to_string(),
+                            ),
+                            version: None,
+                        },
+                    })
+                } else {
+                    Ok(DiscoveredDevice {
+                        id,
+                        device_type: "Trezor".to_string(),
+                        model: "Trezor".to_string(),
+                        state: DeviceState::Unsupported {
+                            reason: UnsupportedReason::InitializationError(msg),
+                            version: None,
+                        },
+                    })
+                }
+            }
+            (_, Err(e)) => Ok(DiscoveredDevice {
+                id,
+                device_type: "Trezor".to_string(),
+                model: "Trezor".to_string(),
+                state: DeviceState::Unsupported {
+                    reason: UnsupportedReason::InitializationError(format!("{}", e)),
                     version: None,
                 },
             }),
