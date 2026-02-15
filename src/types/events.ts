@@ -39,6 +39,7 @@ export interface SessionWorkflowPayload {
 	session_type: string;
 	step: number;
 	requirements?: any;
+	data?: any;
 	finished?: boolean;
 	message?: string;
 	success?: boolean;
@@ -72,6 +73,7 @@ export interface AppState {
 			sessionType?: string;
 			step?: number;
 			requirements?: any;
+			data?: any;
 			finished?: boolean;
 			message?: string;
 			error?: string;

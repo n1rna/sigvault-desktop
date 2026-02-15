@@ -4,6 +4,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::api::types::{RemoteSession, UserProfile};
+use crate::config::CONFIG;
+use crate::hwi::HardwareWalletManager;
 use crate::websocket::WebsocketHandler;
 
 #[derive(Default, Clone)]
@@ -64,6 +66,7 @@ pub struct ApplicationState {
     pub auth_tokens: Arc<Mutex<AuthTokens>>,
     pub user_data: Arc<Mutex<UserData>>,
     pub remote_sessions: Arc<Mutex<Vec<RemoteSession>>>,
+    pub hw_manager: Arc<HardwareWalletManager>,
 }
 
 impl ApplicationState {
@@ -74,6 +77,7 @@ impl ApplicationState {
             auth_tokens: Arc::new(Mutex::new(AuthTokens::new())),
             user_data: Arc::new(Mutex::new(UserData::new())),
             remote_sessions: Arc::new(Mutex::new(Vec::new())),
+            hw_manager: Arc::new(HardwareWalletManager::new(CONFIG.network())),
         }
     }
 }

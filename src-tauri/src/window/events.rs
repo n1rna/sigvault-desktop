@@ -99,6 +99,8 @@ impl CommandEvent {
 pub struct SessionEvent {
     pub step: u32,
     pub requirements: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
     pub finished: bool,
     pub success: bool,
     pub message: Option<String>,
@@ -116,6 +118,7 @@ pub struct SessionEventBuilder {
     session_type: Option<String>,
     step: Option<u32>,
     requirements: Option<serde_json::Value>,
+    data: Option<serde_json::Value>,
     finished: Option<bool>,
     success: Option<bool>,
     message: Option<String>,
@@ -125,6 +128,11 @@ impl SessionEventBuilder {
     pub fn requirements(mut self, requirements: serde_json::Value) -> Self {
         // You can store requirements in active_session if needed
         self.requirements = Some(requirements);
+        self
+    }
+
+    pub fn data(mut self, data: Option<serde_json::Value>) -> Self {
+        self.data = data;
         self
     }
 
@@ -157,6 +165,7 @@ impl SessionEventBuilder {
         SessionEvent {
             step: self.step.expect("step is required"),
             requirements: self.requirements.expect("requirements are required"),
+            data: self.data,
             finished: self.finished.expect("finished is required"),
             success: self.success.expect("success is required"),
             message: self.message,

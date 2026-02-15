@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useAppState } from "../contexts/AppStateContext";
 import { invoke } from "@tauri-apps/api/core";
 import type { CommandResult } from "../types/events";
-import type { DeviceInfo } from "../types/hardware";
+import type { TransactionSigningData } from "../types/transaction";
 import PageLayout from "../components/PageLayout";
-import DeviceDiscovery from "../components/DeviceDiscovery";
+import DeviceCreationSession from "../components/DeviceCreationSession";
+import TransactionSigning from "../components/TransactionSigning";
 
 export default function SessionDetails() {
 	const { activeSession } = useAppState();
@@ -50,31 +51,78 @@ export default function SessionDetails() {
 		}
 	};
 
-	const handleDeviceSelected = async (deviceInfo: DeviceInfo) => {
-		setSubmitting(true);
-		try {
-			await invoke<CommandResult>("cmd_submit_device_registration", {
-				sessionId: activeSession.sessionId || "",
-				deviceInfo: {
-					xpub: deviceInfo.xpub,
-					fingerprint: deviceInfo.fingerprint,
-					derivation_path: deviceInfo.derivation_path,
-					device_type: deviceInfo.device_type,
-				},
-			});
-		} catch (error) {
-			console.error("Failed to submit device registration:", error);
-		} finally {
-			setSubmitting(false);
-		}
+	const handleDeviceSubmitted = () => {
+		// Device registration completed - the session state will update via WebSocket
+		console.log("Device registration submitted");
 	};
 
-	const isDeviceCreationSession =
-		activeSession.sessionState?.sessionType === "DEVICE_REGISTRATION";
+	const handleSignatureSubmitted = () => {
+		// Transaction signature completed - the session state will update via WebSocket
+		console.log("Transaction signature submitted");
+	};
+
+	const sessionType = activeSession.sessionState?.sessionType;
+	const isDeviceCreationSession = sessionType === "DEVICE_REGISTRATION";
+	const isTransactionSigningSession = sessionType === "TRANSACTION_SIGNING";
+
 	const network =
 		activeSession.sessionState?.requirements?.network || "testnet";
 	const derivationPath =
-		activeSession.sessionState?.requirements?.derivation_path || "m/84'/1'/0'";
+		activeSession.sessionState?.requirements?.derivation_path || "m/84'/0'/0'";
+
+	// Extract transaction signing data from session requirements/data
+	const transactionSigningData: TransactionSigningData | null =
+		isTransactionSigningSession && activeSession.sessionState?.data
+			? (activeSession.sessionState.data as TransactionSigningData)
+			: null;
+
+	console.log("Transaction Signing Data:", transactionSigningData);
+	// Determine which content panel to show
+	const renderSessionContent = () => {
+		if (!activeSession.isConnected) {
+			return null;
+		}
+
+		if (isDeviceCreationSession) {
+			return (
+				<DeviceCreationSession
+					network={network}
+					derivationPath={derivationPath}
+					sessionId={activeSession.sessionId || ""}
+					onDeviceSubmitted={handleDeviceSubmitted}
+				/>
+			);
+		}
+
+		if (isTransactionSigningSession && transactionSigningData) {
+			return (
+				<TransactionSigning
+					transactionData={transactionSigningData}
+					sessionId={activeSession.sessionId || ""}
+					onSignatureSubmitted={handleSignatureSubmitted}
+				/>
+			);
+		}
+
+		// Default: show input panel for other session types
+		return (
+			<div className="input-panel">
+				<h3>Submit Input</h3>
+				<form onSubmit={handleSubmitInput}>
+					<textarea
+						value={userInput}
+						onChange={(e) => setUserInput(e.target.value)}
+						placeholder="Enter input data..."
+						rows={4}
+						disabled={submitting}
+					/>
+					<button type="submit" disabled={submitting || !userInput.trim()}>
+						{submitting ? "Submitting..." : "Submit"}
+					</button>
+				</form>
+			</div>
+		);
+	};
 
 	return (
 		<div className="page session-details-page">
@@ -84,7 +132,7 @@ export default function SessionDetails() {
 				backRoute="RemoteSessions"
 			>
 				<div className="session-header">
-					<button onClick={handleExit} className="btn-exit">
+					<button type="button" onClick={handleExit} className="btn-exit">
 						Exit Session
 					</button>
 				</div>
@@ -120,46 +168,24 @@ export default function SessionDetails() {
 							</div>
 						)}
 
-						{activeSession.sessionState.requirements && (
-							<div className="requirements-panel">
-								<h3>Requirements:</h3>
-								<pre>
-									{JSON.stringify(
-										activeSession.sessionState.requirements,
-										null,
-										2,
-									)}
-								</pre>
-							</div>
-						)}
+						{activeSession.sessionState.requirements &&
+							!isDeviceCreationSession &&
+							!isTransactionSigningSession && (
+								<div className="requirements-panel">
+									<h3>Requirements:</h3>
+									<pre>
+										{JSON.stringify(
+											activeSession.sessionState.requirements,
+											null,
+											2,
+										)}
+									</pre>
+								</div>
+							)}
 					</div>
 				)}
 
-				{activeSession.isConnected && isDeviceCreationSession && (
-					<DeviceDiscovery
-						network={network}
-						derivationPath={derivationPath}
-						onDeviceSelected={handleDeviceSelected}
-					/>
-				)}
-
-				{activeSession.isConnected && !isDeviceCreationSession && (
-					<div className="input-panel">
-						<h3>Submit Input</h3>
-						<form onSubmit={handleSubmitInput}>
-							<textarea
-								value={userInput}
-								onChange={(e) => setUserInput(e.target.value)}
-								placeholder="Enter input data..."
-								rows={4}
-								disabled={submitting}
-							/>
-							<button type="submit" disabled={submitting || !userInput.trim()}>
-								{submitting ? "Submitting..." : "Submit"}
-							</button>
-						</form>
-					</div>
-				)}
+				{renderSessionContent()}
 			</PageLayout>
 		</div>
 	);

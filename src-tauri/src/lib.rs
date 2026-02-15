@@ -5,7 +5,7 @@ mod api;
 mod commands;
 mod config;
 mod error;
-mod hwi;
+pub mod hwi;
 mod machine;
 mod oauth;
 mod state;
@@ -80,8 +80,11 @@ pub fn run() {
             cmd_submit_user_input_session_websocket,
             cmd_exit_session,
             cmd_discover_hardware_wallets,
+            cmd_unlock_device,
             cmd_get_device_xpub,
-            cmd_submit_device_registration
+            cmd_submit_device_registration,
+            cmd_sign_psbt,
+            cmd_submit_transaction_signature
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

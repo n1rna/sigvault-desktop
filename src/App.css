@@ -734,3 +734,421 @@ pre {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Transaction Signing Styles */
+.transaction-signing {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.transaction-details-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+}
+
+.transaction-details-panel h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+}
+
+.transaction-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.transaction-info .info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+}
+
+.transaction-info .label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.transaction-info .value {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.transaction-info .txid {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  word-break: break-all;
+}
+
+.psbt-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.psbt-preview .label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.psbt-data {
+  display: block;
+  padding: 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.signature-slots {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.signature-slots h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.slots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.slot-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.375rem;
+  gap: 1rem;
+}
+
+.slot-item .fingerprint {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+.slot-item .derivation-path {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* Device Discovery Section for Transaction Signing */
+.device-discovery-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+}
+
+.device-discovery-section .discovery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.device-discovery-section .discovery-header h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.device-section {
+  margin-top: 1rem;
+}
+
+.device-section h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.device-section .help-text {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.matching-devices {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.other-devices {
+  opacity: 0.7;
+}
+
+.no-matching-devices {
+  text-align: center;
+  padding: 2rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 0.5rem;
+}
+
+.no-matching-devices p {
+  color: var(--accent-red);
+  margin-bottom: 0.75rem;
+}
+
+.no-matching-devices ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.no-matching-devices li {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  padding: 0.25rem 0;
+}
+
+/* Highlighted Device Card */
+.device-card.highlighted {
+  border-color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.device-card.highlighted:hover {
+  border-color: var(--accent-green);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+/* Locked Device Card */
+.device-card.locked {
+  border-color: var(--accent-orange, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
+  cursor: default;
+}
+
+.device-card.locked:hover {
+  transform: none;
+  border-color: var(--accent-orange, #f59e0b);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+/* Unsupported Device Card */
+.device-card.unsupported {
+  border-color: var(--status-disconnected, #6b7280);
+  background: rgba(107, 114, 128, 0.1);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.device-card.unsupported:hover {
+  transform: none;
+  border-color: var(--status-disconnected, #6b7280);
+  box-shadow: none;
+}
+
+/* Device State Badge */
+.device-state-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.device-state-badge.supported {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--status-connected);
+}
+
+.device-state-badge.locked {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--accent-orange, #f59e0b);
+}
+
+.device-state-badge.unsupported {
+  background: rgba(107, 114, 128, 0.2);
+  color: var(--status-disconnected);
+}
+
+/* Pairing Code Display */
+.pairing-code-container {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-orange, #f59e0b);
+  border-radius: 0.5rem;
+}
+
+.pairing-code-container .label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.pairing-code {
+  display: block;
+  font-family: 'Courier New', monospace;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent-orange, #f59e0b);
+  letter-spacing: 0.1em;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.pairing-instruction {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Unsupported Reason Display */
+.unsupported-reason {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 0.375rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.unsupported-reason .warning-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--accent-red, #ef4444);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.unsupported-reason span:last-child {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Unlock Button */
+.btn-unlock {
+  padding: 0.5rem 1.25rem;
+  background: var(--accent-orange, #f59e0b);
+  color: #000;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-unlock:hover:not(:disabled) {
+  background: #d97706;
+}
+
+.btn-unlock:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Disabled Button (for unsupported devices) */
+.btn-disabled {
+  padding: 0.5rem 1.25rem;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Signing Actions */
+.signing-actions {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.btn-sign {
+  padding: 0.875rem 2rem;
+  background: var(--accent-green);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-sign:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.btn-sign:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.signing-help {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Device Creation Session */
+.device-creation-session {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.submitting-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+}
+
+.submitting-indicator p {
+  margin-top: 1rem;
+  color: var(--text-secondary);
+}

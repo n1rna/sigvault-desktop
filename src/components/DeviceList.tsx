@@ -1,16 +1,23 @@
-import type { HardwareWallet } from "../types/hardware";
+import type { DiscoveredDevice } from "../types/hardware";
+import { getDeviceFingerprint } from "../types/hardware";
 import DeviceCard from "./DeviceCard";
 
 interface DeviceListProps {
-	devices: HardwareWallet[];
-	selectedDevice: HardwareWallet | null;
-	onSelectDevice: (device: HardwareWallet) => void;
+	devices: DiscoveredDevice[];
+	selectedDevice: DiscoveredDevice | null;
+	onSelectDevice: (device: DiscoveredDevice) => void;
+	onUnlockDevice?: (device: DiscoveredDevice) => void;
+	highlightedFingerprints?: Set<string>;
+	unlockingDeviceId?: string | null;
 }
 
 export default function DeviceList({
 	devices,
 	selectedDevice,
 	onSelectDevice,
+	onUnlockDevice,
+	highlightedFingerprints,
+	unlockingDeviceId,
 }: DeviceListProps) {
 	if (devices.length === 0) {
 		return (
@@ -25,14 +32,24 @@ export default function DeviceList({
 
 	return (
 		<div className="device-list">
-			{devices.map((device) => (
-				<DeviceCard
-					key={device.id}
-					device={device}
-					onSelect={onSelectDevice}
-					isSelected={selectedDevice?.id === device.id}
-				/>
-			))}
+			{devices.map((device) => {
+				const fingerprint = getDeviceFingerprint(device);
+				const isHighlighted = fingerprint
+					? highlightedFingerprints?.has(fingerprint)
+					: false;
+
+				return (
+					<DeviceCard
+						key={device.id}
+						device={device}
+						onSelect={onSelectDevice}
+						onUnlock={onUnlockDevice}
+						isSelected={selectedDevice?.id === device.id}
+						isHighlighted={isHighlighted}
+						isUnlocking={unlockingDeviceId === device.id}
+					/>
+				);
+			})}
 		</div>
 	);
 }

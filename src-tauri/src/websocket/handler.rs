@@ -268,6 +268,7 @@ impl WebsocketHandler {
             &self.window,
             SessionEvent::builder()
                 .requirements(payload.requirements)
+                .data(payload.data)
                 .step(payload.step)
                 .session_type(payload.session_type)
                 .finished(payload.finished)

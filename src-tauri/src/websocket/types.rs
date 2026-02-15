@@ -32,6 +32,8 @@ pub struct WorkflowMessagePayload {
     pub session_type: String,
     pub step: u32,
     pub requirements: serde_json::Value,
+    #[serde(default)]
+    pub data: Option<serde_json::Value>,
     pub finished: bool,
     pub success: bool,
     pub message: Option<String>,

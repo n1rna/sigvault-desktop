@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { HardwareWallet, DeviceInfo } from "../types/hardware";
+import type {
+	DiscoveredDevice,
+	DeviceInfo,
+	WalletConfig,
+} from "../types/hardware";
+import { isDeviceSupported, getDeviceFingerprint } from "../types/hardware";
 import type { CommandResult } from "../types/events";
 import DeviceList from "./DeviceList";
 
@@ -8,18 +13,22 @@ interface DeviceDiscoveryProps {
 	network?: string;
 	onDeviceSelected: (deviceInfo: DeviceInfo) => void;
 	derivationPath?: string;
+	walletConfig?: WalletConfig;
 }
 
 export default function DeviceDiscovery({
 	onDeviceSelected,
 	derivationPath,
+	walletConfig,
 }: DeviceDiscoveryProps) {
 	const [discovering, setDiscovering] = useState(false);
-	const [devices, setDevices] = useState<HardwareWallet[]>([]);
-	const [selectedDevice, setSelectedDevice] = useState<HardwareWallet | null>(
+	const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
+	const [selectedDevice, setSelectedDevice] =
+		useState<DiscoveredDevice | null>(null);
+	const [extracting, setExtracting] = useState(false);
+	const [unlockingDeviceId, setUnlockingDeviceId] = useState<string | null>(
 		null,
 	);
-	const [extracting, setExtracting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const handleDiscover = async () => {
@@ -27,12 +36,22 @@ export default function DeviceDiscovery({
 		setError(null);
 
 		try {
-			const result = await invoke<CommandResult<HardwareWallet[]>>(
+			const result = await invoke<CommandResult<DiscoveredDevice[]>>(
 				"cmd_discover_hardware_wallets",
+				{
+					walletConfig,
+				},
 			);
 
 			if (result.success && result.data) {
 				setDevices(result.data);
+				// Clear selection if the device is no longer available
+				if (
+					selectedDevice &&
+					!result.data.find((d) => d.id === selectedDevice.id)
+				) {
+					setSelectedDevice(null);
+				}
 			} else {
 				setError(result.message || "Failed to discover devices");
 			}
@@ -44,12 +63,53 @@ export default function DeviceDiscovery({
 		}
 	};
 
-	const handleSelectDevice = (device: HardwareWallet) => {
-		setSelectedDevice(device);
+	const handleSelectDevice = (device: DiscoveredDevice) => {
+		if (isDeviceSupported(device)) {
+			setSelectedDevice(device);
+		}
+	};
+
+	const handleUnlockDevice = async (device: DiscoveredDevice) => {
+		setUnlockingDeviceId(device.id);
+		setError(null);
+
+		try {
+			const result = await invoke<CommandResult<DiscoveredDevice>>(
+				"cmd_unlock_device",
+				{
+					deviceId: device.id,
+					walletConfig,
+				},
+			);
+
+			if (result.success && result.data) {
+				// Update the device in the list with the unlocked state
+				setDevices((prevDevices) =>
+					prevDevices.map((d) =>
+						d.id === device.id ? result.data! : d,
+					),
+				);
+
+				// Auto-select the unlocked device if it's now supported
+				if (isDeviceSupported(result.data)) {
+					setSelectedDevice(result.data);
+				}
+			} else {
+				setError(result.message || "Failed to unlock device");
+			}
+		} catch (err) {
+			console.error("Unlock error:", err);
+			setError(String(err));
+		} finally {
+			setUnlockingDeviceId(null);
+		}
 	};
 
 	const handleExtractInfo = async () => {
-		if (!selectedDevice) return;
+		if (!selectedDevice || !isDeviceSupported(selectedDevice)) return;
+
+		const fingerprint = getDeviceFingerprint(selectedDevice);
+		if (!fingerprint) return;
 
 		setExtracting(true);
 		setError(null);
@@ -58,7 +118,7 @@ export default function DeviceDiscovery({
 			const result = await invoke<CommandResult<DeviceInfo>>(
 				"cmd_get_device_xpub",
 				{
-					fingerprint: selectedDevice.fingerprint,
+					fingerprint,
 					derivationPath,
 				},
 			);
@@ -75,6 +135,9 @@ export default function DeviceDiscovery({
 			setExtracting(false);
 		}
 	};
+
+	const canExtract =
+		selectedDevice && isDeviceSupported(selectedDevice) && !extracting;
 
 	return (
 		<div className="device-discovery">
@@ -98,14 +161,12 @@ export default function DeviceDiscovery({
 						devices={devices}
 						selectedDevice={selectedDevice}
 						onSelectDevice={handleSelectDevice}
+						onUnlockDevice={handleUnlockDevice}
+						unlockingDeviceId={unlockingDeviceId}
 					/>
 
-					{selectedDevice && (
+					{canExtract && (
 						<div className="device-actions">
-							<div className="derivation-path-info">
-								{/* <label>Derivation Path:</label>
-								<code>{derivationPath}</code> */}
-							</div>
 							<button
 								type="button"
 								onClick={handleExtractInfo}

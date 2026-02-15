@@ -116,6 +116,7 @@ export function useAppEvents() {
 					sessionType: data.session_type,
 					step: data.step,
 					requirements: data.requirements,
+					data: data.data,
 					finished: data.finished,
 					message: data.message,
 				},
