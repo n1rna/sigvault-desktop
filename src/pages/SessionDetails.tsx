@@ -1,18 +1,13 @@
-// Session details page
-
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useAppState } from "../contexts/AppStateContext";
 import { invoke } from "@tauri-apps/api/core";
 import type { CommandResult } from "../types/events";
 import type { TransactionSigningData } from "../types/transaction";
-import PageLayout from "../components/PageLayout";
 import DeviceCreationSession from "../components/DeviceCreationSession";
 import TransactionSigning from "../components/TransactionSigning";
 
 export default function SessionDetails() {
 	const { activeSession } = useAppState();
-	const [userInput, setUserInput] = useState("");
-	const [submitting, setSubmitting] = useState(false);
 
 	const handleExit = useCallback(async () => {
 		try {
@@ -33,31 +28,11 @@ export default function SessionDetails() {
 		};
 	}, []);
 
-	const handleSubmitInput = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!userInput.trim()) return;
-
-		setSubmitting(true);
-		try {
-			await invoke<CommandResult>("cmd_submit_user_input_session_websocket", {
-				sessionId: activeSession.sessionId || "",
-				input: userInput,
-			});
-			setUserInput("");
-		} catch (error) {
-			console.error("Failed to submit input:", error);
-		} finally {
-			setSubmitting(false);
-		}
-	};
-
 	const handleDeviceSubmitted = () => {
-		// Device registration completed - the session state will update via WebSocket
 		console.log("Device registration submitted");
 	};
 
 	const handleSignatureSubmitted = () => {
-		// Transaction signature completed - the session state will update via WebSocket
 		console.log("Transaction signature submitted");
 	};
 
@@ -70,14 +45,13 @@ export default function SessionDetails() {
 	const derivationPath =
 		activeSession.sessionState?.requirements?.derivation_path || "m/84'/0'/0'";
 
-	// Extract transaction signing data from session requirements/data
 	const transactionSigningData: TransactionSigningData | null =
 		isTransactionSigningSession && activeSession.sessionState?.data
 			? (activeSession.sessionState.data as TransactionSigningData)
 			: null;
 
 	console.log("Transaction Signing Data:", transactionSigningData);
-	// Determine which content panel to show
+
 	const renderSessionContent = () => {
 		if (!activeSession.isConnected) {
 			return null;
@@ -94,7 +68,15 @@ export default function SessionDetails() {
 			);
 		}
 
-		if (isTransactionSigningSession && transactionSigningData) {
+		if (isTransactionSigningSession) {
+			if (!transactionSigningData) {
+				return (
+					<div className="flex flex-col gap-6">
+						<div className="h-48 animate-pulse bg-muted" />
+						<div className="h-64 animate-pulse bg-muted" />
+					</div>
+				);
+			}
 			return (
 				<TransactionSigning
 					transactionData={transactionSigningData}
@@ -104,89 +86,66 @@ export default function SessionDetails() {
 			);
 		}
 
-		// Default: show input panel for other session types
-		return (
-			<div className="input-panel">
-				<h3>Submit Input</h3>
-				<form onSubmit={handleSubmitInput}>
-					<textarea
-						value={userInput}
-						onChange={(e) => setUserInput(e.target.value)}
-						placeholder="Enter input data..."
-						rows={4}
-						disabled={submitting}
-					/>
-					<button type="submit" disabled={submitting || !userInput.trim()}>
-						{submitting ? "Submitting..." : "Submit"}
-					</button>
-				</form>
-			</div>
-		);
+		return null;
 	};
 
 	return (
-		<div className="page session-details-page">
-			<PageLayout
-				title="Session Details"
-				showBackButton={true}
-				backRoute="RemoteSessions"
-			>
-				<div className="session-header">
-					<button type="button" onClick={handleExit} className="btn-exit">
-						Exit Session
-					</button>
-				</div>
+		<div className="flex h-full w-full flex-col overflow-hidden p-8">
+			<div className="mb-4 flex shrink-0 items-center justify-between">
+				<h1 className="text-[1.75rem] font-semibold text-foreground">
+					Session Details
+				</h1>
+				<button
+					type="button"
+					onClick={handleExit}
+					className="bg-destructive px-5 py-2.5 text-sm font-medium text-destructive-foreground hover:opacity-90"
+				>
+					Exit Session
+				</button>
+			</div>
 
-				<div className="session-info-panel">
-					<div className="info-row">
-						<span className="label">Session ID:</span>
-						<span className="value">{activeSession.sessionId || "N/A"}</span>
-					</div>
-					<div className="info-row">
-						<span className="label">Type:</span>
-						<span className="value">
-							{activeSession.sessionState?.sessionType || "N/A"}
-						</span>
-					</div>
-					<div className="info-row">
-						<span className="label">Status:</span>
-						<span
-							className={`status ${activeSession.isConnected ? "connected" : "disconnected"}`}
-						>
-							{activeSession.isConnected ? "Connected" : "Disconnected"}
-						</span>
-					</div>
-				</div>
+			<div className="mb-6 flex items-center gap-3">
+				<span
+					className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+						activeSession.isConnected
+							? "bg-green-500"
+							: "bg-destructive"
+					}`}
+				/>
+				{activeSession.sessionId ? (
+					<span className="font-mono text-sm text-muted-foreground">
+						{activeSession.sessionId}
+					</span>
+				) : (
+					<span className="h-4 w-48 animate-pulse bg-muted" />
+				)}
+				{sessionType ? (
+					<span className="border border-border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
+						{sessionType}
+					</span>
+				) : (
+					activeSession.sessionId && (
+						<span className="h-5 w-28 animate-pulse bg-muted" />
+					)
+				)}
+			</div>
 
-				{activeSession.sessionState && (
-					<div className="session-state-panel">
-						<h2>Current Step: {activeSession.sessionState.step || "N/A"}</h2>
-
-						{activeSession.sessionState.error && (
-							<div className="error-message">
-								{activeSession.sessionState.error}
-							</div>
-						)}
-
-						{activeSession.sessionState.requirements &&
-							!isDeviceCreationSession &&
-							!isTransactionSigningSession && (
-								<div className="requirements-panel">
-									<h3>Requirements:</h3>
-									<pre>
-										{JSON.stringify(
-											activeSession.sessionState.requirements,
-											null,
-											2,
-										)}
-									</pre>
-								</div>
-							)}
+			<div className="flex-1 overflow-y-auto overflow-x-hidden">
+				{activeSession.sessionState?.error && (
+					<div className="mb-6 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+						{activeSession.sessionState.error}
 					</div>
 				)}
 
-				{renderSessionContent()}
-			</PageLayout>
+				{!activeSession.isConnected && !activeSession.sessionState ? (
+					<div className="flex flex-col gap-6">
+						<div className="h-48 animate-pulse bg-muted" />
+						<div className="h-64 animate-pulse bg-muted" />
+					</div>
+				) : (
+					renderSessionContent()
+				)}
+			</div>
 		</div>
 	);
 }

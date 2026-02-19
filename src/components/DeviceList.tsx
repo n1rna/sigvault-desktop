@@ -1,5 +1,5 @@
 import type { DiscoveredDevice } from "../types/hardware";
-import { getDeviceFingerprint } from "../types/hardware";
+import { getDeviceFingerprint, isDeviceSupported } from "../types/hardware";
 import DeviceCard from "./DeviceCard";
 
 interface DeviceListProps {
@@ -8,6 +8,7 @@ interface DeviceListProps {
 	onSelectDevice: (device: DiscoveredDevice) => void;
 	onUnlockDevice?: (device: DiscoveredDevice) => void;
 	highlightedFingerprints?: Set<string>;
+	signerFingerprints?: Set<string>;
 	unlockingDeviceId?: string | null;
 }
 
@@ -17,13 +18,14 @@ export default function DeviceList({
 	onSelectDevice,
 	onUnlockDevice,
 	highlightedFingerprints,
+	signerFingerprints,
 	unlockingDeviceId,
 }: DeviceListProps) {
 	if (devices.length === 0) {
 		return (
-			<div className="device-list-empty">
+			<div className="py-12 text-center text-muted-foreground">
 				<p>No hardware wallets detected.</p>
-				<p className="help-text">
+				<p className="mt-2 text-sm">
 					Please connect your hardware wallet and try again.
 				</p>
 			</div>
@@ -31,12 +33,16 @@ export default function DeviceList({
 	}
 
 	return (
-		<div className="device-list">
+		<div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
 			{devices.map((device) => {
 				const fingerprint = getDeviceFingerprint(device);
 				const isHighlighted = fingerprint
 					? highlightedFingerprints?.has(fingerprint)
 					: false;
+				const isNonSigner =
+					signerFingerprints && isDeviceSupported(device) && fingerprint
+						? !signerFingerprints.has(fingerprint)
+						: false;
 
 				return (
 					<DeviceCard
@@ -47,6 +53,7 @@ export default function DeviceList({
 						isSelected={selectedDevice?.id === device.id}
 						isHighlighted={isHighlighted}
 						isUnlocking={unlockingDeviceId === device.id}
+						isNonSigner={isNonSigner}
 					/>
 				);
 			})}

@@ -23,18 +23,28 @@ export default function PageLayout({
 	};
 
 	return (
-		<div className="page-layout">
+		<div className="flex h-full flex-col overflow-hidden">
 			{(showBackButton || title) && (
-				<div className="page-header">
+				<div className="mb-6 flex shrink-0 items-center gap-4">
 					{showBackButton && (
-						<button type="button" className="back-button" onClick={handleBack}>
-							← Back
+						<button
+							type="button"
+							className="border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
+							onClick={handleBack}
+						>
+							&larr; Back
 						</button>
 					)}
-					{title && <h1 className="page-title">{title}</h1>}
+					{title && (
+						<h1 className="text-[1.75rem] font-semibold text-foreground">
+							{title}
+						</h1>
+					)}
 				</div>
 			)}
-			<div className="page-content">{children}</div>
+			<div className="flex-1 overflow-y-auto overflow-x-hidden">
+				{children}
+			</div>
 		</div>
 	);
 }

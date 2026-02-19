@@ -1,16 +1,33 @@
 // Main App component with routing
 
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import {
+	BrowserRouter,
+	Routes,
+	Route,
+	Outlet,
+	useNavigate,
+} from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { AppStateProvider, useAppState } from "./contexts/AppStateContext";
+import Navbar from "./components/Navbar";
 import Loading from "./pages/Loading";
 import { Login } from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import MachineRegistration from "./pages/MachineRegistration";
 import RemoteSessions from "./pages/RemoteSessions";
 import SessionDetails from "./pages/SessionDetails";
-import "./App.css";
+
+function AuthenticatedLayout() {
+	return (
+		<div className="flex h-full flex-col">
+			<Navbar />
+			<div className="flex-1 overflow-hidden">
+				<Outlet />
+			</div>
+		</div>
+	);
+}
 
 function AppRouter() {
 	const { route, authenticated } = useAppState();
@@ -29,7 +46,7 @@ function AppRouter() {
 	useEffect(() => {
 		console.log("Route changed to:", route);
 
-		if (!authenticated && route !== "Login" && route !== "Loading") {
+		if (!authenticated && route !== "Login") {
 			navigate("/login");
 		}
 
@@ -59,10 +76,12 @@ function AppRouter() {
 		<Routes>
 			<Route path="/" element={<Loading />} />
 			<Route path="/login" element={<Login />} />
-			<Route path="/dashboard" element={<Dashboard />} />
-			<Route path="/register" element={<MachineRegistration />} />
-			<Route path="/sessions" element={<RemoteSessions />} />
-			<Route path="/session-details" element={<SessionDetails />} />
+			<Route element={<AuthenticatedLayout />}>
+				<Route path="/dashboard" element={<Dashboard />} />
+				<Route path="/register" element={<MachineRegistration />} />
+				<Route path="/sessions" element={<RemoteSessions />} />
+				<Route path="/session-details" element={<SessionDetails />} />
+			</Route>
 		</Routes>
 	);
 }

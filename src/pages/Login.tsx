@@ -9,10 +9,6 @@ export function Login() {
 		try {
 			setIsLoading(true);
 			setError(null);
-
-			// Start OAuth authentication flow
-			// This will open the browser, start a local server for the callback,
-			// exchange the code for a token, and authenticate with the backend
 			const result = await invoke("cmd_authenticate");
 			console.log("Authentication result:", result);
 		} catch (err) {
@@ -24,23 +20,32 @@ export function Login() {
 	};
 
 	return (
-		<div className="login-container">
-			<div className="login-box">
-				<h1>Welcome to SigVault</h1>
-				<p className="login-subtitle">Secure Bitcoin Wallet Management</p>
+		<div className="flex h-screen w-full items-center justify-center bg-background">
+			<div className="w-[90%] max-w-[400px] border border-border bg-card p-12 text-center">
+				<h1 className="mb-2 text-2xl font-semibold text-foreground">
+					Welcome to SigVault
+				</h1>
+				<p className="mb-8 text-sm text-muted-foreground">
+					Secure Bitcoin Wallet Management
+				</p>
 
-				{error && <div className="error-message">{error}</div>}
+				{error && (
+					<div className="mb-4 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+						{error}
+					</div>
+				)}
 
 				<button
 					onClick={handleLogin}
 					disabled={isLoading}
-					className="login-button"
+					className="mb-4 w-full bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{isLoading ? "Connecting..." : "Login with OAuth"}
 				</button>
 
-				<p className="login-info">
-					Click the button above to sign in securely using OAuth authentication.
+				<p className="mt-4 text-xs text-muted-foreground">
+					Click the button above to sign in securely using OAuth
+					authentication.
 				</p>
 			</div>
 		</div>

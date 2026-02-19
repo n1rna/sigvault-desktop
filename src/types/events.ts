@@ -86,6 +86,7 @@ export interface RemoteSession {
 	id: string;
 	status: string;
 	session_type: string;
+	created_at?: string;
 }
 
 export interface CommandResult<T = any> {

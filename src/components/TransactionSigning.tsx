@@ -1,6 +1,4 @@
-// Transaction signing session component
-
-import { useState, useMemo, use } from "react";
+import { useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CommandResult } from "../types/events";
 import type { DiscoveredDevice, WalletConfig } from "../types/hardware";
@@ -25,9 +23,8 @@ export default function TransactionSigning({
 }: TransactionSigningProps) {
 	const [discovering, setDiscovering] = useState(false);
 	const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
-	const [selectedDevice, setSelectedDevice] = useState<DiscoveredDevice | null>(
-		null,
-	);
+	const [selectedDevice, setSelectedDevice] =
+		useState<DiscoveredDevice | null>(null);
 	const [signing, setSigning] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [unlockingDeviceId, setUnlockingDeviceId] = useState<string | null>(
@@ -39,32 +36,26 @@ export default function TransactionSigning({
 		return {
 			descriptor: transactionData.transaction.multipath_descriptor,
 		};
-	}, [
-		transactionData.transaction.multipath_descriptor,
-	]);
+	}, [transactionData.transaction.multipath_descriptor]);
 
-	// Get the set of fingerprints that can sign this transaction
 	const signingFingerprints = useMemo(() => {
 		return new Set(
 			transactionData.signature_slots.map((slot) => slot.fingerprint),
 		);
 	}, [transactionData.signature_slots]);
 
-	// Find the matching slot for a device
 	const getMatchingSlot = (fingerprint: string): SignatureSlot | undefined => {
 		return transactionData.signature_slots.find(
 			(slot) => slot.fingerprint === fingerprint,
 		);
 	};
 
-	// Check if a device can sign (must be supported and have matching fingerprint)
 	const canSign = (device: DiscoveredDevice): boolean => {
 		if (!isDeviceSupported(device)) return false;
 		const fingerprint = getDeviceFingerprint(device);
 		return fingerprint ? signingFingerprints.has(fingerprint) : false;
 	};
 
-	// Truncate PSBT for display
 	const truncatedPsbt = useMemo(() => {
 		const psbt = transactionData.transaction.psbt;
 		if (psbt.length > 100) {
@@ -85,7 +76,6 @@ export default function TransactionSigning({
 
 			if (result.success && result.data) {
 				setDevices(result.data);
-				// Auto-select if only one matching device
 				const matchingDevices = result.data.filter(canSign);
 				if (matchingDevices.length === 1) {
 					setSelectedDevice(matchingDevices[0]);
@@ -114,19 +104,16 @@ export default function TransactionSigning({
 		try {
 			const result = await invoke<CommandResult<DiscoveredDevice>>(
 				"cmd_unlock_device",
-				{
-					deviceId: device.id,
-					walletConfig,
-				},
+				{ deviceId: device.id, walletConfig },
 			);
 
 			if (result.success && result.data) {
-				// Update the device in the list with the unlocked state
 				setDevices((prevDevices) =>
-					prevDevices.map((d) => (d.id === device.id ? result.data! : d)),
+					prevDevices.map((d) =>
+						d.id === device.id ? result.data! : d,
+					),
 				);
 
-				// Auto-select if it's now a valid signer
 				if (canSign(result.data)) {
 					setSelectedDevice(result.data);
 				}
@@ -157,7 +144,6 @@ export default function TransactionSigning({
 		setError(null);
 
 		try {
-			// Sign the PSBT
 			const signResult = await invoke<CommandResult<SignedPsbtResult>>(
 				"cmd_sign_psbt",
 				{
@@ -177,7 +163,6 @@ export default function TransactionSigning({
 			setSigning(false);
 			setSubmitting(true);
 
-			// Submit the signed PSBT
 			const submitResult = await invoke<CommandResult>(
 				"cmd_submit_transaction_signature",
 				{
@@ -203,54 +188,74 @@ export default function TransactionSigning({
 		}
 	};
 
-	// Separate devices into matching (can sign), locked, and other
-	const matchingDevices = devices.filter(canSign);
-	const otherDevices = devices.filter((d) => !canSign(d));
-
+	const hasMatchingDevice = devices.some(canSign);
 	const selectedCanSign = selectedDevice && canSign(selectedDevice);
 
 	return (
-		<div className="transaction-signing">
-			<div className="transaction-details-panel">
-				<h2>Transaction Details</h2>
+		<div className="flex flex-col gap-6">
+			<div className="border border-border bg-card p-6">
+				<h2 className="mb-4 text-xl font-semibold text-foreground">
+					Transaction Details
+				</h2>
 
-				<div className="transaction-info">
-					<div className="info-row">
-						<span className="label">Transaction ID:</span>
-						<span className="value txid">
+				<div className="flex flex-col gap-3">
+					<div className="flex flex-col gap-1">
+						<span className="text-sm font-medium text-muted-foreground">
+							Transaction ID:
+						</span>
+						<span className="break-all font-mono text-sm">
 							{transactionData.transaction.txid}
 						</span>
 					</div>
 
-					<div className="psbt-preview">
-						<span className="label">PSBT:</span>
-						<code className="psbt-data">{truncatedPsbt}</code>
+					<div className="flex flex-col gap-2">
+						<span className="text-sm font-medium text-muted-foreground">
+							PSBT:
+						</span>
+						<code className="block break-all border border-border bg-background p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+							{truncatedPsbt}
+						</code>
 					</div>
 				</div>
 
-				<div className="signature-slots">
-					<h3>Required Signatures</h3>
-					<div className="slots-list">
+				<div className="mt-4 border-t border-border pt-4">
+					<h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+						Required Signatures
+					</h3>
+					<div className="flex flex-col gap-2">
 						{transactionData.signature_slots.map((slot, index) => (
-							<div key={`${slot.fingerprint}-${index}`} className="slot-item">
-								<span className="fingerprint">{slot.fingerprint}</span>
-								<span className="derivation-path">{slot.derivation_path}</span>
+							<div
+								key={`${slot.fingerprint}-${index}`}
+								className="flex items-center justify-between gap-4 bg-accent px-3 py-2"
+							>
+								<span className="font-mono text-sm font-medium text-primary">
+									{slot.fingerprint}
+								</span>
+								<span className="font-mono text-xs text-muted-foreground">
+									{slot.derivation_path}
+								</span>
 							</div>
 						))}
 					</div>
 				</div>
 			</div>
 
-			{error && <div className="error-message">{error}</div>}
+			{error && (
+				<div className="border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+					{error}
+				</div>
+			)}
 
-			<div className="device-discovery-section">
-				<div className="discovery-header">
-					<h2>Hardware Wallet</h2>
+			<div className="border border-border bg-card p-6">
+				<div className="mb-4 flex items-center justify-between gap-4">
+					<h2 className="text-xl font-semibold text-foreground">
+						Hardware Wallet
+					</h2>
 					<button
 						type="button"
 						onClick={handleDiscover}
 						disabled={discovering || signing || submitting}
-						className="btn-discover"
+						className="bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{discovering ? "Discovering..." : "Discover Devices"}
 					</button>
@@ -258,66 +263,31 @@ export default function TransactionSigning({
 
 				{devices.length > 0 && (
 					<>
-						{matchingDevices.length > 0 && (
-							<div className="device-section matching-devices">
-								<h3>Authorized Signers</h3>
-								<DeviceList
-									devices={matchingDevices}
-									selectedDevice={selectedDevice}
-									onSelectDevice={handleSelectDevice}
-									onUnlockDevice={handleUnlockDevice}
-									highlightedFingerprints={signingFingerprints}
-									unlockingDeviceId={unlockingDeviceId}
-								/>
+						{!hasMatchingDevice && (
+							<div className="mb-4 border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+								No authorized signers found. Expected: {transactionData.signature_slots.map((s) => s.fingerprint).join(", ")}
 							</div>
 						)}
 
-						{otherDevices.length > 0 && (
-							<div className="device-section other-devices">
-								<h3>Other Devices</h3>
-								<p className="help-text">
-									These devices are not authorized to sign this transaction, or
-									require unlocking first.
-								</p>
-								<DeviceList
-									devices={otherDevices}
-									selectedDevice={selectedDevice}
-									onSelectDevice={handleSelectDevice}
-									onUnlockDevice={handleUnlockDevice}
-									unlockingDeviceId={unlockingDeviceId}
-								/>
-							</div>
-						)}
-
-						{matchingDevices.length === 0 && (
-							<div className="no-matching-devices">
-								<p>
-									No authorized devices found. Please connect a device with one
-									of the following fingerprints:
-								</p>
-								<ul>
-									{transactionData.signature_slots.map((slot, index) => (
-										<li key={`${slot.fingerprint}-${index}`}>
-											{slot.fingerprint}
-										</li>
-									))}
-								</ul>
-								<p className="help-text">
-									If your device is locked, click "Unlock Device" to pair it
-									first.
-								</p>
-							</div>
-						)}
+						<DeviceList
+							devices={devices}
+							selectedDevice={selectedDevice}
+							onSelectDevice={handleSelectDevice}
+							onUnlockDevice={handleUnlockDevice}
+							highlightedFingerprints={signingFingerprints}
+							signerFingerprints={signingFingerprints}
+							unlockingDeviceId={unlockingDeviceId}
+						/>
 					</>
 				)}
 
 				{selectedCanSign && (
-					<div className="signing-actions">
+					<div className="mt-6 flex flex-col items-center gap-3 border-t border-border pt-6">
 						<button
 							type="button"
 							onClick={handleSignTransaction}
 							disabled={signing || submitting}
-							className="btn-sign"
+							className="bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{signing
 								? "Signing... (Check your device)"
@@ -325,9 +295,9 @@ export default function TransactionSigning({
 									? "Submitting..."
 									: "Sign Transaction"}
 						</button>
-						<p className="signing-help">
-							You will be prompted to confirm the transaction on your hardware
-							wallet.
+						<p className="text-center text-sm text-muted-foreground">
+							You will be prompted to confirm the transaction on your
+							hardware wallet.
 						</p>
 					</div>
 				)}

@@ -21,7 +21,6 @@ use hex;
 use sigvault_desktop_lib::hwi::{
     DeviceState, DiscoveredDevice, HardwareWalletManager, UnsupportedReason, WalletConfig,
 };
-use std::str::FromStr;
 use std::time::Instant;
 
 // ---------------------------------------------------------------------------
@@ -106,120 +105,6 @@ fn parse_descriptor_key_origins(descriptor: &str) -> Vec<(Fingerprint, Derivatio
         }
     }
     origins
-}
-
-/// Fix up a PSBT's tap_key_origins by prepending the account-level derivation
-/// path from the descriptor, and ensure change outputs have tap_internal_key set.
-///
-/// This is needed when the PSBT was created with only relative paths
-/// (e.g. `0/0` instead of `86'/1'/0'/0/0`) or when the PSBT is missing
-/// tap_internal_key on change outputs (which the BitBox02 needs to identify
-/// internal/change outputs during signing).
-fn fixup_psbt_derivation_paths(psbt_b64: &str, descriptor: &str) -> String {
-    use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
-    use bitcoin::Psbt;
-
-    let origins = parse_descriptor_key_origins(descriptor);
-    if origins.is_empty() {
-        println!("  No key origins found in descriptor, skipping PSBT fixup");
-        return psbt_b64.to_string();
-    }
-
-    let bytes = match STANDARD.decode(psbt_b64) {
-        Ok(b) => b,
-        Err(_) => return psbt_b64.to_string(),
-    };
-    let mut psbt = match Psbt::deserialize(&bytes) {
-        Ok(p) => p,
-        Err(_) => return psbt_b64.to_string(),
-    };
-
-    let mut fixed_inputs = 0;
-    let mut fixed_outputs = 0;
-
-    // Fix inputs
-    for input in psbt.inputs.iter_mut() {
-        let mut new_tap_key_origins = std::collections::BTreeMap::new();
-        for (pubkey, (leaf_hashes, (fp, path))) in input.tap_key_origins.iter() {
-            let mut new_path = path.clone();
-            for (origin_fp, account_path) in &origins {
-                if fp == origin_fp {
-                    // Check if path already starts with account_path
-                    let path_vec: Vec<ChildNumber> = path.into_iter().cloned().collect();
-                    let account_vec: Vec<ChildNumber> =
-                        account_path.into_iter().cloned().collect();
-
-                    let already_prefixed = path_vec.len() >= account_vec.len()
-                        && path_vec[..account_vec.len()] == account_vec[..];
-
-                    if !already_prefixed {
-                        // Prepend account path
-                        let mut full: Vec<ChildNumber> = account_vec;
-                        full.extend(path_vec);
-                        new_path = DerivationPath::from(full);
-                        fixed_inputs += 1;
-                    }
-                    break;
-                }
-            }
-            new_tap_key_origins.insert(*pubkey, (leaf_hashes.clone(), (*fp, new_path)));
-        }
-        input.tap_key_origins = new_tap_key_origins;
-    }
-
-    // Fix outputs: derivation paths AND ensure tap_internal_key is set for change outputs
-    for output in psbt.outputs.iter_mut() {
-        let mut new_tap_key_origins = std::collections::BTreeMap::new();
-        for (pubkey, (leaf_hashes, (fp, path))) in output.tap_key_origins.iter() {
-            let mut new_path = path.clone();
-            for (origin_fp, account_path) in &origins {
-                if fp == origin_fp {
-                    let path_vec: Vec<ChildNumber> = path.into_iter().cloned().collect();
-                    let account_vec: Vec<ChildNumber> =
-                        account_path.into_iter().cloned().collect();
-
-                    let already_prefixed = path_vec.len() >= account_vec.len()
-                        && path_vec[..account_vec.len()] == account_vec[..];
-
-                    if !already_prefixed {
-                        let mut full: Vec<ChildNumber> = account_vec;
-                        full.extend(path_vec);
-                        new_path = DerivationPath::from(full);
-                        fixed_outputs += 1;
-                    }
-                    break;
-                }
-            }
-            new_tap_key_origins.insert(*pubkey, (leaf_hashes.clone(), (*fp, new_path)));
-        }
-        output.tap_key_origins = new_tap_key_origins;
-
-        // Ensure tap_internal_key is set for change outputs.
-        // The BitBox02's find_our_key() needs tap_internal_key to identify internal
-        // outputs; without it, keys with 0 leaf_hashes cause a KeyNotUnique error
-        // and the output is treated as external (which may cause firmware rejection).
-        if output.tap_internal_key.is_none() && !output.tap_key_origins.is_empty() {
-            // Find the key with 0 leaf_hashes — that's the internal key
-            for (pubkey, (leaf_hashes, _)) in &output.tap_key_origins {
-                if leaf_hashes.is_empty() {
-                    println!(
-                        "  Fixup: setting missing tap_internal_key on output to {}",
-                        pubkey
-                    );
-                    output.tap_internal_key = Some(*pubkey);
-                    break;
-                }
-            }
-        }
-    }
-
-    println!(
-        "  PSBT fixup: patched {} input derivations, {} output derivations",
-        fixed_inputs, fixed_outputs
-    );
-
-    let fixed_bytes = psbt.serialize();
-    STANDARD.encode(&fixed_bytes)
 }
 
 /// Simulate what the BitBox02's Transaction::from_psbt() does and print
@@ -929,47 +814,6 @@ async fn test_sign_psbt() {
     );
     println!();
 
-    // Fix up PSBT derivation paths using account paths from the descriptor
-    let psbt_b64 = if let Some(ref desc) = descriptor {
-        println!("  Fixing up PSBT derivation paths from descriptor...");
-        let fixed = fixup_psbt_derivation_paths(&psbt_b64, desc);
-        // Print fixed-up derivation info
-        {
-            use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
-            use bitcoin::Psbt;
-            if let Ok(bytes) = STANDARD.decode(&fixed) {
-                if let Ok(psbt) = Psbt::deserialize(&bytes) {
-                    for (i, input) in psbt.inputs.iter().enumerate() {
-                        if !input.tap_key_origins.is_empty() {
-                            println!("  Fixed input #{} tap_key_origins:", i);
-                            for (pubkey, (_, (fp, path))) in &input.tap_key_origins {
-                                println!(
-                                    "    pubkey: {}... fp: {} path: {}",
-                                    &pubkey.to_string()[..16], fp, path
-                                );
-                            }
-                        }
-                    }
-                    for (i, output) in psbt.outputs.iter().enumerate() {
-                        if !output.tap_key_origins.is_empty() {
-                            println!("  Fixed output #{} tap_key_origins:", i);
-                            for (pubkey, (_, (fp, path))) in &output.tap_key_origins {
-                                println!(
-                                    "    pubkey: {}... fp: {} path: {}",
-                                    &pubkey.to_string()[..16], fp, path
-                                );
-                            }
-                        }
-                    }
-                    println!();
-                }
-            }
-        }
-        fixed
-    } else {
-        psbt_b64
-    };
-
     let manager = HardwareWalletManager::new(network);
 
     // Step 1: Discover with wallet config
@@ -1572,11 +1416,10 @@ fn test_validate_psbt_for_bitbox_offline() {
         );
     }
 
-    // 2. Apply fixup to PSBT
-    println!("\n--- PSBT After Fixup ---");
+    // 2. Parse PSBT and descriptor key origins
+    println!("\n--- PSBT Derivation Paths ---");
     let key_origins = parse_descriptor_key_origins(&descriptor);
-    let fixed_psbt_b64 = fixup_psbt_derivation_paths(&psbt_b64, &descriptor);
-    let psbt_bytes = STANDARD.decode(&fixed_psbt_b64).unwrap();
+    let psbt_bytes = STANDARD.decode(&psbt_b64).unwrap();
     let psbt = Psbt::deserialize(&psbt_bytes).unwrap();
 
     // 3. Simulate find_our_key for each fingerprint

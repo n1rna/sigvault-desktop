@@ -174,7 +174,7 @@ pub(super) async fn authenticate_user(
     let user_profile = match api_client.user_profile(access_token.clone()).await {
         Ok(profile) => {
             info!("User profile fetched successfully: {:?}", profile.id);
-            profile
+            Ok(profile)
         }
         Err(e) => {
             error!("Failed to fetch user profile: {:?}", e);
@@ -190,10 +190,10 @@ pub(super) async fn authenticate_user(
             app_state.user_data.lock().await.clear();
             app_state.remote_sessions.lock().await.clear();
 
-            return Ok(CommandResult::error(
+            Err(CommandResult::error(
                 "Failed to fetch user profile",
                 AppErrorCode::AuthorizationFailed,
-            ));
+            ))
         }
     };
 
@@ -205,11 +205,15 @@ pub(super) async fn authenticate_user(
         .set_oauth_access_token(access_token);
 
     // Store user profile in app state
-    app_state
-        .user_data
-        .lock()
-        .await
-        .set_from_profile(user_profile);
+    match user_profile {
+        Ok(profile) => {
+            app_state.user_data.lock().await.set_from_profile(profile);
+        }
+        Err(_) => {
+            // This case should not happen since we return early on profile fetch failure
+            error!("User profile is not available, cannot set user data in state");
+        }
+    }
 
     // Update window state to show logged in
     if let Some(window) = app.get_webview_window("main") {
@@ -272,7 +276,7 @@ pub async fn cmd_logout(
         update_state(
             &window,
             StateUpdateEvent::builder()
-                .route(WindowApplicationRoute::Loading)
+                .route(WindowApplicationRoute::Login)
                 .build(),
         )
         .await
