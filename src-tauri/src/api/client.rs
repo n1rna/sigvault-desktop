@@ -16,11 +16,8 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new() -> Self {
-        let base_url =
-            std::env::var("API_BASE_URL").unwrap_or_else(|_| "http://localhost:8000".to_string());
-
         Self {
-            base_url,
+            base_url: env!("API_BASE_URL").to_string(),
             client: Client::new(),
         }
     }
@@ -41,33 +38,6 @@ impl ApiClient {
             .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", auth_token))
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        Ok(response)
-    }
-
-    pub async fn register_machine(
-        &self,
-        auth_token: String,
-        machine_id: String,
-        machine_name: String,
-        machine_type: String,
-    ) -> Result<MachineRegistrationResponse> {
-        debug!("Registering new machine");
-        let url = format!("{}/api/v1/register-machine", self.base_url);
-
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .json(&serde_json::json!({
-                "machine_id": machine_id,
-                "machine_name": machine_name,
-                "machine_type": machine_type,
-            }))
             .send()
             .await?
             .json()

@@ -23,11 +23,6 @@ pub struct AuthorizeMachineResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MachineRegistrationResponse {
-    pub status: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RemoteSession {
     pub id: String,
     pub status: String,

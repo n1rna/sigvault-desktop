@@ -1,7 +1,6 @@
 // Event system for backend-to-frontend communication
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use super::types::WindowApplicationRoute;
 use crate::api::types::RemoteSession;
@@ -34,7 +33,6 @@ pub struct StateUpdateEventBuilder {
     authenticated: Option<bool>,
     route: Option<WindowApplicationRoute>,
     active_session: ActiveSession,
-    remote_sessions: Option<Vec<RemoteSession>>,
 }
 
 impl StateUpdateEventBuilder {
@@ -53,16 +51,6 @@ impl StateUpdateEventBuilder {
         self
     }
 
-    pub fn session_type(mut self, session_type: String) -> Self {
-        self.active_session.session_type = Some(session_type);
-        self
-    }
-
-    pub fn remote_sessions(mut self, sessions: Vec<RemoteSession>) -> Self {
-        self.remote_sessions = Some(sessions);
-        self
-    }
-
     pub fn authenticated(mut self, authenticated: bool) -> Self {
         self.authenticated = Some(authenticated);
         self
@@ -73,23 +61,7 @@ impl StateUpdateEventBuilder {
             authenticated: self.authenticated,
             route: self.route,
             active_session: Some(self.active_session),
-            remote_sessions: self.remote_sessions,
-        }
-    }
-}
-
-/// Command event - triggers an action in the frontend
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CommandEvent {
-    pub command: String,
-    pub payload: Value,
-}
-
-impl CommandEvent {
-    pub fn new(command: impl Into<String>, payload: Value) -> Self {
-        Self {
-            command: command.into(),
-            payload,
+            remote_sessions: None,
         }
     }
 }
@@ -174,70 +146,12 @@ impl SessionEventBuilder {
     }
 }
 
-/// Notification event - shows a notification to the user
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct NotificationEvent {
-    pub level: NotificationLevel,
-    pub title: String,
-    pub message: String,
-    pub duration_ms: Option<u32>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum NotificationLevel {
-    Info,
-    Success,
-    Warning,
-    Error,
-}
-
-impl NotificationEvent {
-    pub fn info(title: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            level: NotificationLevel::Info,
-            title: title.into(),
-            message: message.into(),
-            duration_ms: Some(5000),
-        }
-    }
-
-    pub fn success(title: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            level: NotificationLevel::Success,
-            title: title.into(),
-            message: message.into(),
-            duration_ms: Some(5000),
-        }
-    }
-
-    pub fn warning(title: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            level: NotificationLevel::Warning,
-            title: title.into(),
-            message: message.into(),
-            duration_ms: Some(7000),
-        }
-    }
-
-    pub fn error(title: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            level: NotificationLevel::Error,
-            title: title.into(),
-            message: message.into(),
-            duration_ms: Some(10000),
-        }
-    }
-}
-
 /// Unified event type for all backend-to-frontend events
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppEvent {
     StateUpdate { data: StateUpdateEvent },
-    Command { data: CommandEvent },
     Session { data: SessionEvent },
-    Notification { data: NotificationEvent },
 }
 
 impl AppEvent {
@@ -245,15 +159,7 @@ impl AppEvent {
         Self::StateUpdate { data: event }
     }
 
-    pub fn command(event: CommandEvent) -> Self {
-        Self::Command { data: event }
-    }
-
     pub fn session(event: SessionEvent) -> Self {
         Self::Session { data: event }
-    }
-
-    pub fn notification(event: NotificationEvent) -> Self {
-        Self::Notification { data: event }
     }
 }

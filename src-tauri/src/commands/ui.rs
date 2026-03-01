@@ -5,7 +5,6 @@ use serde::Serialize;
 use tauri::{Manager, State, WebviewWindow};
 
 use crate::state::ApplicationState;
-use crate::window;
 
 #[derive(Serialize)]
 pub struct UserInfo {
@@ -73,7 +72,7 @@ pub async fn cmd_get_remote_sessions(
 #[tauri::command]
 pub async fn cmd_navigate(
     window: WebviewWindow,
-    app_state: State<'_, ApplicationState>,
+    _app_state: State<'_, ApplicationState>,
     route: String,
 ) -> Result<(), String> {
     use crate::window::{update_state, StateUpdateEvent, WindowApplicationRoute};

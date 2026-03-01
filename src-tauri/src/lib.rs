@@ -24,16 +24,11 @@ use state::ApplicationState;
 pub fn run() {
     info!("Starting Sigvault Desktop application");
 
-    // Initialize OAuth state
-    // TODO: Get these from environment variables or configuration
+    // Initialize OAuth state (values burned in at build time from .env)
     let oauth_state = OAuthState::new(
-        std::env::var("OAUTH2_CLIENT_ID").unwrap_or_else(|_| "346819126007796376".to_string()),
-        std::env::var("OAUTH2_AUTH_URL").unwrap_or_else(|_| {
-            "https://sigvault-jsyfl0.us1.zitadel.cloud/oauth/v2/authorize".to_string()
-        }),
-        std::env::var("OAUTH2_TOKEN_URL").unwrap_or_else(|_| {
-            "https://sigvault-jsyfl0.us1.zitadel.cloud/oauth/v2/token".to_string()
-        }),
+        env!("OAUTH2_CLIENT_ID").to_string(),
+        env!("OAUTH2_AUTH_URL").to_string(),
+        env!("OAUTH2_TOKEN_URL").to_string(),
     )
     .expect("Failed to initialize OAuth state");
 

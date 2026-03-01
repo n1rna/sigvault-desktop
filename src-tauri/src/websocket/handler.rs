@@ -153,10 +153,6 @@ impl WebsocketHandler {
         Ok(())
     }
 
-    pub async fn is_connected(&self) -> bool {
-        *self.is_connected.lock().await
-    }
-
     async fn handle_next_message(&mut self, reader: &mut WsReceiver) -> Result<bool> {
         match reader.next().await {
             Some(Ok(Message::Text(msg))) => {
@@ -226,9 +222,6 @@ impl WebsocketHandler {
                                         }
                                     }
                                 }
-                            }
-                            _ => {
-                                debug!("Unhandled message type: {:?}", msg.message_type);
                             }
                         }
 

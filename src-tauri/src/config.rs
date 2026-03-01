@@ -1,29 +1,22 @@
 use bitcoin::Network;
 use once_cell::sync::Lazy;
-use std::env;
 
 /// Global configuration for the wallet service
 pub struct Config {
     /// Bitcoin network (mainnet, testnet, regtest, signet)
-    pub bitcoin_network: String,
+    pub bitcoin_network: &'static str,
 }
 
 impl Config {
-    /// Create a new Config instance from environment variables
     fn new() -> Self {
         Self {
-            bitcoin_network: env::var("BITCOIN_NETWORK").unwrap_or_else(|_| "regtest".to_string()),
+            bitcoin_network: env!("BITCOIN_NETWORK"),
         }
-    }
-
-    /// Get the Bitcoin network as string
-    pub fn bitcoin_network(&self) -> &str {
-        &self.bitcoin_network
     }
 
     /// Get the Bitcoin network as Network enum
     pub fn network(&self) -> Network {
-        parse_network_str(&self.bitcoin_network).unwrap_or(Network::Regtest)
+        parse_network_str(self.bitcoin_network).unwrap_or(Network::Regtest)
     }
 }
 

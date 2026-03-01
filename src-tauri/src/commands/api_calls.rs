@@ -5,7 +5,6 @@ use tauri::{State, WebviewWindow};
 
 use crate::api::ApiClient;
 use crate::error::AppErrorCode;
-use crate::machine::get_machine_information;
 use crate::state::ApplicationState;
 use crate::window::{update_state, StateUpdateEvent};
 
