@@ -205,9 +205,13 @@ pub(super) async fn authenticate_user(
         .set_oauth_access_token(access_token);
 
     // Store user profile in app state
+    let mut authenticated = false; // This will be set to true after successful authentication
+    let mut route = WindowApplicationRoute::Login; // Default to login route on failure
     match user_profile {
         Ok(profile) => {
             app_state.user_data.lock().await.set_from_profile(profile);
+            authenticated = true;
+            route = WindowApplicationRoute::MainPage;
         }
         Err(_) => {
             // This case should not happen since we return early on profile fetch failure
@@ -220,8 +224,8 @@ pub(super) async fn authenticate_user(
         update_state(
             &window,
             StateUpdateEvent::builder()
-                .authenticated(true)
-                .route(WindowApplicationRoute::MainPage)
+                .authenticated(authenticated)
+                .route(route)
                 .socket_connected(false)
                 .build(),
         )
@@ -229,7 +233,7 @@ pub(super) async fn authenticate_user(
         .map_err(|e| e.to_string())?;
     }
 
-    Ok(CommandResult::success("Authentication successful"))
+    Ok(CommandResult::success("Authentication finished"))
 }
 
 /// Wait for the authorization code from the callback
