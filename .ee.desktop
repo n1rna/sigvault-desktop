@@ -1,5 +1,14 @@
 {
 	"project": "sigvault-desktop",
+	"origins": {
+		"github": {
+			"type": "github",
+			"mode": "bundled",
+			"secret_name": "ENV_VARS_DESKTOP",
+			"repo": "n1rna/sigvault-desktop",
+			"environment": "development"
+		}
+	},
 	"schema": {
 		"variables": {
 			"API_BASE_URL": {
@@ -41,10 +50,10 @@
 	},
 	"environments": {
 		"development": {
-			"sheets": [".env.desktop.development"]
+			"sources": [".env.desktop.development"]
 		},
 		"production": {
-			"sheets": [".env.desktop.production"]
+			"sources": [".env.desktop.production"]
 		}
 	}
 }
