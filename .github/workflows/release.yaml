@@ -31,27 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare build environment (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Prepare build environment
         uses: n1rna/ee-action@main
         with:
           environment: development
           config_path: .ee.desktop
           env_file: .env
           gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
-
-      - name: Prepare build environment (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        run: |
-          curl -sSfL https://ee.n1rna.net/install.sh | sh
-          export PATH="$HOME/.ee/bin:$PATH"
-          TEMP_ENV=$(mktemp)
-          printf '%s\n' "$ENV_SECRET" > "$TEMP_ENV"
-          ee apply "$TEMP_ENV" -- ee hydrate development -c .ee.desktop -o .env -f dotenv
-          rm -f "$TEMP_ENV"
-        env:
-          ENV_SECRET: ${{ secrets.ENV_VARS_DESKTOP }}
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
