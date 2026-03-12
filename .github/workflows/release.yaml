@@ -39,6 +39,10 @@ jobs:
           env_file: .env
           gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
 
+      - name: Export env vars for build
+        shell: bash
+        run: cat .env >> "$GITHUB_ENV"
+
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
