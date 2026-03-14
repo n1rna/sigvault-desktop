@@ -15,7 +15,7 @@
 				"name": "API_BASE_URL",
 				"title": "API server base URL",
 				"type": "string",
-				"default": "http://localhost:8000",
+				"default": "https://api.dev.sigvault.org",
 				"required": true
 			},
 			"BITCOIN_NETWORK": {
