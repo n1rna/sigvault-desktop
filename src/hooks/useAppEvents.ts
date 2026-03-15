@@ -1,6 +1,6 @@
 // Hook for listening to backend events and managing app state
 
-import { useEffect, useReducer, useCallback } from "react";
+import { useEffect, useReducer, useCallback, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type {
 	AppEvent,
@@ -51,6 +51,7 @@ function appStateReducer(state: AppState, action: AppAction): AppState {
 
 export function useAppEvents() {
 	const [state, dispatch] = useReducer(appStateReducer, initialState);
+	const [listenerReady, setListenerReady] = useState(false);
 
 	const handleStateUpdate = useCallback((data: StateUpdateEvent) => {
 		console.log("State update:", data);
@@ -166,11 +167,16 @@ export function useAppEvents() {
 			}
 		});
 
+		unlistenPromise.then(() => {
+			console.log("Event listener ready");
+			setListenerReady(true);
+		});
+
 		return () => {
 			console.log("Cleaning up event listener...");
 			unlistenPromise.then((unlisten) => unlisten());
 		};
 	}, [handleStateUpdate, handleCommand, handleSession, handleNotification]);
 
-	return state;
+	return { ...state, listenerReady };
 }
