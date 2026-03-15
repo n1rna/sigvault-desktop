@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppState } from "../contexts/AppStateContext";
 
@@ -8,12 +9,23 @@ const navItems = [
 
 export default function Navbar() {
 	const { route } = useAppState();
+	const [signingOut, setSigningOut] = useState(false);
 
 	const navigate = async (target: string) => {
 		try {
 			await invoke("cmd_navigate", { route: target });
 		} catch (error) {
 			console.error("Failed to navigate:", error);
+		}
+	};
+
+	const handleSignOut = async () => {
+		setSigningOut(true);
+		try {
+			await invoke("cmd_logout");
+		} catch (error) {
+			console.error("Failed to sign out:", error);
+			setSigningOut(false);
 		}
 	};
 
@@ -39,6 +51,16 @@ export default function Navbar() {
 					</button>
 				);
 			})}
+			<div className="ml-auto">
+				<button
+					type="button"
+					onClick={handleSignOut}
+					disabled={signingOut}
+					className="bg-transparent px-3 py-1.5 text-sm text-muted-foreground hover:text-destructive disabled:opacity-50"
+				>
+					{signingOut ? "Signing out…" : "Sign Out"}
+				</button>
+			</div>
 		</nav>
 	);
 }
