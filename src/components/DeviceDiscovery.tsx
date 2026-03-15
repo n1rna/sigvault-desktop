@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type {
 	DiscoveredDevice,
 	DeviceInfo,
 	WalletConfig,
+	HwiDiscoveryProgress,
+	HwiUnlockProgress,
 } from "../types/hardware";
 import { isDeviceSupported, getDeviceFingerprint } from "../types/hardware";
 import type { CommandResult } from "../types/events";
@@ -30,10 +33,37 @@ export default function DeviceDiscovery({
 		null,
 	);
 	const [error, setError] = useState<string | null>(null);
+	const [discoveryStatus, setDiscoveryStatus] = useState<string | null>(null);
+	const [unlockStatus, setUnlockStatus] = useState<Record<string, string>>({});
+
+	useEffect(() => {
+		const unlistenDiscovery = listen<HwiDiscoveryProgress>(
+			"hwi_discovery_progress",
+			(event) => {
+				setDiscoveryStatus(event.payload.message);
+			},
+		);
+
+		const unlistenUnlock = listen<HwiUnlockProgress>(
+			"hwi_unlock_progress",
+			(event) => {
+				setUnlockStatus((prev) => ({
+					...prev,
+					[event.payload.device_id]: event.payload.message,
+				}));
+			},
+		);
+
+		return () => {
+			unlistenDiscovery.then((fn) => fn());
+			unlistenUnlock.then((fn) => fn());
+		};
+	}, []);
 
 	const handleDiscover = async () => {
 		setDiscovering(true);
 		setError(null);
+		setDiscoveryStatus(null);
 
 		try {
 			const result = await invoke<CommandResult<DiscoveredDevice[]>>(
@@ -57,6 +87,7 @@ export default function DeviceDiscovery({
 			setError(String(err));
 		} finally {
 			setDiscovering(false);
+			setDiscoveryStatus(null);
 		}
 	};
 
@@ -69,6 +100,11 @@ export default function DeviceDiscovery({
 	const handleUnlockDevice = async (device: DiscoveredDevice) => {
 		setUnlockingDeviceId(device.id);
 		setError(null);
+		setUnlockStatus((prev) => {
+			const next = { ...prev };
+			delete next[device.id];
+			return next;
+		});
 
 		try {
 			const result = await invoke<CommandResult<DiscoveredDevice>>(
@@ -94,6 +130,11 @@ export default function DeviceDiscovery({
 			setError(String(err));
 		} finally {
 			setUnlockingDeviceId(null);
+			setUnlockStatus((prev) => {
+				const next = { ...prev };
+				delete next[device.id];
+				return next;
+			});
 		}
 	};
 
@@ -144,6 +185,10 @@ export default function DeviceDiscovery({
 				</button>
 			</div>
 
+			{discoveryStatus && (
+				<div className="text-sm text-muted-foreground">{discoveryStatus}</div>
+			)}
+
 			{error && (
 				<div className="border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
 					{error}
@@ -158,6 +203,7 @@ export default function DeviceDiscovery({
 						onSelectDevice={handleSelectDevice}
 						onUnlockDevice={handleUnlockDevice}
 						unlockingDeviceId={unlockingDeviceId}
+						unlockStatus={unlockStatus}
 					/>
 
 					{canExtract && (
