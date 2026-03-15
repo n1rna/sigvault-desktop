@@ -434,7 +434,7 @@ impl HardwareWalletManager {
                     };
                     let trezor = Trezor::new(client, trezor_network);
                     match self
-                        .handle_trezor_device(id, trezor, &mut supported_devices)
+                        .handle_trezor_device(id, trezor, &mut supported_devices, app_handle)
                         .await
                     {
                         Ok(discovered) => devices.push(discovered),
@@ -861,7 +861,16 @@ impl HardwareWalletManager {
         id: String,
         trezor: Trezor,
         supported_devices: &mut std::collections::HashMap<String, Arc<dyn HWI + Send + Sync>>,
+        app_handle: &tauri::AppHandle,
     ) -> Result<DiscoveredDevice, HWIError> {
+        let _ = app_handle.emit(
+            "hwi_discovery_progress",
+            DiscoveryProgress {
+                stage: "trezor_unlock".to_string(),
+                message: "Trezor found — enter PIN on your device if prompted".to_string(),
+                devices_found: 0,
+            },
+        );
         match (
             trezor.get_master_fingerprint().await,
             trezor.get_version().await,
