@@ -67,6 +67,8 @@ export interface AppState {
 	authenticated: boolean;
 	route: WindowApplicationRoute;
 	listenerReady: boolean;
+	notification: NotificationEvent | null;
+	activityLog: NotificationEvent[];
 	activeSession: {
 		isConnected: boolean;
 		sessionId?: string;

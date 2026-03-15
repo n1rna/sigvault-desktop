@@ -1,6 +1,6 @@
 // Main App component with routing
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
 	BrowserRouter,
 	Routes,
@@ -87,11 +87,78 @@ function AppRouter() {
 	);
 }
 
+function ActivityPanel() {
+	const { activityLog } = useAppState();
+	const [expanded, setExpanded] = useState(false);
+
+	if (activityLog.length === 0) return null;
+
+	const latest = activityLog[activityLog.length - 1];
+	const isLatestInProgress = latest.message !== "Discovery complete";
+
+	return (
+		<div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card shadow-[0_-4px_12px_rgba(0,0,0,0.15)]">
+			<button
+				type="button"
+				onClick={() => setExpanded(!expanded)}
+				className="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-accent/50"
+			>
+				{isLatestInProgress ? (
+					<svg className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+						<path d="M21 12a9 9 0 1 1-6.219-8.56" />
+					</svg>
+				) : (
+					<svg className="h-3.5 w-3.5 shrink-0 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+						<path d="M20 6 9 17l-5-5" />
+					</svg>
+				)}
+				<span className="flex-1 truncate text-xs text-muted-foreground">
+					{latest.message}
+				</span>
+				<svg
+					className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+				>
+					<path d="m18 15-6-6-6 6" />
+				</svg>
+			</button>
+
+			{expanded && (
+				<div className="max-h-48 overflow-y-auto border-t border-border px-4 py-2 space-y-1.5">
+					{activityLog.map((item, i) => {
+						const isInProgress = i === activityLog.length - 1 && item.message !== "Discovery complete";
+						return (
+							<div key={i} className="flex items-start gap-2">
+								{isInProgress ? (
+									<svg className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<path d="M21 12a9 9 0 1 1-6.219-8.56" />
+									</svg>
+								) : (
+									<svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<path d="M20 6 9 17l-5-5" />
+									</svg>
+								)}
+								<span className={`text-xs ${isInProgress ? "text-foreground" : "text-muted-foreground"}`}>
+									{item.message}
+								</span>
+							</div>
+						);
+					})}
+				</div>
+			)}
+		</div>
+	);
+}
+
 export default function App() {
 	return (
 		<AppStateProvider>
 			<BrowserRouter>
 				<AppRouter />
+				<ActivityPanel />
 			</BrowserRouter>
 		</AppStateProvider>
 	);
