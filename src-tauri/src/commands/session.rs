@@ -75,7 +75,7 @@ pub async fn cmd_start_session_websocket_connection(
     let join_handler = tauri::async_runtime::spawn(async move {
         let mut ws_handler = WebsocketHandler::new(
             window_clone.clone(),
-            "ws://localhost:8000".to_string(),
+            env!("API_BASE_URL").replace("https://", "wss://").replace("http://", "ws://"),
             session_id_clone.clone(),
             websocket_token.token,
         );
