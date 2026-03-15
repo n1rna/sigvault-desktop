@@ -1,7 +1,8 @@
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::Emitter;
+use tauri::Manager;
+use crate::window::emit_notification;
 use tokio::sync::Mutex;
 
 use async_hwi::{
@@ -181,15 +182,11 @@ impl HardwareWalletManager {
             self.network
         );
 
-        let emit_progress = |stage: &str, message: &str, devices_found: usize| {
-            let _ = app_handle.emit(
-                "hwi_discovery_progress",
-                DiscoveryProgress {
-                    stage: stage.to_string(),
-                    message: message.to_string(),
-                    devices_found,
-                },
-            );
+        let window = app_handle.get_webview_window("main");
+        let emit_progress = |_stage: &str, message: &str, _devices_found: usize| {
+            if let Some(w) = &window {
+                emit_notification(w, "Device Discovery", message, "info");
+            }
         };
 
         let mut devices = Vec::new();
@@ -464,14 +461,11 @@ impl HardwareWalletManager {
     ) -> Result<DiscoveredDevice, Box<dyn Error + Send + Sync>> {
         info!("Unlocking device: {}", device_id);
 
+        let window = app_handle.get_webview_window("main");
         let emit_unlock = |message: &str| {
-            let _ = app_handle.emit(
-                "hwi_unlock_progress",
-                UnlockProgress {
-                    device_id: device_id.to_string(),
-                    message: message.to_string(),
-                },
-            );
+            if let Some(w) = &window {
+                emit_notification(w, "Device Unlock", message, "info");
+            }
         };
 
         let mut locked_devices = self.locked_devices.lock().await;
@@ -868,14 +862,9 @@ impl HardwareWalletManager {
         supported_devices: &mut std::collections::HashMap<String, Arc<dyn HWI + Send + Sync>>,
         app_handle: &tauri::AppHandle,
     ) -> Result<DiscoveredDevice, HWIError> {
-        let _ = app_handle.emit(
-            "hwi_discovery_progress",
-            DiscoveryProgress {
-                stage: "trezor_unlock".to_string(),
-                message: "Trezor found — enter PIN on your device if prompted".to_string(),
-                devices_found: 0,
-            },
-        );
+        if let Some(w) = app_handle.get_webview_window("main") {
+            emit_notification(&w, "Device Discovery", "Trezor found — enter PIN on your device if prompted", "info");
+        }
         match (
             trezor.get_master_fingerprint().await,
             trezor.get_version().await,

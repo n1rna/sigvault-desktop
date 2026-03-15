@@ -148,10 +148,18 @@ impl SessionEventBuilder {
 
 /// Unified event type for all backend-to-frontend events
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NotificationEvent {
+    pub title: String,
+    pub message: String,
+    pub level: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppEvent {
     StateUpdate { data: StateUpdateEvent },
     Session { data: SessionEvent },
+    Notification { data: NotificationEvent },
 }
 
 impl AppEvent {
@@ -161,5 +169,15 @@ impl AppEvent {
 
     pub fn session(event: SessionEvent) -> Self {
         Self::Session { data: event }
+    }
+
+    pub fn notification(title: &str, message: &str, level: &str) -> Self {
+        Self::Notification {
+            data: NotificationEvent {
+                title: title.to_string(),
+                message: message.to_string(),
+                level: level.to_string(),
+            },
+        }
     }
 }
