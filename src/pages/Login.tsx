@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import WindowControls from "../components/WindowControls";
 
 export function Login() {
 	const [isLoading, setIsLoading] = useState(false);
@@ -21,6 +22,7 @@ export function Login() {
 
 	return (
 		<div className="flex h-screen w-full items-center justify-center bg-background">
+			<WindowControls />
 			<div className="w-[90%] max-w-[400px] border border-border bg-card p-12 text-center">
 				<h1 className="mb-2 text-2xl font-semibold text-foreground">
 					Welcome to SigVault

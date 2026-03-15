@@ -94,7 +94,7 @@ function ActivityPanel() {
 	if (activityLog.length === 0) return null;
 
 	const latest = activityLog[activityLog.length - 1];
-	const isLatestInProgress = latest.message !== "Discovery complete";
+	const isLatestInProgress = latest.level !== "success";
 
 	return (
 		<div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card shadow-[0_-4px_12px_rgba(0,0,0,0.15)]">
@@ -129,7 +129,7 @@ function ActivityPanel() {
 			{expanded && (
 				<div className="max-h-48 overflow-y-auto border-t border-border px-4 py-2 space-y-1.5">
 					{activityLog.map((item, i) => {
-						const isInProgress = i === activityLog.length - 1 && item.message !== "Discovery complete";
+						const isInProgress = i === activityLog.length - 1 && item.level !== "success";
 						return (
 							<div key={i} className="flex items-start gap-2">
 								{isInProgress ? (
