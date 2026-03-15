@@ -286,6 +286,7 @@ pub async fn cmd_logout(
         update_state(
             &window,
             StateUpdateEvent::builder()
+                .authenticated(false)
                 .route(WindowApplicationRoute::Login)
                 .build(),
         )
