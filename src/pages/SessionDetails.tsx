@@ -7,15 +7,20 @@ import DeviceCreationSession from "../components/DeviceCreationSession";
 import TransactionSigning from "../components/TransactionSigning";
 
 export default function SessionDetails() {
-	const { activeSession } = useAppState();
+	const { activeSession, clearActivityLog } = useAppState();
 
 	const handleExit = useCallback(async () => {
+		clearActivityLog();
 		try {
 			await invoke<CommandResult>("cmd_exit_session");
 		} catch (error) {
 			console.error("Failed to exit session:", error);
 		}
-	}, []);
+	}, [clearActivityLog]);
+
+	useEffect(() => {
+		return () => { clearActivityLog(); };
+	}, [clearActivityLog]);
 
 	useEffect(() => {
 		const handleBeforeUnload = () => {
