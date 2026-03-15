@@ -32,7 +32,7 @@ impl ApiClient {
 
     pub async fn user_profile(&self, auth_token: String) -> Result<UserProfile> {
         debug!("Fetching user profile");
-        let url = format!("{}/api/v2/user", self.base_url);
+        let url = format!("{}/api/v2/user/", self.base_url);
 
         let response = self
             .client
