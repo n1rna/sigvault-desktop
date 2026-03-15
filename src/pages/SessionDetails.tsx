@@ -95,7 +95,7 @@ export default function SessionDetails() {
 	};
 
 	return (
-		<div className="flex h-full w-full flex-col overflow-hidden p-8">
+		<div className="flex h-full w-full flex-col p-8">
 			<div className="mb-4 flex shrink-0 items-center justify-between">
 				<h1 className="text-[1.75rem] font-semibold text-foreground">
 					Session Details
@@ -135,7 +135,7 @@ export default function SessionDetails() {
 				)}
 			</div>
 
-			<div className="flex-1 overflow-y-auto overflow-x-hidden">
+			<div className="min-h-0 flex-1 overflow-y-auto pb-8">
 				{activeSession.sessionState?.error && (
 					<div className="mb-6 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
 						{activeSession.sessionState.error}
