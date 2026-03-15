@@ -14,6 +14,7 @@ import type {
 const initialState: AppState = {
 	authenticated: false,
 	route: "Loading",
+	listenerReady: false,
 	activeSession: {
 		isConnected: false,
 		sessionId: undefined,
