@@ -61,7 +61,7 @@ pub async fn cmd_discover_hardware_wallets(
         None => None,
     };
 
-    match app_state.hw_manager.discover_devices(config.as_ref(), &app).await {
+    match app_state.hw_manager.discover_devices(config.as_ref(), Some(&app)).await {
         Ok(devices) => {
             info!("Successfully discovered {} device(s)", devices.len());
             let devices_json = serde_json::to_value(&devices)
@@ -101,7 +101,7 @@ pub async fn cmd_unlock_device(
 
     match app_state
         .hw_manager
-        .unlock_device(&device_id, config.as_ref(), &app)
+        .unlock_device(&device_id, config.as_ref(), Some(&app))
         .await
     {
         Ok(device) => {
