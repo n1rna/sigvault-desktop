@@ -51,7 +51,7 @@ impl ApiClient {
         auth_token: String,
     ) -> Result<RemoteSessionsResponse> {
         debug!("Fetching remote sessions");
-        let url = format!("{}/api/v2/remote-sessions/list/", self.base_url);
+        let url = format!("{}/api/v2/remote-sessions/list", self.base_url);
 
         let response = self
             .client
@@ -72,7 +72,7 @@ impl ApiClient {
         machine_info: MachineInformation,
     ) -> Result<WebsocketTokenResponse> {
         debug!("Fetching WebSocket token");
-        let url = format!("{}/api/v2/machine/ws-token/", self.base_url);
+        let url = format!("{}/api/v2/machine/ws-token", self.base_url);
 
         let response = self
             .client
