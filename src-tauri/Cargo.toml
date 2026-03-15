@@ -40,7 +40,7 @@ oauth2 = "4.4"
 axum = { version = "0.7", features = ["tokio"] }
 tower = "0.5"
 open = "5.0"
-async-hwi = { git = "https://github.com/n1rna/async-hwi.git", version = "0.0.30" }
+async-hwi = { git = "https://github.com/n1rna/async-hwi.git", branch = "jade-timeouts", version = "0.0.30", features = ["trezor"] }
 bitcoin = "0.32.8"
 async-trait = "0.1.89"
 once_cell = "1.21.3"
