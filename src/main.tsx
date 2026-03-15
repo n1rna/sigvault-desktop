@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import "./globals.css";
 import App from "./App";
 
-if (!import.meta.env.DEV) {
+if (process.env.NODE_ENV === "production") {
   document.addEventListener("contextmenu", (e) => e.preventDefault());
   document.addEventListener("keydown", (e) => {
     if (
