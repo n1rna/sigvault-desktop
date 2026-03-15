@@ -448,7 +448,9 @@ impl HardwareWalletManager {
         }
 
         info!("Discovered {} hardware wallet(s)", devices.len());
-        emit_progress("complete", "Discovery complete", devices.len());
+        if let Some(w) = app_handle.get_webview_window("main") {
+            emit_notification(&w, "Device Discovery", "Discovery complete", "success");
+        }
         Ok(devices)
     }
 
@@ -480,6 +482,9 @@ impl HardwareWalletManager {
                 info!("Waiting for BitBox02 confirmation...");
                 emit_unlock("Confirm pairing code on your BitBox02 device");
                 let (paired_device, _) = pairing_bb.wait_confirm().await?;
+                if let Some(w) = app_handle.get_webview_window("main") {
+                    emit_notification(&w, "Device Unlock", "BitBox02 pairing confirmed", "success");
+                }
 
                 let mut bitbox = BitBox02::from(paired_device).with_network(self.network);
                 let fingerprint = bitbox.get_master_fingerprint().await?;
