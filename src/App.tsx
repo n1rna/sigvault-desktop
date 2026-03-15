@@ -30,17 +30,18 @@ function AuthenticatedLayout() {
 }
 
 function AppRouter() {
-	const { route, authenticated } = useAppState();
+	const { route, authenticated, listenerReady } = useAppState();
 	const navigate = useNavigate();
 
-	// Initialize app on mount
+	// Initialize app only after event listener is ready
 	useEffect(() => {
+		if (!listenerReady) return;
 		const initializeApp = async () => {
 			await invoke("cmd_initialize_app");
 			console.log("App initialized");
 		};
 		initializeApp();
-	}, []);
+	}, [listenerReady]);
 
 	// Navigate based on backend-controlled route
 	useEffect(() => {

@@ -66,6 +66,7 @@ export type AppEvent =
 export interface AppState {
 	authenticated: boolean;
 	route: WindowApplicationRoute;
+	listenerReady: boolean;
 	activeSession: {
 		isConnected: boolean;
 		sessionId?: string;
