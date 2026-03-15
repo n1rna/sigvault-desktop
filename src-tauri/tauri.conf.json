@@ -14,9 +14,11 @@
     "windows": [
       {
         "title": "sigvault-desktop",
-        "width": 800,
-        "height": 600,
-        "resizable": false,
+        "width": 900,
+        "height": 650,
+        "minWidth": 750,
+        "minHeight": 500,
+        "resizable": true,
         "decorations": false
       }
     ],
