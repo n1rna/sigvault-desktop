@@ -128,12 +128,20 @@ pub async fn cmd_authenticate(
         .clone()
         .ok_or("PKCE verifier not found")?;
 
-    let token_response = oauth_state
+    info!("Sending token exchange request to Zitadel");
+    let token_result = oauth_state
         .client
         .exchange_code(AuthorizationCode::new(auth_code))
         .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
         .request_async(async_http_client)
-        .await
+        .await;
+
+    let token_response = match &token_result {
+        Ok(_) => info!("Token exchange successful"),
+        Err(e) => error!("Token exchange error: {:?}", e),
+    };
+
+    let token_response = token_result
         .map_err(|e| format!("Token exchange failed: {}", e))?;
 
     let access_token = token_response.access_token().secret().to_string();

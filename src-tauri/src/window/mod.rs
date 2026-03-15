@@ -23,6 +23,10 @@ pub async fn update_state(window: &WebviewWindow, event: StateUpdateEvent) -> Wi
     Ok(())
 }
 
+pub fn emit_notification(window: &WebviewWindow, title: &str, message: &str, level: &str) {
+    let _ = window.emit("app_event", AppEvent::notification(title, message, level));
+}
+
 pub async fn update_session_state(window: &WebviewWindow, event: SessionEvent) -> WindowResult<()> {
     debug!("Updating active session state: {:?}", event);
 

@@ -7,7 +7,7 @@ const BUILD_ENV_VARS: &[(&str, &str)] = &[
     ("OAUTH2_CLIENT_ID", "346819126007796376"),
     (
         "OAUTH2_AUTH_URL",
-        "https://sigvault-jsyfl0.us1.zitadel.cloud/oauth/v2/authorize",
+        "https://app.dev.sigvault.org/auth/desktop-login",
     ),
     (
         "OAUTH2_TOKEN_URL",
