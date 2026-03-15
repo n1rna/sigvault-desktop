@@ -107,9 +107,12 @@ pub async fn cmd_authenticate(
         }
     });
 
-    // Open the authorization URL in the user's browser
-    app.opener()
-        .open_url(auth_url.to_string(), None::<&str>)
+    // Open the authorization URL in the user's browser.
+    // Clear LD_LIBRARY_PATH so AppImage-bundled libs don't break xdg-open.
+    std::process::Command::new("xdg-open")
+        .arg(auth_url.to_string())
+        .env_remove("LD_LIBRARY_PATH")
+        .spawn()
         .map_err(|e| format!("Failed to open browser: {}", e))?;
 
     // Wait for the callback (poll for auth code)
