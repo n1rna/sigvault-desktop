@@ -1,7 +1,7 @@
 use log::{error, info};
 use serde::Deserialize;
 use serde_json;
-use tauri::{State, WebviewWindow};
+use tauri::{AppHandle, State, WebviewWindow};
 
 use crate::error::AppErrorCode;
 use crate::hwi::{DeviceInfo, WalletConfig};
@@ -49,6 +49,7 @@ impl WalletConfigInput {
 /// Discover all connected hardware wallets with their states
 #[tauri::command]
 pub async fn cmd_discover_hardware_wallets(
+    app: AppHandle,
     _window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
     wallet_config: Option<WalletConfigInput>,
@@ -60,7 +61,7 @@ pub async fn cmd_discover_hardware_wallets(
         None => None,
     };
 
-    match app_state.hw_manager.discover_devices(config.as_ref()).await {
+    match app_state.hw_manager.discover_devices(config.as_ref(), &app).await {
         Ok(devices) => {
             info!("Successfully discovered {} device(s)", devices.len());
             let devices_json = serde_json::to_value(&devices)
@@ -85,6 +86,7 @@ pub async fn cmd_discover_hardware_wallets(
 /// Unlock a locked device (BitBox02 pairing, Jade PIN)
 #[tauri::command]
 pub async fn cmd_unlock_device(
+    app: AppHandle,
     _window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
     device_id: String,
@@ -99,7 +101,7 @@ pub async fn cmd_unlock_device(
 
     match app_state
         .hw_manager
-        .unlock_device(&device_id, config.as_ref())
+        .unlock_device(&device_id, config.as_ref(), &app)
         .await
     {
         Ok(device) => {

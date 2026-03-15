@@ -1,6 +1,7 @@
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::sync::Mutex;
 
 use async_hwi::{
@@ -138,6 +139,19 @@ pub struct SignedPsbt {
     pub derivation_path: String,
 }
 
+#[derive(Serialize, Clone)]
+struct DiscoveryProgress {
+    stage: String,
+    message: String,
+    devices_found: usize,
+}
+
+#[derive(Serialize, Clone)]
+pub struct UnlockProgress {
+    pub device_id: String,
+    pub message: String,
+}
+
 /// Global state for managing locked devices awaiting confirmation
 pub struct HardwareWalletManager {
     network: Network,
@@ -160,11 +174,23 @@ impl HardwareWalletManager {
     pub async fn discover_devices(
         &self,
         wallet_config: Option<&WalletConfig>,
+        app_handle: &tauri::AppHandle,
     ) -> Result<Vec<DiscoveredDevice>, Box<dyn Error + Send + Sync>> {
         info!(
             "Starting hardware wallet discovery on network: {:?}",
             self.network
         );
+
+        let emit_progress = |stage: &str, message: &str, devices_found: usize| {
+            let _ = app_handle.emit(
+                "hwi_discovery_progress",
+                DiscoveryProgress {
+                    stage: stage.to_string(),
+                    message: message.to_string(),
+                    devices_found,
+                },
+            );
+        };
 
         let mut devices = Vec::new();
         let mut locked_devices = self.locked_devices.lock().await;
@@ -173,6 +199,8 @@ impl HardwareWalletManager {
         // Clear previous state
         locked_devices.clear();
         supported_devices.clear();
+
+        emit_progress("scanning_specter", "Scanning for Specter devices...", 0);
 
         // Try Specter Simulator
         match SpecterSimulator::try_connect().await {
@@ -196,6 +224,8 @@ impl HardwareWalletManager {
             Err(e) => debug!("Specter simulator connection error: {}", e),
         }
 
+        emit_progress("scanning_ledger_simulator", "Scanning for Ledger simulator...", devices.len());
+
         // Try Ledger Simulator
         match LedgerSimulator::try_connect().await {
             Ok(device) => {
@@ -211,6 +241,8 @@ impl HardwareWalletManager {
             Err(HWIError::DeviceNotFound) => {}
             Err(e) => debug!("Ledger simulator connection error: {}", e),
         }
+
+        emit_progress("scanning_specter_usb", "Scanning for Specter devices...", devices.len());
 
         // Enumerate Specter devices
         match Specter::enumerate().await {
@@ -234,6 +266,8 @@ impl HardwareWalletManager {
             }
             Err(e) => warn!("Error enumerating Specter devices: {}", e),
         }
+
+        emit_progress("scanning_jade", "Scanning serial ports for Jade devices...", devices.len());
 
         // Enumerate Jade devices
         match jade::SerialTransport::enumerate_potential_ports() {
@@ -263,6 +297,8 @@ impl HardwareWalletManager {
             }
             Err(e) => warn!("Error enumerating Jade ports: {}", e),
         }
+
+        emit_progress("scanning_usb", "Scanning USB devices...", devices.len());
 
         // Initialize HID API for USB devices
         let api = match HidApi::new() {
@@ -305,6 +341,12 @@ impl HardwareWalletManager {
                                 model: "BitBox02".to_string(),
                                 state: DeviceState::Locked { pairing_code },
                             });
+
+                            emit_progress(
+                                "scanning_bitbox02",
+                                "Found BitBox02 device (needs pairing)",
+                                devices.len(),
+                            );
                         }
                         Err(e) => warn!("BitBox02 pairing connection error: {:?}", e),
                     }
@@ -349,6 +391,8 @@ impl HardwareWalletManager {
             }
         }
 
+        emit_progress("scanning_ledger", "Scanning for Ledger devices...", devices.len());
+
         // Enumerate Ledger devices
         for detected in Ledger::<TransportHID>::enumerate(&api) {
             let id = format!(
@@ -372,6 +416,8 @@ impl HardwareWalletManager {
                 Err(e) => debug!("Ledger connection error: {}", e),
             }
         }
+
+        emit_progress("scanning_trezor", "Scanning for Trezor devices...", devices.len());
 
         // Enumerate Trezor devices
         for available in async_hwi::trezor::api::find_devices(false) {
@@ -400,6 +446,7 @@ impl HardwareWalletManager {
         }
 
         info!("Discovered {} hardware wallet(s)", devices.len());
+        emit_progress("complete", "Discovery complete", devices.len());
         Ok(devices)
     }
 
@@ -408,8 +455,19 @@ impl HardwareWalletManager {
         &self,
         device_id: &str,
         wallet_config: Option<&WalletConfig>,
+        app_handle: &tauri::AppHandle,
     ) -> Result<DiscoveredDevice, Box<dyn Error + Send + Sync>> {
         info!("Unlocking device: {}", device_id);
+
+        let emit_unlock = |message: &str| {
+            let _ = app_handle.emit(
+                "hwi_unlock_progress",
+                UnlockProgress {
+                    device_id: device_id.to_string(),
+                    message: message.to_string(),
+                },
+            );
+        };
 
         let mut locked_devices = self.locked_devices.lock().await;
         let mut supported_devices = self.supported_devices.lock().await;
@@ -421,6 +479,7 @@ impl HardwareWalletManager {
         match locked_device {
             LockedDeviceHandle::BitBox02(pairing_bb) => {
                 info!("Waiting for BitBox02 confirmation...");
+                emit_unlock("Confirm pairing code on your BitBox02 device");
                 let (paired_device, _) = pairing_bb.wait_confirm().await?;
 
                 let mut bitbox = BitBox02::from(paired_device).with_network(self.network);
@@ -504,6 +563,7 @@ impl HardwareWalletManager {
             }
             LockedDeviceHandle::Jade(jade) => {
                 info!("Authenticating Jade device...");
+                emit_unlock("Enter your PIN on the Jade device");
                 jade.auth()
                     .await
                     .map_err(|e| format!("Jade auth error: {:?}", e))?;

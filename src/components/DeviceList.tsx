@@ -10,6 +10,7 @@ interface DeviceListProps {
 	highlightedFingerprints?: Set<string>;
 	signerFingerprints?: Set<string>;
 	unlockingDeviceId?: string | null;
+	unlockStatus?: Record<string, string>;
 }
 
 export default function DeviceList({
@@ -20,6 +21,7 @@ export default function DeviceList({
 	highlightedFingerprints,
 	signerFingerprints,
 	unlockingDeviceId,
+	unlockStatus,
 }: DeviceListProps) {
 	if (devices.length === 0) {
 		return (
@@ -54,6 +56,7 @@ export default function DeviceList({
 						isHighlighted={isHighlighted}
 						isUnlocking={unlockingDeviceId === device.id}
 						isNonSigner={isNonSigner}
+						unlockStatusMessage={unlockStatus?.[device.id]}
 					/>
 				);
 			})}
