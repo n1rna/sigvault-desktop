@@ -15,6 +15,7 @@ use oauth2::{
 };
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 
 use crate::api::ApiClient;
@@ -107,7 +108,9 @@ pub async fn cmd_authenticate(
     });
 
     // Open the authorization URL in the user's browser
-    open::that(auth_url.to_string()).map_err(|e| format!("Failed to open browser: {}", e))?;
+    app.opener()
+        .open_url(auth_url.to_string(), None::<&str>)
+        .map_err(|e| format!("Failed to open browser: {}", e))?;
 
     // Wait for the callback (poll for auth code)
     let auth_code = wait_for_auth_code(oauth_state.auth_code.clone()).await?;
