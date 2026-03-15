@@ -93,3 +93,14 @@ export interface DeviceRegistrationData {
 	derivation_path: string;
 	device_type: string;
 }
+
+export interface HwiDiscoveryProgress {
+	stage: string;
+	message: string;
+	devices_found: number;
+}
+
+export interface HwiUnlockProgress {
+	device_id: string;
+	message: string;
+}
