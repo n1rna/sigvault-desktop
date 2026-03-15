@@ -175,14 +175,14 @@ impl HardwareWalletManager {
     pub async fn discover_devices(
         &self,
         wallet_config: Option<&WalletConfig>,
-        app_handle: &tauri::AppHandle,
+        app_handle: Option<&tauri::AppHandle>,
     ) -> Result<Vec<DiscoveredDevice>, Box<dyn Error + Send + Sync>> {
         info!(
             "Starting hardware wallet discovery on network: {:?}",
             self.network
         );
 
-        let window = app_handle.get_webview_window("main");
+        let window = app_handle.and_then(|h| h.get_webview_window("main"));
         let emit_progress = |_stage: &str, message: &str, _devices_found: usize| {
             if let Some(w) = &window {
                 emit_notification(w, "Device Discovery", message, "info");
@@ -448,7 +448,7 @@ impl HardwareWalletManager {
         }
 
         info!("Discovered {} hardware wallet(s)", devices.len());
-        if let Some(w) = app_handle.get_webview_window("main") {
+        if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
             emit_notification(&w, "Device Discovery", "Discovery complete", "success");
         }
         Ok(devices)
@@ -459,11 +459,11 @@ impl HardwareWalletManager {
         &self,
         device_id: &str,
         wallet_config: Option<&WalletConfig>,
-        app_handle: &tauri::AppHandle,
+        app_handle: Option<&tauri::AppHandle>,
     ) -> Result<DiscoveredDevice, Box<dyn Error + Send + Sync>> {
         info!("Unlocking device: {}", device_id);
 
-        let window = app_handle.get_webview_window("main");
+        let window = app_handle.and_then(|h| h.get_webview_window("main"));
         let emit_unlock = |message: &str| {
             if let Some(w) = &window {
                 emit_notification(w, "Device Unlock", message, "info");
@@ -482,7 +482,7 @@ impl HardwareWalletManager {
                 info!("Waiting for BitBox02 confirmation...");
                 emit_unlock("Confirm pairing code on your BitBox02 device");
                 let (paired_device, _) = pairing_bb.wait_confirm().await?;
-                if let Some(w) = app_handle.get_webview_window("main") {
+                if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
                     emit_notification(&w, "Device Unlock", "BitBox02 pairing confirmed", "success");
                 }
 
@@ -865,9 +865,9 @@ impl HardwareWalletManager {
         id: String,
         trezor: Trezor,
         supported_devices: &mut std::collections::HashMap<String, Arc<dyn HWI + Send + Sync>>,
-        app_handle: &tauri::AppHandle,
+        app_handle: Option<&tauri::AppHandle>,
     ) -> Result<DiscoveredDevice, HWIError> {
-        if let Some(w) = app_handle.get_webview_window("main") {
+        if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
             emit_notification(&w, "Device Discovery", "Trezor found — enter PIN on your device if prompted", "info");
         }
         match (
