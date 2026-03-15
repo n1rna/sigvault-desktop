@@ -38,7 +38,13 @@ jobs:
 
       - name: Export env vars for build
         shell: bash
-        run: cat .env >> "$GITHUB_ENV"
+        run: |
+          while IFS='=' read -r key value; do
+            [[ -z "$key" || "$key" =~ ^# ]] && continue
+            value="${value%\"}"
+            value="${value#\"}"
+            echo "${key}=${value}" >> "$GITHUB_ENV"
+          done < .env
 
       - name: Install Linux system dependencies
         run: |
