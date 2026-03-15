@@ -234,7 +234,7 @@ dependencies = [
 [[package]]
 name = "async-hwi"
 version = "0.0.30"
-source = "git+https://github.com/n1rna/async-hwi.git#fee53bdea4a4c0d823e2205f957afd0922fbd176"
+source = "git+https://github.com/n1rna/async-hwi.git?branch=jade-timeouts#ad891df0a5573c2db529cac8de12d6104fe317e4"
 dependencies = [
  "async-trait",
  "bitbox-api",
@@ -247,6 +247,7 @@ dependencies = [
  "ledger-apdu",
  "ledger-transport-hidapi",
  "ledger_bitcoin_client",
+ "protobuf",
  "regex",
  "reqwest 0.11.27",
  "serde",

@@ -384,7 +384,7 @@ async fn test_discover_devices() {
     let manager = HardwareWalletManager::new(network);
 
     let start = Instant::now();
-    let result = manager.discover_devices(None).await;
+    let result = manager.discover_devices(None, None).await;
     let elapsed = start.elapsed();
 
     println!("Discovery took: {:.2?}\n", elapsed);
@@ -466,7 +466,7 @@ async fn test_discover_with_wallet_config() {
     let manager = HardwareWalletManager::new(network);
 
     let start = Instant::now();
-    let result = manager.discover_devices(Some(&wallet_config)).await;
+    let result = manager.discover_devices(Some(&wallet_config), None).await;
     let elapsed = start.elapsed();
 
     println!("Discovery took: {:.2?}\n", elapsed);
@@ -525,7 +525,7 @@ async fn test_discover_and_unlock() {
     // Step 1: Discover with wallet config
     println!("  Step 1: Discovering devices...");
     let devices = manager
-        .discover_devices(Some(&wallet_config))
+        .discover_devices(Some(&wallet_config), None)
         .await
         .expect("Discovery failed");
 
@@ -559,7 +559,7 @@ async fn test_discover_and_unlock() {
 
         let start = Instant::now();
         match manager
-            .unlock_device(&device.id, Some(&wallet_config))
+            .unlock_device(&device.id, Some(&wallet_config), None)
             .await
         {
             Ok(unlocked) => {
@@ -610,7 +610,7 @@ async fn test_get_device_xpubs() {
 
     // Discover
     let devices = manager
-        .discover_devices(None)
+        .discover_devices(None, None)
         .await
         .expect("Discovery failed");
 
@@ -819,7 +819,7 @@ async fn test_sign_psbt() {
     // Step 1: Discover with wallet config
     println!("  Step 1: Discovering devices...");
     let devices = manager
-        .discover_devices(Some(&wallet_config))
+        .discover_devices(Some(&wallet_config), None)
         .await
         .expect("Discovery failed");
 
@@ -846,7 +846,7 @@ async fn test_sign_psbt() {
 
             let start = Instant::now();
             match manager
-                .unlock_device(&device.id, Some(&wallet_config))
+                .unlock_device(&device.id, Some(&wallet_config), None)
                 .await
             {
                 Ok(unlocked) => {
@@ -1000,7 +1000,7 @@ async fn test_full_flow() {
 
     let start = Instant::now();
     let devices = manager
-        .discover_devices(None)
+        .discover_devices(None, None)
         .await
         .expect("Discovery failed");
     println!(
@@ -1034,7 +1034,7 @@ async fn test_full_flow() {
             println!("  Unlocking {}...", id);
             println!("  >>> Interact with your device to unlock <<<\n");
 
-            match manager.unlock_device(id, None).await {
+            match manager.unlock_device(id, None, None).await {
                 Ok(unlocked) => {
                     println!("  Unlocked successfully:");
                     print_device_details(&unlocked);
@@ -1160,7 +1160,7 @@ async fn test_ledger_diagnostics() {
     // Full discovery
     let manager = HardwareWalletManager::new(network);
     let devices = manager
-        .discover_devices(None)
+        .discover_devices(None, None)
         .await
         .expect("Discovery failed");
 
@@ -1202,7 +1202,7 @@ async fn test_bitbox02_diagnostics() {
 
     let manager = HardwareWalletManager::new(network);
     let devices = manager
-        .discover_devices(None)
+        .discover_devices(None, None)
         .await
         .expect("Discovery failed");
 
@@ -1224,7 +1224,7 @@ async fn test_bitbox02_diagnostics() {
 
             if device.is_locked() {
                 println!("  Attempting unlock (confirm pairing on device)...");
-                match manager.unlock_device(&device.id, None).await {
+                match manager.unlock_device(&device.id, None, None).await {
                     Ok(unlocked) => {
                         println!("  Unlocked:");
                         print_device_details(&unlocked);
@@ -1255,7 +1255,7 @@ async fn test_coldcard_diagnostics() {
 
     let manager = HardwareWalletManager::new(network);
     let devices = manager
-        .discover_devices(None)
+        .discover_devices(None, None)
         .await
         .expect("Discovery failed");
 
@@ -1311,7 +1311,7 @@ async fn test_jade_diagnostics() {
 
     let manager = HardwareWalletManager::new(network);
     let devices = manager
-        .discover_devices(None)
+        .discover_devices(None, None)
         .await
         .expect("Discovery failed");
 
@@ -1331,7 +1331,7 @@ async fn test_jade_diagnostics() {
 
             if device.is_locked() {
                 println!("  Attempting unlock (authenticate on device)...");
-                match manager.unlock_device(&device.id, None).await {
+                match manager.unlock_device(&device.id, None, None).await {
                     Ok(unlocked) => {
                         println!("  Unlocked:");
                         print_device_details(&unlocked);
@@ -1361,7 +1361,7 @@ async fn test_trezor_diagnostics() {
 
     let manager = HardwareWalletManager::new(network);
     let devices = manager
-        .discover_devices(None)
+        .discover_devices(None, None)
         .await
         .expect("Discovery failed");
 
