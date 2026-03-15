@@ -15,6 +15,8 @@ const initialState: AppState = {
 	authenticated: false,
 	route: "Loading",
 	listenerReady: false,
+	notification: null,
+	activityLog: [],
 	activeSession: {
 		isConnected: false,
 		sessionId: undefined,
@@ -26,7 +28,9 @@ const initialState: AppState = {
 type AppAction =
 	| { type: "UPDATE_STATE"; payload: Partial<AppState> }
 	| { type: "SET_REMOTE_SESSIONS"; payload: any[] }
-	| { type: "UPDATE_SESSION_STATE"; payload: any };
+	| { type: "UPDATE_SESSION_STATE"; payload: any }
+	| { type: "PUSH_ACTIVITY"; payload: NotificationEvent }
+	| { type: "CLEAR_ACTIVITY" };
 
 function appStateReducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
@@ -45,6 +49,10 @@ function appStateReducer(state: AppState, action: AppAction): AppState {
 					},
 				},
 			};
+		case "PUSH_ACTIVITY":
+			return { ...state, activityLog: [...state.activityLog, action.payload] };
+		case "CLEAR_ACTIVITY":
+			return { ...state, activityLog: [] };
 		default:
 			return state;
 	}
@@ -134,13 +142,8 @@ export function useAppEvents() {
 	}, []);
 
 	const handleNotification = useCallback((data: NotificationEvent) => {
-		console.log(`[${data.level.toUpperCase()}] ${data.title}:`, data.message);
-
-		// TODO: Show actual notification UI (toast)
-		// For now, we'll just log it
-		if (data.level === "error") {
-			console.error(`${data.title}: ${data.message}`);
-		}
+		dispatch({ type: "UPDATE_STATE", payload: { notification: data } });
+		dispatch({ type: "PUSH_ACTIVITY", payload: data });
 	}, []);
 
 	useEffect(() => {
@@ -179,5 +182,9 @@ export function useAppEvents() {
 		};
 	}, [handleStateUpdate, handleCommand, handleSession, handleNotification]);
 
-	return { ...state, listenerReady };
+	const clearActivityLog = useCallback(() => {
+		dispatch({ type: "CLEAR_ACTIVITY" });
+	}, []);
+
+	return { ...state, listenerReady, clearActivityLog };
 }
