@@ -18,6 +18,7 @@ interface DeviceCardProps {
 	isHighlighted?: boolean;
 	isUnlocking?: boolean;
 	isNonSigner?: boolean;
+	unlockStatusMessage?: string;
 }
 
 function getUnsupportedReasonText(reason: UnsupportedReason): string {
@@ -45,6 +46,7 @@ export default function DeviceCard({
 	isHighlighted = false,
 	isUnlocking = false,
 	isNonSigner = false,
+	unlockStatusMessage,
 }: DeviceCardProps) {
 	const isLocked = isDeviceLocked(device);
 	const isSupported = isDeviceSupported(device);
@@ -149,6 +151,12 @@ export default function DeviceCard({
 							</span>
 						</div>
 					)}
+
+				{isUnlocking && unlockStatusMessage && (
+					<div className="mt-3 text-sm text-muted-foreground">
+						{unlockStatusMessage}
+					</div>
+				)}
 
 				{isUnlocking && pairingCode && (() => {
 					const parts = pairingCode.trim().split(/\s+/);
