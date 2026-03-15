@@ -320,6 +320,11 @@ impl HardwareWalletManager {
                 );
 
                 if let Ok(hid_device) = device_info.open_device(&api) {
+                    emit_progress(
+                        "bitbox02_connecting",
+                        "BitBox02 detected — enter your device password if prompted",
+                        devices.len(),
+                    );
                     match PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
                         hid_device, None,
                     )
