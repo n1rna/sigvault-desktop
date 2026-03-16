@@ -991,3 +991,87 @@ impl HardwareWalletManager {
         }
     }
 }
+
+/// Finalize all taproot inputs in a PSBT by constructing the final witness.
+///
+/// Handles both keypath spends (tap_key_sig present) and script-path spends
+/// (tap_script_sigs present, including multi_a scripts).
+///
+/// After calling this function the PSBT is ready for `extract_tx`.
+pub fn finalize_psbt(psbt: &mut Psbt) {
+    for i in 0..psbt.inputs.len() {
+        if psbt.inputs[i].final_script_witness.is_some() {
+            continue;
+        }
+
+        if let Some(sig) = psbt.inputs[i].tap_key_sig {
+            let mut witness = bitcoin::Witness::new();
+            witness.push(sig.to_vec());
+            psbt.inputs[i].final_script_witness = Some(witness);
+            psbt.inputs[i].tap_key_sig = None;
+            psbt.inputs[i].tap_internal_key = None;
+            psbt.inputs[i].tap_merkle_root = None;
+            psbt.inputs[i].tap_key_origins.clear();
+            psbt.inputs[i].tap_scripts.clear();
+            continue;
+        }
+
+        if psbt.inputs[i].tap_script_sigs.is_empty() {
+            continue;
+        }
+
+        let tap_scripts: Vec<_> = psbt.inputs[i].tap_scripts.clone().into_iter().collect();
+        let tap_script_sigs = psbt.inputs[i].tap_script_sigs.clone();
+        let tap_key_origins = psbt.inputs[i].tap_key_origins.clone();
+
+        for (control_block, (script, _leaf_version)) in &tap_scripts {
+            let leaf_hash = bitcoin::taproot::TapLeafHash::from_script(
+                script,
+                bitcoin::taproot::LeafVersion::TapScript,
+            );
+
+            let sigs_for_leaf: Vec<_> = tap_script_sigs
+                .iter()
+                .filter(|((_, lh), _)| *lh == leaf_hash)
+                .collect();
+
+            if sigs_for_leaf.is_empty() {
+                continue;
+            }
+
+            let mut witness = bitcoin::Witness::new();
+
+            let is_checksigadd = script.as_bytes().contains(&0xba);
+            if is_checksigadd {
+                let keys_in_script: Vec<bitcoin::XOnlyPublicKey> = tap_key_origins
+                    .iter()
+                    .filter(|(_, (leaf_hashes, _))| leaf_hashes.contains(&leaf_hash))
+                    .map(|(pk, _)| *pk)
+                    .collect();
+
+                for key in keys_in_script.iter().rev() {
+                    if let Some((_, sig)) = sigs_for_leaf.iter().find(|((pk, _), _)| pk == key) {
+                        witness.push(sig.to_vec());
+                    } else {
+                        witness.push(&[] as &[u8]);
+                    }
+                }
+            } else {
+                for ((_, _), sig) in &sigs_for_leaf {
+                    witness.push(sig.to_vec());
+                }
+            }
+
+            witness.push(script.as_bytes());
+            witness.push(control_block.serialize());
+
+            psbt.inputs[i].final_script_witness = Some(witness);
+            psbt.inputs[i].tap_script_sigs.clear();
+            psbt.inputs[i].tap_internal_key = None;
+            psbt.inputs[i].tap_merkle_root = None;
+            psbt.inputs[i].tap_key_origins.clear();
+            psbt.inputs[i].tap_scripts.clear();
+            break;
+        }
+    }
+}
