@@ -234,7 +234,7 @@ dependencies = [
 [[package]]
 name = "async-hwi"
 version = "0.0.30"
-source = "git+https://github.com/n1rna/async-hwi.git#9e3296711dd6831157e5bb73152ea93fc6e57111"
+source = "git+https://github.com/n1rna/async-hwi.git#dbabf075d9bda338aa9eb638dcab762e34cac0c7"
 dependencies = [
  "async-trait",
  "bitbox-api",
