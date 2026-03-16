@@ -1730,6 +1730,7 @@ async fn test_sign_and_verify() {
         };
 
         println!("  Signed by: {}", signed.fingerprint);
+        println!("  Signed PSBT: {}", signed.psbt);
 
         let signed_bytes = STANDARD.decode(&signed.psbt).expect("Invalid base64 from sign_psbt");
         let signed_psbt = Psbt::deserialize(&signed_bytes).expect("Invalid PSBT bytes");
@@ -1808,11 +1809,41 @@ async fn test_sign_and_verify() {
                                     "    pk={}... PASS",
                                     &pk.to_string()[..16]
                                 ),
-                                Err(e) => println!(
-                                    "    pk={}... FAIL ({:?})",
-                                    &pk.to_string()[..16],
-                                    e
-                                ),
+                                Err(e) => {
+                                    println!(
+                                        "    pk={}... script-path FAIL ({:?})",
+                                        &pk.to_string()[..16],
+                                        e
+                                    );
+                                    // Also try verifying as keypath to diagnose
+                                    if let Ok(keypath_sighash) = cache.taproot_key_spend_signature_hash(
+                                        i,
+                                        &Prevouts::All(&prevouts),
+                                        sighash_type,
+                                    ) {
+                                        let keypath_msg = bitcoin::secp256k1::Message::from(keypath_sighash);
+                                        let output_key = bitcoin::XOnlyPublicKey::from_slice(&prevout.script_pubkey.as_bytes()[2..]).unwrap();
+                                        match secp.verify_schnorr(&sig.signature, &keypath_msg, &output_key) {
+                                            Ok(()) => println!(
+                                                "    pk={}... BUT PASSES as keypath (Trezor signed keypath, not script-path!)",
+                                                &pk.to_string()[..16]
+                                            ),
+                                            Err(_) => {
+                                                // Also try against the signing key itself with keypath sighash
+                                                match secp.verify_schnorr(&sig.signature, &keypath_msg, pk) {
+                                                    Ok(()) => println!(
+                                                        "    pk={}... PASSES as keypath against signing key (untweaked)",
+                                                        &pk.to_string()[..16]
+                                                    ),
+                                                    Err(_) => println!(
+                                                        "    pk={}... FAIL for both script-path and keypath",
+                                                        &pk.to_string()[..16]
+                                                    ),
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
                             }
                         }
                         Err(e) => println!(

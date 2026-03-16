@@ -234,7 +234,7 @@ dependencies = [
 [[package]]
 name = "async-hwi"
 version = "0.0.30"
-source = "git+https://github.com/n1rna/async-hwi.git#7b2cca9389a6f98863008a5b82406e15f96741f1"
+source = "git+https://github.com/n1rna/async-hwi.git#1ce5491ee0d16d2c0fa1e2ac964eea95efcca357"
 dependencies = [
  "async-trait",
  "bitbox-api",
@@ -5544,7 +5544,7 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "bitcoin_hashes 0.13.0",
+ "bitcoin_hashes 0.14.1",
  "secp256k1-sys",
  "serde",
 ]
