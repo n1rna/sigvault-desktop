@@ -1401,20 +1401,8 @@ fn test_validate_psbt_for_bitbox_offline() {
 
     // 1. Extract policy from descriptor
     println!("--- Policy Extraction ---");
-    let policy = extract_script_config_policy(&descriptor).unwrap();
-    println!("  Template: {}", policy.template);
-    println!("  Keys: {}", policy.pubkeys.len());
-    for (i, key) in policy.pubkeys.iter().enumerate() {
-        let xpub_str = key.xpub.to_string();
-        println!(
-            "    key[{}]: fp={:?} path={:?} xpub={}...{}",
-            i,
-            key.master_fingerprint,
-            key.path,
-            &xpub_str[..20.min(xpub_str.len())],
-            &xpub_str[xpub_str.len().saturating_sub(10)..]
-        );
-    }
+    let _policy = extract_script_config_policy(&descriptor).unwrap();
+    println!("  Policy extracted successfully");
 
     // 2. Parse PSBT and descriptor key origins
     println!("\n--- PSBT Derivation Paths ---");
@@ -1494,4 +1482,707 @@ fn test_validate_psbt_for_bitbox_offline() {
     }
     println!("  All checks passed.");
     println!("\n=== END OFFLINE VALIDATION ===\n");
+}
+
+// ---------------------------------------------------------------------------
+// PSBT Signing Lab
+// ---------------------------------------------------------------------------
+
+/// Decode and print detailed PSBT structure without hardware or signing.
+///
+/// Run:
+///   TEST_PSBT=<base64> cargo test -p sigvault-desktop --test hwi_integration \
+///     test_psbt_decode -- --nocapture
+#[test]
+fn test_psbt_decode() {
+    use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
+    use bitcoin::Psbt;
+
+    let psbt_b64 = std::env::var("TEST_PSBT").unwrap_or_else(|_| DEFAULT_TEST_PSBT.to_string());
+
+    print_separator("PSBT DECODE");
+    println!("  PSBT length: {} chars (base64)\n", psbt_b64.len());
+
+    let bytes = STANDARD
+        .decode(&psbt_b64)
+        .expect("TEST_PSBT is not valid base64");
+    let psbt = Psbt::deserialize(&bytes).expect("Failed to deserialize PSBT");
+
+    println!("  Inputs:  {}", psbt.inputs.len());
+    println!("  Outputs: {}", psbt.outputs.len());
+    println!("  TX version:  {}", psbt.unsigned_tx.version);
+    println!("  TX locktime: {}", psbt.unsigned_tx.lock_time);
+
+    for (i, (tx_in, input)) in psbt
+        .unsigned_tx
+        .input
+        .iter()
+        .zip(psbt.inputs.iter())
+        .enumerate()
+    {
+        println!("\n  === Input #{} ===", i);
+        println!(
+            "    prevout: {}:{}",
+            tx_in.previous_output.txid, tx_in.previous_output.vout
+        );
+
+        match &input.witness_utxo {
+            Some(utxo) => {
+                println!("    witness_utxo:");
+                println!("      value:      {} sats", utxo.value.to_sat());
+                println!("      script:     {}", utxo.script_pubkey.to_hex_string());
+                println!("      is_p2tr:    {}", utxo.script_pubkey.is_p2tr());
+            }
+            None => println!("    witness_utxo: MISSING"),
+        }
+
+        match input.tap_key_sig {
+            Some(sig) => println!("    tap_key_sig: {} (sighash: {:?})", sig.signature, sig.sighash_type),
+            None => println!("    tap_key_sig: none"),
+        }
+
+        println!("    tap_script_sigs: {} entries", input.tap_script_sigs.len());
+        for ((pk, lh), sig) in &input.tap_script_sigs {
+            println!(
+                "      pk={}... leaf={} sig={}... sighash={:?}",
+                &pk.to_string()[..16],
+                &lh.to_string()[..16],
+                &sig.signature.to_string()[..16],
+                sig.sighash_type
+            );
+        }
+
+        match input.tap_internal_key {
+            Some(ik) => println!("    tap_internal_key: {}", ik),
+            None => println!("    tap_internal_key: none"),
+        }
+
+        match input.tap_merkle_root {
+            Some(mr) => println!("    tap_merkle_root: {}", mr),
+            None => println!("    tap_merkle_root: none"),
+        }
+
+        println!("    tap_scripts: {} entries", input.tap_scripts.len());
+        for (cb, (script, leaf_ver)) in &input.tap_scripts {
+            let leaf_hash = bitcoin::taproot::TapLeafHash::from_script(script, *leaf_ver);
+            println!(
+                "      leaf_hash={}... leaf_ver={:?} script_len={} cb_len={}",
+                &leaf_hash.to_string()[..16],
+                leaf_ver,
+                script.len(),
+                cb.serialize().len()
+            );
+        }
+
+        println!("    tap_key_origins: {} entries", input.tap_key_origins.len());
+        for (pk, (leaf_hashes, (fp, path))) in &input.tap_key_origins {
+            println!(
+                "      pk={}... fp={} path={} leaf_hashes={}",
+                &pk.to_string()[..16],
+                fp,
+                path,
+                leaf_hashes.len()
+            );
+        }
+
+        match input.sighash_type {
+            Some(st) => println!("    sighash_type: {:?}", st),
+            None => println!("    sighash_type: default"),
+        }
+
+        match &input.final_script_witness {
+            Some(w) => println!("    final_script_witness: {} items", w.len()),
+            None => println!("    final_script_witness: none"),
+        }
+    }
+
+    for (i, (tx_out, output)) in psbt
+        .unsigned_tx
+        .output
+        .iter()
+        .zip(psbt.outputs.iter())
+        .enumerate()
+    {
+        println!("\n  === Output #{} ===", i);
+        println!("    value:   {} sats", tx_out.value.to_sat());
+        println!("    script:  {}", tx_out.script_pubkey.to_hex_string());
+        println!("    is_p2tr: {}", tx_out.script_pubkey.is_p2tr());
+
+        match output.tap_internal_key {
+            Some(ik) => println!("    tap_internal_key: {}", ik),
+            None => println!("    tap_internal_key: none"),
+        }
+
+        match &output.tap_tree {
+            Some(_) => println!("    tap_tree: present"),
+            None => println!("    tap_tree: none"),
+        }
+
+        println!("    tap_key_origins: {} entries", output.tap_key_origins.len());
+        for (pk, (leaf_hashes, (fp, path))) in &output.tap_key_origins {
+            println!(
+                "      pk={}... fp={} path={} leaf_hashes={}",
+                &pk.to_string()[..16],
+                fp,
+                path,
+                leaf_hashes.len()
+            );
+        }
+    }
+
+    println!();
+    print_separator("PSBT DECODE COMPLETE");
+}
+
+/// Sign a PSBT with hardware wallets and verify the produced signatures cryptographically.
+///
+/// Run:
+///   TEST_PSBT=<base64> TEST_DESCRIPTOR=<desc> cargo test -p sigvault-desktop \
+///     --test hwi_integration test_sign_and_verify -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn test_sign_and_verify() {
+    use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
+    use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
+    use bitcoin::Psbt;
+
+    init_logging();
+    let network = test_network();
+    let psbt_b64 = test_psbt();
+
+    print_separator(&format!("SIGN AND VERIFY (network: {:?})", network));
+
+    let wallet_name =
+        std::env::var("TEST_WALLET_NAME").unwrap_or_else(|_| "test-wallet".to_string());
+    let descriptor = std::env::var("TEST_DESCRIPTOR").ok();
+
+    let wallet_config = WalletConfig {
+        name: wallet_name.clone(),
+        descriptor: descriptor.clone(),
+        hmac: None,
+    };
+
+    let manager = HardwareWalletManager::new(network);
+
+    println!("  Step 1: Discovering devices...");
+    let devices = manager
+        .discover_devices(Some(&wallet_config), None)
+        .await
+        .expect("Discovery failed");
+
+    println!("  Found {} device(s)", devices.len());
+    for d in &devices {
+        print_device_details(d);
+    }
+
+    let locked: Vec<_> = devices.iter().filter(|d| d.is_locked()).collect();
+    if !locked.is_empty() {
+        println!("  Step 2: Unlocking {} device(s)...", locked.len());
+        for device in &locked {
+            if let DeviceState::Locked { pairing_code } = &device.state {
+                if let Some(code) = pairing_code {
+                    println!("  Pairing code: {}", code);
+                    println!("  >>> Confirm on device <<<");
+                } else {
+                    println!("  >>> Enter PIN on device <<<");
+                }
+            }
+            match manager
+                .unlock_device(&device.id, Some(&wallet_config), None)
+                .await
+            {
+                Ok(unlocked) => {
+                    println!("  Unlocked:");
+                    print_device_details(&unlocked);
+                }
+                Err(e) => println!("  Unlock FAILED: {:?}", e),
+            }
+        }
+    }
+
+    let mut sign_ids: Vec<(String, String)> = devices
+        .iter()
+        .filter(|d| d.is_supported())
+        .map(|d| (d.id.clone(), d.device_type.clone()))
+        .collect();
+
+    for device in &locked {
+        if manager.get_device(&device.id).await.is_some() {
+            sign_ids.push((device.id.clone(), device.device_type.clone()));
+        }
+    }
+
+    if sign_ids.is_empty() {
+        println!("  No supported devices found for signing.");
+        return;
+    }
+
+    for (id, dtype) in &sign_ids {
+        print_separator(&format!("SIGNING + VERIFYING: {} ({})", dtype, id));
+        println!("  >>> Confirm signing on your device <<<");
+
+        let signed = match manager.sign_psbt(id, &psbt_b64).await {
+            Ok(s) => s,
+            Err(e) => {
+                println!("  SIGNING FAILED: {:?}", e);
+                continue;
+            }
+        };
+
+        println!("  Signed by: {}", signed.fingerprint);
+
+        let signed_bytes = STANDARD.decode(&signed.psbt).expect("Invalid base64 from sign_psbt");
+        let signed_psbt = Psbt::deserialize(&signed_bytes).expect("Invalid PSBT bytes");
+
+        let prevouts: Vec<bitcoin::TxOut> = signed_psbt
+            .inputs
+            .iter()
+            .filter_map(|inp| inp.witness_utxo.clone())
+            .collect();
+
+        let secp = bitcoin::secp256k1::Secp256k1::verification_only();
+
+        for (i, input) in signed_psbt.inputs.iter().enumerate() {
+            println!("\n  Input #{}:", i);
+
+            let prevout = match prevouts.get(i) {
+                Some(p) => p,
+                None => {
+                    println!("    SKIP: missing witness_utxo");
+                    continue;
+                }
+            };
+
+            if let Some(tap_sig) = input.tap_key_sig {
+                println!("    Spend type: keypath");
+                let mut cache = SighashCache::new(&signed_psbt.unsigned_tx);
+                let sighash_type = if tap_sig.sighash_type == TapSighashType::Default {
+                    TapSighashType::Default
+                } else {
+                    tap_sig.sighash_type
+                };
+                match cache.taproot_key_spend_signature_hash(
+                    i,
+                    &Prevouts::All(&prevouts),
+                    sighash_type,
+                ) {
+                    Ok(sighash) => {
+                        let msg = bitcoin::secp256k1::Message::from(sighash);
+                        let output_key = match input.tap_internal_key {
+                            Some(ik) => ik,
+                            None => {
+                                println!("    SKIP: no tap_internal_key for verification");
+                                continue;
+                            }
+                        };
+                        match secp.verify_schnorr(&tap_sig.signature, &msg, &output_key) {
+                            Ok(()) => println!("    Signature verification: PASS"),
+                            Err(e) => println!("    Signature verification: FAIL ({:?})", e),
+                        }
+                    }
+                    Err(e) => println!("    Sighash computation failed: {:?}", e),
+                }
+                continue;
+            }
+
+            if !input.tap_script_sigs.is_empty() {
+                println!("    Spend type: script-path ({} sigs)", input.tap_script_sigs.len());
+                let mut cache = SighashCache::new(&signed_psbt.unsigned_tx);
+
+                for ((pk, leaf_hash), sig) in &input.tap_script_sigs {
+                    let sighash_type = if sig.sighash_type == TapSighashType::Default {
+                        TapSighashType::Default
+                    } else {
+                        sig.sighash_type
+                    };
+                    match cache.taproot_script_spend_signature_hash(
+                        i,
+                        &Prevouts::All(&prevouts),
+                        *leaf_hash,
+                        sighash_type,
+                    ) {
+                        Ok(sighash) => {
+                            let msg = bitcoin::secp256k1::Message::from(sighash);
+                            match secp.verify_schnorr(&sig.signature, &msg, pk) {
+                                Ok(()) => println!(
+                                    "    pk={}... PASS",
+                                    &pk.to_string()[..16]
+                                ),
+                                Err(e) => println!(
+                                    "    pk={}... FAIL ({:?})",
+                                    &pk.to_string()[..16],
+                                    e
+                                ),
+                            }
+                        }
+                        Err(e) => println!(
+                            "    pk={}... sighash error: {:?}",
+                            &pk.to_string()[..16],
+                            e
+                        ),
+                    }
+                }
+
+                if !prevout.script_pubkey.is_p2tr() {
+                    println!("    NOTE: input script_pubkey is not P2TR");
+                }
+                continue;
+            }
+
+            println!("    No signatures found on input #{}", i);
+        }
+    }
+
+    print_separator("SIGN AND VERIFY COMPLETE");
+}
+
+/// Finalize a pre-signed PSBT and extract the raw transaction without broadcasting.
+///
+/// Run:
+///   TEST_SIGNED_PSBT=<base64> cargo test -p sigvault-desktop --test hwi_integration \
+///     test_finalize_and_extract -- --nocapture
+#[test]
+fn test_finalize_and_extract() {
+    use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
+    use bitcoin::Psbt;
+    use sigvault_desktop_lib::hwi::finalize_psbt;
+
+    let psbt_b64 = match std::env::var("TEST_SIGNED_PSBT") {
+        Ok(v) => v,
+        Err(_) => {
+            println!("TEST_SIGNED_PSBT not set, skipping test_finalize_and_extract");
+            return;
+        }
+    };
+
+    print_separator("FINALIZE AND EXTRACT");
+    println!("  PSBT length: {} chars (base64)\n", psbt_b64.len());
+
+    let bytes = STANDARD
+        .decode(&psbt_b64)
+        .expect("TEST_SIGNED_PSBT is not valid base64");
+    let mut psbt = Psbt::deserialize(&bytes).expect("Failed to deserialize PSBT");
+
+    println!("  Before finalization:");
+    for (i, input) in psbt.inputs.iter().enumerate() {
+        println!(
+            "    Input #{}: tap_key_sig={} tap_script_sigs={} final_witness={}",
+            i,
+            input.tap_key_sig.is_some(),
+            input.tap_script_sigs.len(),
+            input.final_script_witness.is_some()
+        );
+    }
+
+    finalize_psbt(&mut psbt);
+
+    println!("\n  After finalization:");
+    let mut all_finalized = true;
+    for (i, input) in psbt.inputs.iter().enumerate() {
+        match &input.final_script_witness {
+            Some(w) => {
+                println!("    Input #{}: final_witness={} items", i, w.len());
+                for (j, item) in w.iter().enumerate() {
+                    println!("      item[{}]: {} bytes", j, item.len());
+                }
+
+                let is_keypath = w.len() == 1;
+                let is_scriptpath = w.len() >= 3;
+                if is_keypath {
+                    println!("      -> keypath spend (1 witness item)");
+                } else if is_scriptpath {
+                    println!("      -> script-path spend ({} witness items)", w.len());
+                } else {
+                    println!("      WARNING: unexpected witness item count: {}", w.len());
+                }
+            }
+            None => {
+                println!("    Input #{}: NOT FINALIZED", i);
+                all_finalized = false;
+            }
+        }
+    }
+
+    if !all_finalized {
+        println!("\n  WARNING: not all inputs were finalized");
+    }
+
+    let tx = psbt.extract_tx().expect("Failed to extract transaction");
+    let txid = tx.compute_txid();
+    let raw_hex = bitcoin::consensus::encode::serialize_hex(&tx);
+
+    println!("\n  Transaction:");
+    println!("    TXID:    {}", txid);
+    println!("    Inputs:  {}", tx.input.len());
+    println!("    Outputs: {}", tx.output.len());
+    println!("    Raw hex: {}", raw_hex);
+
+    for (i, tx_in) in tx.input.iter().enumerate() {
+        println!("\n  TX input #{}:", i);
+        println!("    witness items: {}", tx_in.witness.len());
+        for (j, item) in tx_in.witness.iter().enumerate() {
+            println!("      item[{}]: {} bytes", j, item.len());
+        }
+    }
+
+    assert!(!raw_hex.is_empty(), "raw transaction hex is empty");
+    print_separator("FINALIZE AND EXTRACT COMPLETE");
+}
+
+/// Complete flow: discover, unlock, sign, verify, finalize, extract, and optionally broadcast.
+///
+/// Run without broadcast:
+///   TEST_PSBT=<base64> TEST_DESCRIPTOR=<desc> cargo test -p sigvault-desktop \
+///     --test hwi_integration test_full_sign_finalize_broadcast -- --ignored --nocapture
+///
+/// Run with broadcast:
+///   TEST_PSBT=<base64> TEST_DESCRIPTOR=<desc> ELECTRS_URL=127.0.0.1:60401 \
+///   cargo test -p sigvault-desktop --test hwi_integration \
+///     test_full_sign_finalize_broadcast -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn test_full_sign_finalize_broadcast() {
+    use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
+    use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
+    use bitcoin::Psbt;
+    use sigvault_desktop_lib::hwi::finalize_psbt;
+
+    init_logging();
+    let network = test_network();
+    let psbt_b64 = test_psbt();
+
+    print_separator(&format!(
+        "FULL SIGN / FINALIZE / BROADCAST (network: {:?})",
+        network
+    ));
+
+    let electrs_url = std::env::var("ELECTRS_URL").ok();
+    println!(
+        "  Broadcast: {}",
+        electrs_url
+            .as_deref()
+            .map(|u| format!("yes ({})", u))
+            .unwrap_or_else(|| "no (set ELECTRS_URL to enable)".to_string())
+    );
+    println!();
+
+    let wallet_name =
+        std::env::var("TEST_WALLET_NAME").unwrap_or_else(|_| "test-wallet".to_string());
+    let descriptor = std::env::var("TEST_DESCRIPTOR").ok();
+
+    let wallet_config = WalletConfig {
+        name: wallet_name.clone(),
+        descriptor: descriptor.clone(),
+        hmac: None,
+    };
+
+    let manager = HardwareWalletManager::new(network);
+
+    println!("  Phase 1: Discovering devices...");
+    let devices = manager
+        .discover_devices(Some(&wallet_config), None)
+        .await
+        .expect("Discovery failed");
+
+    println!("  Found {} device(s)", devices.len());
+    for d in &devices {
+        print_device_details(d);
+    }
+
+    let locked: Vec<_> = devices.iter().filter(|d| d.is_locked()).collect();
+    if !locked.is_empty() {
+        println!("  Phase 2: Unlocking {} device(s)...", locked.len());
+        for device in &locked {
+            if let DeviceState::Locked { pairing_code } = &device.state {
+                if let Some(code) = pairing_code {
+                    println!("  Pairing code: {}", code);
+                    println!("  >>> Confirm on device <<<");
+                } else {
+                    println!("  >>> Enter PIN on device <<<");
+                }
+            }
+            match manager
+                .unlock_device(&device.id, Some(&wallet_config), None)
+                .await
+            {
+                Ok(unlocked) => {
+                    println!("  Unlocked:");
+                    print_device_details(&unlocked);
+                }
+                Err(e) => println!("  Unlock FAILED: {:?}", e),
+            }
+        }
+    }
+
+    let mut sign_ids: Vec<(String, String)> = devices
+        .iter()
+        .filter(|d| d.is_supported())
+        .map(|d| (d.id.clone(), d.device_type.clone()))
+        .collect();
+
+    for device in &locked {
+        if manager.get_device(&device.id).await.is_some() {
+            sign_ids.push((device.id.clone(), device.device_type.clone()));
+        }
+    }
+
+    if sign_ids.is_empty() {
+        println!("  No supported devices found. Aborting.");
+        return;
+    }
+
+    let mut accumulated_psbt_b64 = psbt_b64.clone();
+
+    println!("  Phase 3: Signing PSBT with {} device(s)...", sign_ids.len());
+    for (id, dtype) in &sign_ids {
+        println!("  Signing with {} ({})...", dtype, id);
+        println!("  >>> Confirm on device <<<");
+
+        match manager.sign_psbt(id, &accumulated_psbt_b64).await {
+            Ok(signed) => {
+                println!("  Signed by: {}", signed.fingerprint);
+                accumulated_psbt_b64 = signed.psbt;
+            }
+            Err(e) => {
+                println!("  SIGNING FAILED for {} ({}): {:?}", dtype, id, e);
+            }
+        }
+    }
+
+    println!("\n  Phase 4: Verifying signatures...");
+    let signed_bytes = STANDARD
+        .decode(&accumulated_psbt_b64)
+        .expect("Invalid base64");
+    let signed_psbt = Psbt::deserialize(&signed_bytes).expect("Invalid PSBT");
+
+    let prevouts: Vec<bitcoin::TxOut> = signed_psbt
+        .inputs
+        .iter()
+        .filter_map(|inp| inp.witness_utxo.clone())
+        .collect();
+
+    let secp = bitcoin::secp256k1::Secp256k1::verification_only();
+    let mut all_verified = true;
+
+    for (i, input) in signed_psbt.inputs.iter().enumerate() {
+        if let Some(tap_sig) = input.tap_key_sig {
+            let mut cache = SighashCache::new(&signed_psbt.unsigned_tx);
+            let sighash_type = if tap_sig.sighash_type == TapSighashType::Default {
+                TapSighashType::Default
+            } else {
+                tap_sig.sighash_type
+            };
+            match cache.taproot_key_spend_signature_hash(
+                i,
+                &Prevouts::All(&prevouts),
+                sighash_type,
+            ) {
+                Ok(sighash) => {
+                    let msg = bitcoin::secp256k1::Message::from(sighash);
+                    if let Some(output_key) = input.tap_internal_key {
+                        match secp.verify_schnorr(&tap_sig.signature, &msg, &output_key) {
+                            Ok(()) => println!("    Input #{}: keypath PASS", i),
+                            Err(e) => {
+                                println!("    Input #{}: keypath FAIL ({:?})", i, e);
+                                all_verified = false;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("    Input #{}: sighash error: {:?}", i, e);
+                    all_verified = false;
+                }
+            }
+        } else {
+            for ((pk, leaf_hash), sig) in &input.tap_script_sigs {
+                let mut cache = SighashCache::new(&signed_psbt.unsigned_tx);
+                let sighash_type = if sig.sighash_type == TapSighashType::Default {
+                    TapSighashType::Default
+                } else {
+                    sig.sighash_type
+                };
+                match cache.taproot_script_spend_signature_hash(
+                    i,
+                    &Prevouts::All(&prevouts),
+                    *leaf_hash,
+                    sighash_type,
+                ) {
+                    Ok(sighash) => {
+                        let msg = bitcoin::secp256k1::Message::from(sighash);
+                        match secp.verify_schnorr(&sig.signature, &msg, pk) {
+                            Ok(()) => println!(
+                                "    Input #{} pk={}...: script-path PASS",
+                                i,
+                                &pk.to_string()[..16]
+                            ),
+                            Err(e) => {
+                                println!(
+                                    "    Input #{} pk={}...: script-path FAIL ({:?})",
+                                    i,
+                                    &pk.to_string()[..16],
+                                    e
+                                );
+                                all_verified = false;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("    Input #{}: sighash error: {:?}", i, e);
+                        all_verified = false;
+                    }
+                }
+            }
+        }
+    }
+
+    if all_verified {
+        println!("  All signatures verified.");
+    } else {
+        println!("  WARNING: some signatures did not verify.");
+    }
+
+    println!("\n  Phase 5: Finalizing PSBT...");
+    let signed_bytes = STANDARD
+        .decode(&accumulated_psbt_b64)
+        .expect("Invalid base64");
+    let mut final_psbt = Psbt::deserialize(&signed_bytes).expect("Invalid PSBT");
+    finalize_psbt(&mut final_psbt);
+
+    for (i, input) in final_psbt.inputs.iter().enumerate() {
+        match &input.final_script_witness {
+            Some(w) => println!("    Input #{}: finalized ({} witness items)", i, w.len()),
+            None => println!("    Input #{}: NOT finalized", i),
+        }
+    }
+
+    let tx = final_psbt.extract_tx().expect("Failed to extract transaction");
+    let txid = tx.compute_txid();
+    let raw_hex = bitcoin::consensus::encode::serialize_hex(&tx);
+
+    println!("\n  Phase 6: Transaction extracted");
+    println!("    TXID:    {}", txid);
+    println!("    Raw hex: {}", raw_hex);
+
+    if let Some(url) = electrs_url {
+        println!("\n  Phase 7: Broadcasting to {}...", url);
+        use electrum_client::{Client, ElectrumApi};
+        match Client::new(&url) {
+            Ok(client) => {
+                match client.transaction_broadcast_raw(&bitcoin::consensus::encode::serialize(&tx))
+                {
+                    Ok(broadcast_txid) => {
+                        println!("  Broadcast SUCCESS: {}", broadcast_txid);
+                        assert_eq!(broadcast_txid, txid);
+                    }
+                    Err(e) => println!("  Broadcast FAILED: {:?}", e),
+                }
+            }
+            Err(e) => println!("  Electrum connection FAILED: {:?}", e),
+        }
+    } else {
+        println!("\n  Phase 7: Broadcast skipped (set ELECTRS_URL to enable)");
+    }
+
+    print_separator("FULL SIGN / FINALIZE / BROADCAST COMPLETE");
 }
