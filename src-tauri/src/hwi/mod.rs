@@ -681,7 +681,8 @@ impl HardwareWalletManager {
                 Ok(fp) if fp.to_string() == fingerprint => {
                     debug!("Found matching device with fingerprint: {}", fingerprint);
 
-                    let xpub = device.get_extended_pubkey(&path).await?;
+                    let mut xpub = device.get_extended_pubkey(&path).await?;
+                    xpub.network = self.network.into();
                     let device_type = format!("{:?}", device.device_kind());
 
                     info!("Successfully extracted device info");
