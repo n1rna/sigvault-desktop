@@ -68,6 +68,7 @@ export function getDevicePairingCode(
 
 // Wallet configuration for signing operations
 export interface WalletConfig {
+	name?: string;
 	descriptor?: string;
 }
 
