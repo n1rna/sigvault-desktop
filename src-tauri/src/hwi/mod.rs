@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::Manager;
 use crate::window::emit_notification;
+
+fn descriptor_to_multipath(desc: &str) -> String {
+    desc.replace("/**", "/<0;1>/*")
+}
+
+fn descriptor_for_bitbox(desc: &str) -> String {
+    descriptor_to_multipath(desc).replace("sortedmulti", "multi")
+}
 use tokio::sync::Mutex;
 
 use async_hwi::{
@@ -497,13 +505,15 @@ impl HardwareWalletManager {
                 let mut registered = None;
                 if let Some(config) = wallet_config {
                     if let Some(ref desc) = config.descriptor {
-                        bitbox = bitbox.with_policy(desc).unwrap();
+                        let bb_desc = descriptor_for_bitbox(desc);
+                        {
+                        bitbox = bitbox.with_policy(&bb_desc).unwrap();
                         info!(
                             "Checking BitBox02 policy registration with descriptor and network: {:?} and {:?}",
-                            desc, self.network
+                            bb_desc, self.network
                         );
 
-                        match bitbox.is_policy_registered(desc).await {
+                        match bitbox.is_policy_registered(&bb_desc).await {
                             Ok(is_registered) => {
                                 info!("BitBox02 policy registration status: {}", is_registered);
                                 registered = Some(is_registered);
@@ -518,7 +528,7 @@ impl HardwareWalletManager {
                                             + "-"
                                             + &rand::random::<u32>().to_string()[..4]
                                     );
-                                    match bitbox.register_wallet(&wallet_name, desc).await {
+                                    match bitbox.register_wallet(&wallet_name, &bb_desc).await {
                                         Ok(_) => {
                                             info!("BitBox02 policy registered successfully");
                                             registered = Some(true);
@@ -546,6 +556,7 @@ impl HardwareWalletManager {
                         }
 
                         debug!("BitBox02 policy registration status: {:?}", registered);
+                        } // close else (non-multisig policy path)
                     } else {
                         debug!("No descriptor provided for BitBox02, skipping policy check");
                     }
