@@ -829,8 +829,41 @@ impl HardwareWalletManager {
                 let mut registered = None;
                 if let Some(config) = wallet_config {
                     if let Some(ref desc) = config.descriptor {
-                        device = device.with_wallet(&config.name, desc, config.hmac)?;
-                        registered = Some(true);
+                        let hmac = if config.hmac.is_some() {
+                            config.hmac
+                        } else {
+                            info!("Registering wallet policy on Ledger (confirm on device)...");
+                            match device.register_wallet(&config.name, desc).await {
+                                Ok(h) => {
+                                    info!("Ledger wallet registered, hmac: {:?}", h.map(|h| hex::encode(h)));
+                                    h
+                                }
+                                Err(e) => {
+                                    error!("Ledger wallet registration failed: {:?}", e);
+                                    None
+                                }
+                            }
+                        };
+                        device = match device.with_wallet(&config.name, desc, hmac) {
+                            Ok(d) => {
+                                registered = Some(hmac.is_some());
+                                d
+                            }
+                            Err(e) => {
+                                error!("Ledger with_wallet failed: {:?}", e);
+                                return Ok(DiscoveredDevice {
+                                    id,
+                                    device_type: "Ledger".to_string(),
+                                    model: "Ledger".to_string(),
+                                    state: DeviceState::Unsupported {
+                                        reason: UnsupportedReason::InitializationError(
+                                            format!("Policy registration failed: {:?}", e),
+                                        ),
+                                        version: Some(version.to_string()),
+                                    },
+                                });
+                            }
+                        };
                     }
                 }
 
