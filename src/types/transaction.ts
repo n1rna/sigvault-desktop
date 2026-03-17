@@ -1,8 +1,9 @@
 // Transaction signing types
 
 export interface TransactionData {
-	psbt: string; // Base64 encoded unsigned PSBT
+	psbt: string;
 	txid: string;
+	wallet_name?: string;
 	multipath_descriptor?: string;
 }
 

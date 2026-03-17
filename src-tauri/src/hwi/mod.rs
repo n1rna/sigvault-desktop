@@ -228,7 +228,7 @@ impl HardwareWalletManager {
             Ok(device) => {
                 let id = "ledger-simulator".to_string();
                 match self
-                    .handle_ledger_device(id, device, wallet_config, &mut supported_devices)
+                    .handle_ledger_device(id, device, wallet_config, app_handle, &mut supported_devices)
                     .await
                 {
                     Ok(discovered) => devices.push(discovered),
@@ -407,7 +407,7 @@ impl HardwareWalletManager {
             match Ledger::<TransportHID>::connect(&api, detected) {
                 Ok(device) => {
                     match self
-                        .handle_ledger_device(id, device, wallet_config, &mut supported_devices)
+                        .handle_ledger_device(id, device, wallet_config, app_handle, &mut supported_devices)
                         .await
                     {
                         Ok(discovered) => devices.push(discovered),
@@ -804,6 +804,7 @@ impl HardwareWalletManager {
         id: String,
         mut device: Ledger<T>,
         wallet_config: Option<&WalletConfig>,
+        app_handle: Option<&tauri::AppHandle>,
         supported_devices: &mut std::collections::HashMap<String, Arc<dyn HWI + Send + Sync>>,
     ) -> Result<DiscoveredDevice, HWIError> {
         match (
@@ -833,9 +834,15 @@ impl HardwareWalletManager {
                             config.hmac
                         } else {
                             info!("Registering wallet policy on Ledger (confirm on device)...");
+                            if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
+                                emit_notification(&w, "Device Discovery", "Ledger found — approve wallet policy on your device", "info");
+                            }
                             match device.register_wallet(&config.name, desc).await {
                                 Ok(h) => {
                                     info!("Ledger wallet registered, hmac: {:?}", h.map(|h| hex::encode(h)));
+                                    if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
+                                        emit_notification(&w, "Device Discovery", "Ledger wallet policy registered", "success");
+                                    }
                                     h
                                 }
                                 Err(e) => {

@@ -34,9 +34,10 @@ export default function TransactionSigning({
 
 	const walletConfig: WalletConfig = useMemo(() => {
 		return {
+			name: transactionData.transaction.wallet_name,
 			descriptor: transactionData.transaction.multipath_descriptor,
 		};
-	}, [transactionData.transaction.multipath_descriptor]);
+	}, [transactionData.transaction.wallet_name, transactionData.transaction.multipath_descriptor]);
 
 	const signingFingerprints = useMemo(() => {
 		return new Set(
