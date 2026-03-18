@@ -79,7 +79,8 @@ pub fn run() {
             cmd_get_device_xpub,
             cmd_submit_device_registration,
             cmd_sign_psbt,
-            cmd_submit_transaction_signature
+            cmd_submit_transaction_signature,
+            cmd_get_ledger_hmacs
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

@@ -1,7 +1,7 @@
 use log::{error, info};
 use serde::Deserialize;
 use serde_json;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{State, AppHandle, WebviewWindow};
 
 use crate::error::AppErrorCode;
 use crate::hwi::{DeviceInfo, WalletConfig};
@@ -18,19 +18,34 @@ pub struct WalletConfigInput {
     pub descriptor: Option<String>,
     #[serde(default)]
     pub hmac: Option<String>,
+    #[serde(default)]
+    pub ledger_hmacs: Option<std::collections::HashMap<String, String>>,
 }
 
 impl WalletConfigInput {
+    fn decode_hmac_hex(hex_str: &str) -> Result<[u8; 32], String> {
+        let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid HMAC hex: {}", e))?;
+        if bytes.len() != 32 {
+            return Err(format!("HMAC must be 32 bytes, got {}", bytes.len()));
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&bytes);
+        Ok(arr)
+    }
+
     pub fn to_wallet_config(&self) -> Result<WalletConfig, String> {
         let hmac = match &self.hmac {
-            Some(hex_str) => {
-                let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid HMAC hex: {}", e))?;
-                if bytes.len() != 32 {
-                    return Err(format!("HMAC must be 32 bytes, got {}", bytes.len()));
+            Some(hex_str) => Some(Self::decode_hmac_hex(hex_str)?),
+            None => None,
+        };
+
+        let ledger_hmacs = match &self.ledger_hmacs {
+            Some(map) => {
+                let mut decoded = std::collections::HashMap::new();
+                for (fp, hex_str) in map {
+                    decoded.insert(fp.clone(), Self::decode_hmac_hex(hex_str)?);
                 }
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&bytes);
-                Some(arr)
+                Some(decoded)
             }
             None => None,
         };
@@ -42,6 +57,7 @@ impl WalletConfigInput {
                 .unwrap_or_else(|| "Unnamed Wallet".to_string()),
             descriptor: self.descriptor.clone(),
             hmac,
+            ledger_hmacs,
         })
     }
 }
@@ -252,6 +268,7 @@ pub async fn cmd_submit_transaction_signature(
     txid: String,
     device_fingerprint: String,
     device_derivation_path: String,
+    ledger_hmacs: Option<std::collections::HashMap<String, String>>,
 ) -> Result<CommandResult, String> {
     info!(
         "Submitting transaction signature for session {}",
@@ -261,7 +278,7 @@ pub async fn cmd_submit_transaction_signature(
     let ws_handler = app_state.ws_handler.lock().await;
 
     if let Some(handler) = &*ws_handler {
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "signed_psbt": signed_psbt,
             "txid": txid,
             "device_info": {
@@ -269,6 +286,11 @@ pub async fn cmd_submit_transaction_signature(
                 "derivation_path": device_derivation_path,
             }
         });
+        if let Some(hmacs) = &ledger_hmacs {
+            if !hmacs.is_empty() {
+                payload["ledger_hmacs"] = serde_json::json!(hmacs);
+            }
+        }
 
         let message = serde_json::json!({
             "type": "session",
@@ -294,4 +316,20 @@ pub async fn cmd_submit_transaction_signature(
         "No active websocket connection",
         AppErrorCode::WebsocketConnection,
     ))
+}
+
+#[tauri::command]
+pub async fn cmd_get_ledger_hmacs(
+    _window: WebviewWindow,
+    app_state: State<'_, ApplicationState>,
+) -> Result<CommandResult, String> {
+    let hmacs = app_state.hw_manager.get_ledger_hmacs_hex().await;
+    let hmacs_json = serde_json::to_value(&hmacs)
+        .map_err(|e| format!("Failed to serialize HMACs: {}", e))?;
+    Ok(CommandResult {
+        success: true,
+        message: format!("Found {} Ledger HMAC(s)", hmacs.len()),
+        data: Some(hmacs_json),
+        error: None,
+    })
 }

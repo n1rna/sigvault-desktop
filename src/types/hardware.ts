@@ -71,6 +71,7 @@ export interface WalletConfig {
 	name?: string;
 	descriptor?: string;
 	hmac?: string;
+	ledger_hmacs?: Record<string, string>;
 }
 
 // Legacy types (for backward compatibility)
