@@ -70,6 +70,7 @@ export function getDevicePairingCode(
 export interface WalletConfig {
 	name?: string;
 	descriptor?: string;
+	hmac?: string;
 }
 
 // Legacy types (for backward compatibility)
