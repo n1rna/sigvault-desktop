@@ -164,10 +164,9 @@ pub struct UnlockProgress {
 /// Global state for managing locked devices awaiting confirmation
 pub struct HardwareWalletManager {
     network: Network,
-    /// Locked devices waiting for user confirmation, keyed by device ID
     locked_devices: Arc<Mutex<std::collections::HashMap<String, LockedDeviceHandle>>>,
-    /// Supported devices ready for use, keyed by device ID
     supported_devices: Arc<Mutex<std::collections::HashMap<String, Arc<dyn HWI + Send + Sync>>>>,
+    ledger_hmacs: Arc<Mutex<std::collections::HashMap<String, [u8; 32]>>>,
 }
 
 impl HardwareWalletManager {
@@ -176,6 +175,7 @@ impl HardwareWalletManager {
             network,
             locked_devices: Arc::new(Mutex::new(std::collections::HashMap::new())),
             supported_devices: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            ledger_hmacs: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -842,8 +842,13 @@ impl HardwareWalletManager {
                 let mut registered = None;
                 if let Some(config) = wallet_config {
                     if let Some(ref desc) = config.descriptor {
+                        let fp_str = fingerprint.to_string();
+                        let cached_hmac = self.ledger_hmacs.lock().await.get(&fp_str).copied();
                         let hmac = if config.hmac.is_some() {
                             config.hmac
+                        } else if let Some(cached) = cached_hmac {
+                            info!("Using cached Ledger HMAC for fingerprint {}", fp_str);
+                            Some(cached)
                         } else {
                             info!("Registering wallet policy on Ledger (confirm on device)...");
                             if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
@@ -852,6 +857,9 @@ impl HardwareWalletManager {
                             match device.register_wallet(&config.name, desc).await {
                                 Ok(h) => {
                                     info!("Ledger wallet registered, hmac: {:?}", h.map(|h| hex::encode(h)));
+                                    if let Some(ref hmac_bytes) = h {
+                                        self.ledger_hmacs.lock().await.insert(fp_str.clone(), *hmac_bytes);
+                                    }
                                     if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
                                         emit_notification(&w, "Device Discovery", "Ledger wallet policy registered", "success");
                                     }
