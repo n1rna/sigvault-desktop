@@ -131,6 +131,7 @@ pub struct WalletConfig {
     pub name: String,
     pub descriptor: Option<String>,
     pub hmac: Option<[u8; 32]>,
+    pub ledger_hmacs: Option<std::collections::HashMap<String, [u8; 32]>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,6 +178,15 @@ impl HardwareWalletManager {
             supported_devices: Arc::new(Mutex::new(std::collections::HashMap::new())),
             ledger_hmacs: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
+    }
+
+    pub async fn get_ledger_hmacs_hex(&self) -> std::collections::HashMap<String, String> {
+        self.ledger_hmacs
+            .lock()
+            .await
+            .iter()
+            .map(|(fp, bytes)| (fp.clone(), hex::encode(bytes)))
+            .collect()
     }
 
     /// Discover all connected hardware wallets and return their states
@@ -844,11 +854,16 @@ impl HardwareWalletManager {
                     if let Some(ref desc) = config.descriptor {
                         let fp_str = fingerprint.to_string();
                         let cached_hmac = self.ledger_hmacs.lock().await.get(&fp_str).copied();
+                        let backend_hmac = config.ledger_hmacs.as_ref().and_then(|m| m.get(&fp_str).copied());
                         let hmac = if config.hmac.is_some() {
                             config.hmac
                         } else if let Some(cached) = cached_hmac {
                             info!("Using cached Ledger HMAC for fingerprint {}", fp_str);
                             Some(cached)
+                        } else if let Some(from_backend) = backend_hmac {
+                            info!("Using backend-persisted Ledger HMAC for fingerprint {}", fp_str);
+                            self.ledger_hmacs.lock().await.insert(fp_str.clone(), from_backend);
+                            Some(from_backend)
                         } else {
                             info!("Registering wallet policy on Ledger (confirm on device)...");
                             if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
