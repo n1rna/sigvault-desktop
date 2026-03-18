@@ -36,8 +36,9 @@ export default function TransactionSigning({
 		return {
 			name: transactionData.transaction.wallet_name,
 			descriptor: transactionData.transaction.multipath_descriptor,
+			ledger_hmacs: transactionData.transaction.ledger_hmacs,
 		};
-	}, [transactionData.transaction.wallet_name, transactionData.transaction.multipath_descriptor]);
+	}, [transactionData.transaction.wallet_name, transactionData.transaction.multipath_descriptor, transactionData.transaction.ledger_hmacs]);
 
 	const signingFingerprints = useMemo(() => {
 		return new Set(
@@ -164,6 +165,19 @@ export default function TransactionSigning({
 			setSigning(false);
 			setSubmitting(true);
 
+			// Get any new Ledger HMACs from the in-memory cache to persist
+			let ledgerHmacs: Record<string, string> = {};
+			try {
+				const hmacsResult = await invoke<CommandResult<Record<string, string>>>(
+					"cmd_get_ledger_hmacs",
+				);
+				if (hmacsResult.success && hmacsResult.data) {
+					ledgerHmacs = hmacsResult.data;
+				}
+			} catch {
+				// Non-critical: HMACs won't be persisted this time
+			}
+
 			const submitResult = await invoke<CommandResult>(
 				"cmd_submit_transaction_signature",
 				{
@@ -172,6 +186,7 @@ export default function TransactionSigning({
 					txid: transactionData.transaction.txid,
 					deviceFingerprint: fingerprint,
 					deviceDerivationPath: matchingSlot.derivation_path,
+					ledgerHmacs: Object.keys(ledgerHmacs).length > 0 ? ledgerHmacs : undefined,
 				},
 			);
 
