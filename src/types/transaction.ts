@@ -5,6 +5,7 @@ export interface TransactionData {
 	txid: string;
 	wallet_name?: string;
 	multipath_descriptor?: string;
+	ledger_hmacs?: Record<string, string>;
 }
 
 export interface SignatureSlot {
