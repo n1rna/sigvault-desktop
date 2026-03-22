@@ -217,8 +217,13 @@ impl HardwareWalletManager {
 
         emit_progress("scanning_specter", "Scanning for Specter devices...", 0);
 
-        // Try Specter Simulator
-        match SpecterSimulator::try_connect().await {
+        // Try Specter Simulator (with timeout — uninitialized simulators
+        // hang on fingerprint request indefinitely).
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            SpecterSimulator::try_connect(),
+        ).await {
+            Ok(result) => match result {
             Ok(device) => {
                 let id = "specter-simulator".to_string();
                 let device = Arc::new(device);
@@ -237,6 +242,8 @@ impl HardwareWalletManager {
             }
             Err(HWIError::DeviceNotFound) => {}
             Err(e) => debug!("Specter simulator connection error: {}", e),
+            }
+            Err(_) => debug!("Specter simulator connection timed out"),
         }
 
         emit_progress("scanning_ledger_simulator", "Scanning for Ledger simulator...", devices.len());
@@ -325,7 +332,17 @@ impl HardwareWalletManager {
         };
 
         // Enumerate BitBox02 devices
+        let device_count = api.device_list().count();
+        debug!("HID API found {} devices total", device_count);
         for device_info in api.device_list() {
+            debug!(
+                "HID device: VID={:#06x} PID={:#06x} product={:?} usage_page={:#06x} iface={}",
+                device_info.vendor_id(),
+                device_info.product_id(),
+                device_info.product_string(),
+                device_info.usage_page(),
+                device_info.interface_number(),
+            );
             if async_hwi::bitbox::is_bitbox02(device_info) {
                 let id = format!(
                     "bitbox-{:?}-{}-{}",
@@ -333,18 +350,35 @@ impl HardwareWalletManager {
                     device_info.vendor_id(),
                     device_info.product_id()
                 );
+                debug!("BitBox02 detected at {:?}, attempting to open", device_info.path());
 
-                if let Ok(hid_device) = device_info.open_device(&api) {
+                match device_info.open_device(&api) {
+                    Err(e) => {
+                        warn!("Failed to open BitBox02 HID device at {:?}: {}", device_info.path(), e);
+                    }
+                    Ok(hid_device) => {
                     emit_progress(
                         "bitbox02_connecting",
                         "BitBox02 detected — enter your device password if prompted",
                         devices.len(),
                     );
-                    match PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
-                        hid_device, None,
-                    )
+                    // bitbox-api uses blocking hidapi I/O inside async fns.
+                    // Run on a dedicated runtime to avoid deadlocking the
+                    // main tokio runtime (which also runs the UHID bridge
+                    // relay tasks for emulated devices).
+                    let connect_result = tokio::task::spawn_blocking(move || {
+                        let rt = tokio::runtime::Builder::new_multi_thread()
+                            .worker_threads(2)
+                            .enable_all()
+                            .build()
+                            .map_err(|e| HWIError::Device(format!("runtime: {e}")))?;
+                        rt.block_on(PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
+                            hid_device, None,
+                        ))
+                    })
                     .await
-                    {
+                    .map_err(|e| HWIError::Device(format!("task: {e}")))?;
+                    match connect_result {
                         Ok(pairing_device) => {
                             let pairing_code =
                                 pairing_device.pairing_code().map(|s| s.replace('\n', " "));
@@ -370,6 +404,7 @@ impl HardwareWalletManager {
                         }
                         Err(e) => warn!("BitBox02 pairing connection error: {:?}", e),
                     }
+                    }
                 }
             }
 
@@ -384,10 +419,34 @@ impl HardwareWalletManager {
                     device_info.product_id()
                 );
 
-                if let Some(sn) = device_info.serial_number() {
-                    if let Ok((cc, _)) =
-                        coldcard::api::Coldcard::open(AsRefWrap { inner: &api }, sn, None)
-                    {
+                if device_info.serial_number().is_some() {
+                    // The coldcard crate does blocking HID I/O. Run on a
+                    // blocking thread with a 5s timeout — stale UHID devices
+                    // (kept alive by browsers) hang on HID read forever.
+                    let sn = device_info.serial_number().unwrap_or("").to_string();
+                    let cc_result = tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        tokio::task::spawn_blocking(move || {
+                            let cc_api = coldcard::api::Api::new()?;
+                            cc_api.open(&sn, None)
+                        }),
+                    ).await;
+                    let cc_result = match cc_result {
+                        Ok(Ok(Ok(r))) => Some(r),
+                        Ok(Ok(Err(e))) => {
+                            debug!("Coldcard open failed (will try next): {:?}", e);
+                            None
+                        }
+                        Ok(Err(e)) => {
+                            debug!("Coldcard open task error: {:?}", e);
+                            None
+                        }
+                        Err(_) => {
+                            debug!("Coldcard open timed out (stale device?)");
+                            None
+                        }
+                    };
+                    if let Some((cc, _)) = cc_result {
                         let mut hw = coldcard::Coldcard::from(cc);
                         if let Some(config) = wallet_config {
                             hw = hw.with_wallet_name(config.name.clone());
