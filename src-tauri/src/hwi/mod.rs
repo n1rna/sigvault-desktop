@@ -289,9 +289,36 @@ impl HardwareWalletManager {
             Err(e) => warn!("Error enumerating Specter devices: {}", e),
         }
 
-        emit_progress("scanning_jade", "Scanning serial ports for Jade devices...", devices.len());
+        emit_progress("scanning_jade", "Scanning for Jade devices...", devices.len());
 
-        // Enumerate Jade devices
+        // Try Jade QEMU emulator (TCP) with timeout
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async_hwi::jade::JadeEmulator::try_connect(),
+        ).await {
+            Ok(Ok(jade)) => {
+                let jade = jade.with_network(self.network);
+                let id = "jade-emulator".to_string();
+                // The emulator doesn't need PIN — treat as a supported device directly.
+                let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade);
+                match self
+                    .handle_supported_device(
+                        id.clone(),
+                        device.clone(),
+                        wallet_config,
+                        &mut supported_devices,
+                    )
+                    .await
+                {
+                    Ok(discovered) => devices.push(discovered),
+                    Err(e) => debug!("Jade emulator error: {:?}", e),
+                }
+            }
+            Ok(Err(_)) => debug!("Jade emulator not available"),
+            Err(_) => debug!("Jade emulator connection timed out"),
+        }
+
+        // Enumerate physical Jade devices (serial ports)
         match jade::SerialTransport::enumerate_potential_ports() {
             Ok(ports) => {
                 for port in ports {
