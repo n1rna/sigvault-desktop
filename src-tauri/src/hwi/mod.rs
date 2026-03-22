@@ -115,13 +115,16 @@ impl DiscoveredDevice {
 pub enum LockedDeviceHandle {
     BitBox02(Box<PairingBitbox02WithLocalCache<runtime::TokioRuntime>>),
     Jade(Jade<jade::SerialTransport>),
+    JadeTcp(Jade<jade::TcpTransport>),
 }
 
 impl std::fmt::Debug for LockedDeviceHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LockedDeviceHandle::BitBox02(_) => f.debug_struct("LockedBitBox02").finish(),
-            LockedDeviceHandle::Jade(_) => f.debug_struct("LockedJade").finish(),
+            LockedDeviceHandle::Jade(_) | LockedDeviceHandle::JadeTcp(_) => {
+                f.debug_struct("LockedJade").finish()
+            }
         }
     }
 }
@@ -333,7 +336,11 @@ impl HardwareWalletManager {
                         }
                     }
                     _ => {
-                        // Locked/uninitialized — report as locked device
+                        // Locked/uninitialized — store for unlock flow
+                        locked_devices.insert(
+                            id.clone(),
+                            LockedDeviceHandle::JadeTcp(jade),
+                        );
                         devices.push(DiscoveredDevice {
                             id: id.clone(),
                             device_type: "Jade".to_string(),
@@ -742,6 +749,47 @@ impl HardwareWalletManager {
                     id: device_id.to_string(),
                     device_type: "Jade".to_string(),
                     model: "Jade".to_string(),
+                    state: DeviceState::Supported {
+                        fingerprint: fingerprint.to_string(),
+                        version: version.map(|v| v.to_string()),
+                        registered,
+                    },
+                })
+            }
+            LockedDeviceHandle::JadeTcp(jade) => {
+                info!("Authenticating Jade emulator (TCP)...");
+                emit_unlock("Initializing Jade emulator...");
+                jade.auth()
+                    .await
+                    .map_err(|e| format!("Jade auth error: {:?}", e))?;
+
+                let fingerprint = jade.get_master_fingerprint().await?;
+                let version = jade.get_version().await.ok();
+
+                let mut registered = None;
+                if let Some(config) = wallet_config {
+                    if let Some(ref desc) = config.descriptor {
+                        let jade_with_wallet = jade.with_wallet(config.name.clone());
+                        registered = Some(
+                            jade_with_wallet
+                                .is_wallet_registered(&config.name, desc)
+                                .await?,
+                        );
+                        let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade_with_wallet);
+                        supported_devices.insert(device_id.to_string(), device);
+                    } else {
+                        let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade);
+                        supported_devices.insert(device_id.to_string(), device);
+                    }
+                } else {
+                    let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade);
+                    supported_devices.insert(device_id.to_string(), device);
+                }
+
+                Ok(DiscoveredDevice {
+                    id: device_id.to_string(),
+                    device_type: "Jade".to_string(),
+                    model: "Jade (emulator)".to_string(),
                     state: DeviceState::Supported {
                         fingerprint: fingerprint.to_string(),
                         version: version.map(|v| v.to_string()),
