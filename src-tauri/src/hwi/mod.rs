@@ -297,22 +297,57 @@ impl HardwareWalletManager {
             async_hwi::jade::JadeEmulator::try_connect(),
         ).await {
             Ok(Ok(jade)) => {
-                let jade = jade.with_network(self.network);
                 let id = "jade-emulator".to_string();
-                // The emulator doesn't need PIN — treat as a supported device directly.
-                let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade);
-                match self
-                    .handle_supported_device(
-                        id.clone(),
-                        device.clone(),
-                        wallet_config,
-                        &mut supported_devices,
-                    )
-                    .await
-                {
-                    Ok(discovered) => devices.push(discovered),
-                    Err(e) => debug!("Jade emulator error: {:?}", e),
+                // Jade emulator starts uninitialized — report as locked
+                // so the user can authenticate via the unlock flow.
+                let info = match jade.get_info().await {
+                    Ok(info) => Some(info),
+                    Err(e) => {
+                        debug!("Jade emulator get_info failed: {:?}", e);
+                        None
+                    }
+                };
+                if let Some(info) = info {
+                let version = async_hwi::parse_version(&info.jade_version).ok();
+                let device_network = match info.jade_networks {
+                    jade::api::JadeNetworks::Main => Network::Bitcoin,
+                    jade::api::JadeNetworks::Test | jade::api::JadeNetworks::All => self.network,
+                };
+                let jade = jade.with_network(device_network);
+
+                match info.jade_state {
+                    jade::api::JadeState::Ready => {
+                        // Already unlocked — treat as supported device
+                        let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade);
+                        match self
+                            .handle_supported_device(
+                                id.clone(),
+                                device.clone(),
+                                wallet_config,
+                                &mut supported_devices,
+                            )
+                            .await
+                        {
+                            Ok(discovered) => devices.push(discovered),
+                            Err(e) => debug!("Jade emulator error: {:?}", e),
+                        }
+                    }
+                    _ => {
+                        // Locked/uninitialized — report as locked device
+                        devices.push(DiscoveredDevice {
+                            id: id.clone(),
+                            device_type: "Jade".to_string(),
+                            model: "Jade (emulator)".to_string(),
+                            state: DeviceState::Locked { pairing_code: None },
+                        });
+                        info!(
+                            "Jade emulator discovered (state: {:?}, version: {:?})",
+                            info.jade_state,
+                            version,
+                        );
+                    }
                 }
+                } // if let Some(info)
             }
             Ok(Err(_)) => debug!("Jade emulator not available"),
             Err(_) => debug!("Jade emulator connection timed out"),
