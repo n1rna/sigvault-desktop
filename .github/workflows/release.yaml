@@ -36,6 +36,16 @@ jobs:
           env_file: .env
           gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
 
+      - name: Set version from tag
+        run: |
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+          echo "Setting version to $VERSION"
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          grep '"version"' src-tauri/tauri.conf.json
+          grep '^version' src-tauri/Cargo.toml
+
       - name: Export env vars for build
         shell: bash
         run: |
