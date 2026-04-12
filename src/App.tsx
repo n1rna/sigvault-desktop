@@ -38,15 +38,12 @@ function AppRouter() {
 		if (!listenerReady) return;
 		const initializeApp = async () => {
 			await invoke("cmd_initialize_app");
-			console.log("App initialized");
 		};
 		initializeApp();
 	}, [listenerReady]);
 
 	// Navigate based on backend-controlled route
 	useEffect(() => {
-		console.log("Route changed to:", route);
-
 		if (!authenticated && route !== "Login") {
 			navigate("/login");
 		}

@@ -30,7 +30,7 @@ pub async fn cmd_initialize_app(
     // Initialize secure storage
     let storage = SecureStorage::new(app.clone());
     if let Err(e) = storage.initialize(b"sigvault_default_key").await {
-        error!("Failed to initialize storage: {}", e);
+        error!("Failed to initialize storage: {e}");
 
         // Route to login on storage error
 
@@ -41,7 +41,7 @@ pub async fn cmd_initialize_app(
                 .build(),
         )
         .await
-        .map_err(|e: Box<dyn Error + Send + 'static>| format!("Failed to update state: {}", e))?;
+        .map_err(|e: Box<dyn Error + Send + 'static>| format!("Failed to update state: {e}"))?;
 
         return Ok(CommandResult::success(
             "Initialization complete - login required",
@@ -66,13 +66,13 @@ pub async fn cmd_initialize_app(
                         authenticated = true;
                     }
                     Err(e) => {
-                        error!("Authentication failed: {}", e);
+                        error!("Authentication failed: {e}");
                     }
                 }
             }
         }
         Err(e) => {
-            error!("Failed to retrieve auth data from storage: {}", e);
+            error!("Failed to retrieve auth data from storage: {e}");
         }
     }
 
@@ -86,7 +86,7 @@ pub async fn cmd_initialize_app(
                 .build(),
         )
         .await
-        .map_err(|e| format!("Failed to update state: {}", e))?;
+        .map_err(|e| format!("Failed to update state: {e}"))?;
     }
 
     Ok(CommandResult::success(

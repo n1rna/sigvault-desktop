@@ -133,16 +133,16 @@ impl SessionEventBuilder {
         self
     }
 
-    pub fn build(self) -> SessionEvent {
-        SessionEvent {
-            step: self.step.expect("step is required"),
-            requirements: self.requirements.expect("requirements are required"),
+    pub fn build(self) -> Result<SessionEvent, &'static str> {
+        Ok(SessionEvent {
+            step: self.step.ok_or("step is required")?,
+            requirements: self.requirements.ok_or("requirements are required")?,
             data: self.data,
-            finished: self.finished.expect("finished is required"),
-            success: self.success.expect("success is required"),
+            finished: self.finished.ok_or("finished is required")?,
+            success: self.success.ok_or("success is required")?,
             message: self.message,
-            session_type: self.session_type.expect("session_type is required"),
-        }
+            session_type: self.session_type.ok_or("session_type is required")?,
+        })
     }
 }
 
@@ -179,5 +179,78 @@ impl AppEvent {
                 level: level.to_string(),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_session_event_builder_success() {
+        let event = SessionEvent::builder()
+            .step(1)
+            .requirements(serde_json::json!({"network": "testnet"}))
+            .finished(false)
+            .success(true)
+            .session_type("DEVICE_REGISTRATION".to_string())
+            .build();
+
+        assert!(event.is_ok());
+        let event = event.unwrap();
+        assert_eq!(event.step, 1);
+        assert!(!event.finished);
+        assert!(event.success);
+        assert_eq!(event.session_type, "DEVICE_REGISTRATION");
+        assert!(event.data.is_none());
+        assert!(event.message.is_none());
+    }
+
+    #[test]
+    fn test_session_event_builder_missing_required_field() {
+        let result = SessionEvent::builder()
+            .step(1)
+            .requirements(serde_json::json!({}))
+            .build();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_session_event_builder_with_all_fields() {
+        let event = SessionEvent::builder()
+            .step(2)
+            .requirements(serde_json::json!({"network": "mainnet"}))
+            .data(Some(serde_json::json!({"tx": "abc123"})))
+            .finished(true)
+            .success(true)
+            .session_type("TRANSACTION_SIGNING".to_string())
+            .message("Done".to_string())
+            .build()
+            .unwrap();
+
+        assert_eq!(event.step, 2);
+        assert!(event.finished);
+        assert_eq!(event.message, Some("Done".to_string()));
+        assert!(event.data.is_some());
+    }
+
+    #[test]
+    fn test_state_update_event_builder() {
+        let event = StateUpdateEvent::builder()
+            .route(WindowApplicationRoute::MainPage)
+            .authenticated(true)
+            .build();
+
+        assert_eq!(event.route, Some(WindowApplicationRoute::MainPage));
+        assert_eq!(event.authenticated, Some(true));
+    }
+
+    #[test]
+    fn test_app_event_serialization() {
+        let event = AppEvent::notification("Test", "Hello", "info");
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"notification\""));
+        assert!(json.contains("\"title\":\"Test\""));
     }
 }

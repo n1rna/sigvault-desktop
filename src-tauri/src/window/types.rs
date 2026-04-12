@@ -19,7 +19,7 @@ pub enum SessionMessageType {
     AuthenticationMessage,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum WindowApplicationRoute {
     #[serde(rename = "Loading")]
     Loading,
