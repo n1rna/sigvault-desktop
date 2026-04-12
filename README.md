@@ -13,9 +13,12 @@ A Bitcoin multisig wallet manager that connects to hardware signing devices and 
 
 ## Supported Hardware Wallets
 
-- **Trezor** — all models (Model One, Model T, Safe series)
+- **Trezor** — all models
+- **Ledger** — Nano S, Nano X, Nano S Plus
 - **BitBox02** — Multi edition
-- **Blockstream Jade** — including QEMU emulator for development
+- **Blockstream Jade**
+- **Coldcard**
+- **Specter DIY**
 
 ## Remote Sessions
 
