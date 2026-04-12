@@ -11,6 +11,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { AppStateProvider, useAppState } from "./contexts/AppStateContext";
 import Navbar from "./components/Navbar";
+import UpdateBanner from "./components/UpdateBanner";
 import Loading from "./pages/Loading";
 import { Login } from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -21,6 +22,7 @@ import SessionDetails from "./pages/SessionDetails";
 function AuthenticatedLayout() {
 	return (
 		<div className="flex h-full flex-col">
+			<UpdateBanner />
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
 				<Outlet />
