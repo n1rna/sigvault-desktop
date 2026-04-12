@@ -136,20 +136,38 @@ jobs:
         run: |
           mkdir -p artifacts
           BUNDLE=src-tauri/target/${{ matrix.rust_target }}/release/bundle
+          echo "=== Bundle contents ==="
+          find $BUNDLE -type f | sort
           cp $BUNDLE/deb/*.deb artifacts/ 2>/dev/null || true
           cp $BUNDLE/rpm/*.rpm artifacts/ 2>/dev/null || true
           cp $BUNDLE/appimage/*.AppImage artifacts/ 2>/dev/null || true
           cp $BUNDLE/appimage/*.AppImage.tar.gz artifacts/ 2>/dev/null || true
           cp $BUNDLE/appimage/*.AppImage.tar.gz.sig artifacts/ 2>/dev/null || true
+          echo "=== Collected artifacts ==="
+          ls -lh artifacts/
 
       - name: Collect artifacts (macOS)
         if: runner.os == 'macOS'
         run: |
           mkdir -p artifacts
           BUNDLE=src-tauri/target/${{ matrix.rust_target }}/release/bundle
+          ARCH="${{ matrix.label }}"  # darwin-aarch64 or darwin-x86_64
+          echo "=== Bundle contents ==="
+          find $BUNDLE -type f | sort
           cp $BUNDLE/dmg/*.dmg artifacts/ 2>/dev/null || true
-          cp $BUNDLE/macos/*.app.tar.gz artifacts/ 2>/dev/null || true
-          cp $BUNDLE/macos/*.app.tar.gz.sig artifacts/ 2>/dev/null || true
+          # Rename .app.tar.gz to include arch (avoid collision between aarch64/x86_64)
+          for f in $BUNDLE/macos/*.app.tar.gz; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f" .app.tar.gz)
+            cp "$f" "artifacts/${base}_${ARCH}.app.tar.gz"
+          done
+          for f in $BUNDLE/macos/*.app.tar.gz.sig; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f" .app.tar.gz.sig)
+            cp "$f" "artifacts/${base}_${ARCH}.app.tar.gz.sig"
+          done
+          echo "=== Collected artifacts ==="
+          ls -lh artifacts/
 
       - name: Collect artifacts (Windows)
         if: runner.os == 'Windows'
@@ -157,9 +175,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
           $bundle = "src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          Write-Host "=== Bundle contents ==="
+          Get-ChildItem -Recurse $bundle -File | ForEach-Object { $_.FullName }
           Copy-Item "$bundle/nsis/*.exe" artifacts/ -ErrorAction SilentlyContinue
           Copy-Item "$bundle/nsis/*.nsis.zip" artifacts/ -ErrorAction SilentlyContinue
           Copy-Item "$bundle/nsis/*.nsis.zip.sig" artifacts/ -ErrorAction SilentlyContinue
+          Write-Host "=== Collected artifacts ==="
+          Get-ChildItem artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -196,17 +218,33 @@ jobs:
           PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           REPO="https://github.com/n1rna/sigvault-desktop/releases/download/${VERSION}"
 
+          # Helper: read signature file content (empty string if missing)
           read_sig() { cat "$1" 2>/dev/null || echo ""; }
 
-          LINUX_SIG=$(read_sig *AppImage.tar.gz.sig)
-          DARWIN_AARCH64_SIG=$(read_sig *aarch64.app.tar.gz.sig)
-          DARWIN_X86_SIG=$(read_sig *x64.app.tar.gz.sig)
-          WINDOWS_SIG=$(read_sig *nsis.zip.sig)
+          # Helper: find first matching file (empty string if none)
+          find_file() { ls $1 2>/dev/null | grep -v '\.sig$' | head -1 || echo ""; }
 
-          LINUX_URL="${REPO}/$(ls *AppImage.tar.gz 2>/dev/null | grep -v '\.sig$' | head -1)"
-          DARWIN_AARCH64_URL="${REPO}/$(ls *aarch64.app.tar.gz 2>/dev/null | grep -v '\.sig$' | head -1)"
-          DARWIN_X86_URL="${REPO}/$(ls *x64.app.tar.gz 2>/dev/null | grep -v '\.sig$' | head -1)"
-          WINDOWS_URL="${REPO}/$(ls *nsis.zip 2>/dev/null | grep -v '\.sig$' | head -1)"
+          LINUX_FILE=$(find_file "*AppImage.tar.gz")
+          LINUX_SIG=$(read_sig "${LINUX_FILE}.sig")
+          LINUX_URL="${REPO}/${LINUX_FILE}"
+
+          DARWIN_AARCH64_FILE=$(find_file "*darwin-aarch64.app.tar.gz")
+          DARWIN_AARCH64_SIG=$(read_sig "${DARWIN_AARCH64_FILE}.sig")
+          DARWIN_AARCH64_URL="${REPO}/${DARWIN_AARCH64_FILE}"
+
+          DARWIN_X86_FILE=$(find_file "*darwin-x86_64.app.tar.gz")
+          DARWIN_X86_SIG=$(read_sig "${DARWIN_X86_FILE}.sig")
+          DARWIN_X86_URL="${REPO}/${DARWIN_X86_FILE}"
+
+          WINDOWS_FILE=$(find_file "*nsis.zip")
+          WINDOWS_SIG=$(read_sig "${WINDOWS_FILE}.sig")
+          WINDOWS_URL="${REPO}/${WINDOWS_FILE}"
+
+          echo "=== Updater artifacts found ==="
+          echo "Linux:          ${LINUX_FILE:-MISSING}"
+          echo "macOS ARM:      ${DARWIN_AARCH64_FILE:-MISSING}"
+          echo "macOS Intel:    ${DARWIN_X86_FILE:-MISSING}"
+          echo "Windows:        ${WINDOWS_FILE:-MISSING}"
 
           cat > latest.json << MANIFEST
           {
