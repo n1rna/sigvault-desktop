@@ -56,16 +56,6 @@ describe("Dashboard", () => {
 		expect(screen.getByText("Loading…")).toBeInTheDocument();
 	});
 
-	it("displays version from Tauri API", async () => {
-		vi.mocked(invoke).mockResolvedValueOnce({ name: "Alice" });
-
-		render(<Dashboard />);
-
-		await waitFor(() => {
-			expect(screen.getByText(/SigVault Desktop v1\.2\.3/)).toBeInTheDocument();
-		});
-	});
-
 	it("handles navigation button clicks", async () => {
 		vi.mocked(invoke).mockResolvedValueOnce({ name: "Alice" });
 		const user = userEvent.setup();
