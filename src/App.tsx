@@ -98,18 +98,18 @@ function ActivityPanel() {
 			<button
 				type="button"
 				onClick={() => setExpanded(!expanded)}
-				className="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-accent/50"
+				className="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-muted"
 			>
 				{isLatestInProgress ? (
-					<svg className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+					<svg className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
 						<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 					</svg>
 				) : (
-					<svg className="h-3.5 w-3.5 shrink-0 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-						<path d="M20 6 9 17l-5-5" />
-					</svg>
+					<span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+						<span className="h-2 w-2 rounded-full bg-success" />
+					</span>
 				)}
-				<span className="flex-1 truncate text-xs text-muted-foreground">
+				<span className="flex-1 truncate font-mono text-xs text-muted-foreground">
 					{latest.message}
 				</span>
 				<svg
@@ -117,7 +117,7 @@ function ActivityPanel() {
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
-					strokeWidth="2"
+					strokeWidth="1.5"
 				>
 					<path d="m18 15-6-6-6 6" />
 				</svg>
@@ -130,15 +130,15 @@ function ActivityPanel() {
 						return (
 							<div key={i} className="flex items-start gap-2">
 								{isInProgress ? (
-									<svg className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+									<svg className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
 										<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 									</svg>
 								) : (
-									<svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-										<path d="M20 6 9 17l-5-5" />
-									</svg>
+									<span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+										<span className="h-2 w-2 rounded-full bg-success" />
+									</span>
 								)}
-								<span className={`text-xs ${isInProgress ? "text-foreground" : "text-muted-foreground"}`}>
+								<span className={`font-mono text-xs ${isInProgress ? "text-foreground" : "text-muted-foreground"}`}>
 									{item.message}
 								</span>
 							</div>

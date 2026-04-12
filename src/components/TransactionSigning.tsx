@@ -206,45 +206,53 @@ export default function TransactionSigning({
 
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="border border-border bg-card p-6">
-				<h2 className="mb-4 text-xl font-semibold text-foreground">
-					Transaction Details
-				</h2>
+			<div className="rounded-lg border border-border bg-card p-6">
+				<div className="mb-4">
+					<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+						§ Transaction
+					</div>
+					<h2 className="mt-1 text-lg font-medium tracking-tight text-foreground">
+						Transaction Details
+					</h2>
+				</div>
 
 				<div className="flex flex-col gap-3">
 					<div className="flex flex-col gap-1">
-						<span className="text-sm font-medium text-muted-foreground">
-							Transaction ID:
+						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+							Transaction ID
 						</span>
-						<span className="break-all font-mono text-sm">
+						<span className="break-all font-mono text-sm tabular-nums text-foreground">
 							{transactionData.transaction.txid}
 						</span>
 					</div>
 
 					<div className="flex flex-col gap-2">
-						<span className="text-sm font-medium text-muted-foreground">
-							PSBT:
+						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+							PSBT
 						</span>
-						<code className="block break-all border border-border bg-background p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+						<code className="block break-all rounded-md border border-border bg-background p-3 font-mono text-xs leading-relaxed tabular-nums text-muted-foreground">
 							{truncatedPsbt}
 						</code>
 					</div>
 				</div>
 
 				<div className="mt-4 border-t border-border pt-4">
-					<h3 className="mb-3 text-sm font-semibold text-muted-foreground">
-						Required Signatures
-					</h3>
-					<div className="flex flex-col gap-2">
+					<div className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+						§ Required Signatures
+					</div>
+					<div className="grid gap-px overflow-hidden rounded-md bg-border">
 						{transactionData.signature_slots.map((slot, index) => (
 							<div
 								key={`${slot.fingerprint}-${index}`}
-								className="flex items-center justify-between gap-4 bg-accent px-3 py-2"
+								className="flex items-center justify-between gap-4 bg-card px-3 py-2.5"
 							>
-								<span className="font-mono text-sm font-medium text-primary">
-									{slot.fingerprint}
+								<span className="flex items-center gap-2">
+									<span className="h-2 w-2 rounded-full bg-primary" />
+									<span className="font-mono text-sm tracking-wider text-primary">
+										{slot.fingerprint}
+									</span>
 								</span>
-								<span className="font-mono text-xs text-muted-foreground">
+								<span className="font-mono text-xs tabular-nums text-muted-foreground">
 									{slot.derivation_path}
 								</span>
 							</div>
@@ -254,30 +262,42 @@ export default function TransactionSigning({
 			</div>
 
 			{error && (
-				<div className="border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+				<div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
 					{error}
 				</div>
 			)}
 
-			<div className="border border-border bg-card p-6">
+			<div className="rounded-lg border border-border bg-card p-6">
 				<div className="mb-4 flex items-center justify-between gap-4">
-					<h2 className="text-xl font-semibold text-foreground">
-						Hardware Wallet
-					</h2>
+					<div>
+						<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+							§ Hardware Wallet
+						</div>
+						<h2 className="mt-1 text-lg font-medium tracking-tight text-foreground">
+							Sign with Device
+						</h2>
+					</div>
 					<button
 						type="button"
 						onClick={handleDiscover}
 						disabled={discovering || signing || submitting}
-						className="bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+						className="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						{discovering ? "Discovering..." : "Discover Devices"}
+						{discovering ? (
+							<span className="flex items-center gap-2">
+								<svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+									<path d="M21 12a9 9 0 1 1-6.219-8.56" />
+								</svg>
+								Scanning…
+							</span>
+						) : "Discover Devices"}
 					</button>
 				</div>
 
 				{devices.length > 0 && (
 					<>
 						{!hasMatchingDevice && (
-							<div className="mb-4 border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+							<div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
 								No authorized signers found. Expected: {transactionData.signature_slots.map((s) => s.fingerprint).join(", ")}
 							</div>
 						)}
@@ -300,12 +320,12 @@ export default function TransactionSigning({
 							type="button"
 							onClick={handleSignTransaction}
 							disabled={signing || submitting}
-							className="bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+							className="rounded-md bg-primary px-8 py-3.5 text-base font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{signing
-								? "Signing... (Check your device)"
+								? "Signing… (Check your device)"
 								: submitting
-									? "Submitting..."
+									? "Submitting…"
 									: "Sign Transaction"}
 						</button>
 						<p className="text-center text-sm text-muted-foreground">
