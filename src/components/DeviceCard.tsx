@@ -68,16 +68,16 @@ export default function DeviceCard({
 	};
 
 	const cardClasses = [
-		"flex flex-col gap-4 border-2 p-5",
+		"flex flex-col gap-4 rounded-lg border p-5 transition-colors",
 		isSelected
 			? "border-primary bg-primary/10"
 			: isHighlighted
-				? "border-green-500 bg-green-500/10"
+				? "border-success bg-success/10"
 				: isLocked
-					? "border-primary bg-primary/10"
+					? "border-primary/50 bg-primary/5"
 					: isUnsupported
-						? "border-muted-foreground/50 bg-muted/50 opacity-70"
-						: "border-border bg-accent",
+						? "border-border bg-muted/50 opacity-70"
+						: "border-border bg-card",
 		isSupported
 			? "cursor-pointer hover:border-primary"
 			: isLocked
@@ -88,22 +88,33 @@ export default function DeviceCard({
 	return (
 		<div className={cardClasses} onClick={handleClick}>
 			<div className="flex items-center justify-between gap-3">
-				<h3 className="text-lg font-semibold text-foreground">
-					{device.model}
-				</h3>
+				<div className="flex items-center gap-2.5">
+					<span
+						className={`h-2.5 w-2.5 rounded-full ${
+							isSupported
+								? "bg-success"
+								: isLocked
+									? "animate-pulse bg-primary"
+									: "bg-muted-foreground/40"
+						}`}
+					/>
+					<h3 className="text-base font-medium text-foreground">
+						{device.model}
+					</h3>
+				</div>
 				<div className="flex items-center gap-2">
 					{isNonSigner && (
-						<span className="bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
+						<span className="rounded-md bg-destructive/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-destructive">
 							Not a signer
 						</span>
 					)}
 					<span
-						className={`px-3 py-1 text-xs font-medium ${
+						className={`rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
 							isSupported
-								? "bg-green-500/20 text-green-500"
+								? "bg-success/15 text-success"
 								: isLocked
-									? "bg-primary/20 text-primary"
-									: "bg-muted-foreground/20 text-muted-foreground"
+									? "bg-primary/15 text-primary"
+									: "bg-muted text-muted-foreground"
 						}`}
 					>
 						{isSupported ? "Ready" : isLocked ? "Locked" : "Unsupported"}
@@ -111,27 +122,25 @@ export default function DeviceCard({
 				</div>
 			</div>
 
-			<div className="flex flex-col gap-2">
-				<div className="flex justify-between gap-4">
-					<span className="text-sm text-muted-foreground">Type:</span>
-					<span className="text-sm font-medium">{device.device_type}</span>
+			<div className="grid gap-px overflow-hidden rounded-md bg-border">
+				<div className="flex justify-between gap-4 bg-card px-3 py-2">
+					<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Type</span>
+					<span className="font-mono text-xs tabular-nums text-foreground">{device.device_type}</span>
 				</div>
 
 				{fingerprint && (
-					<div className="flex justify-between gap-4">
-						<span className="text-sm text-muted-foreground">
-							Fingerprint:
-						</span>
-						<span className="font-mono text-sm font-medium">
+					<div className="flex justify-between gap-4 bg-card px-3 py-2">
+						<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Fingerprint</span>
+						<span className="font-mono text-sm tracking-wider text-primary">
 							{fingerprint}
 						</span>
 					</div>
 				)}
 
 				{device.state.state === "Supported" && device.state.version && (
-					<div className="flex justify-between gap-4">
-						<span className="text-sm text-muted-foreground">Version:</span>
-						<span className="text-sm font-medium">
+					<div className="flex justify-between gap-4 bg-card px-3 py-2">
+						<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Version</span>
+						<span className="font-mono text-xs tabular-nums text-foreground">
 							{device.state.version}
 						</span>
 					</div>
@@ -140,20 +149,18 @@ export default function DeviceCard({
 				{device.state.state === "Supported" &&
 					device.state.registered !== null &&
 					device.state.registered !== undefined && (
-						<div className="flex justify-between gap-4">
-							<span className="text-sm text-muted-foreground">
-								Policy:
-							</span>
-							<span className="text-sm font-medium">
-								{device.state.registered
-									? "Registered"
-									: "Not registered"}
+						<div className="flex justify-between gap-4 bg-card px-3 py-2">
+							<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Policy</span>
+							<span className="flex items-center gap-1.5 font-mono text-xs text-foreground">
+								<span className={`h-1.5 w-1.5 rounded-full ${device.state.registered ? "bg-success" : "bg-warning"}`} />
+								{device.state.registered ? "Registered" : "Not registered"}
 							</span>
 						</div>
 					)}
+			</div>
 
 				{isUnlocking && unlockStatusMessage && (
-					<div className="mt-3 text-sm text-muted-foreground">
+					<div className="text-sm text-muted-foreground">
 						{unlockStatusMessage}
 					</div>
 				)}
@@ -163,9 +170,9 @@ export default function DeviceCard({
 					const topLine = parts.slice(0, 2).join(" ");
 					const bottomLine = parts.slice(2).join(" ");
 					return (
-						<div className="mt-3 border border-primary bg-background p-4">
-							<span className="block text-xs text-muted-foreground">
-								Pairing Code:
+						<div className="rounded-md border border-primary/30 bg-background p-4">
+							<span className="block font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+								Pairing Code
 							</span>
 							<code className="block py-2 text-center font-mono text-xl font-semibold tracking-widest text-primary">
 								{topLine}
@@ -180,8 +187,8 @@ export default function DeviceCard({
 				})()}
 
 				{isUnsupported && device.state.state === "Unsupported" && (
-					<div className="mt-3 flex items-start gap-2 border border-destructive/30 bg-destructive/10 p-3">
-						<span className="flex h-5 w-5 shrink-0 items-center justify-center bg-destructive/20 text-xs font-bold text-destructive">
+					<div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3">
+						<span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-destructive/20 text-xs font-bold text-destructive">
 							!
 						</span>
 						<span className="text-sm text-muted-foreground">
@@ -189,13 +196,12 @@ export default function DeviceCard({
 						</span>
 					</div>
 				)}
-			</div>
 
-			<div className="flex justify-end border-t border-border pt-2">
+			<div className="flex justify-end border-t border-border pt-3">
 				{isSupported && (
 					<button
 						type="button"
-						className="bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+						className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
 						onClick={handleClick}
 					>
 						{isSelected ? "Selected" : "Select"}
@@ -205,18 +211,18 @@ export default function DeviceCard({
 				{isLocked && onUnlock && (
 					<button
 						type="button"
-						className="bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+						className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 						onClick={handleUnlock}
 						disabled={isUnlocking}
 					>
-						{isUnlocking ? "Unlocking..." : "Unlock Device"}
+						{isUnlocking ? "Unlocking…" : "Unlock Device"}
 					</button>
 				)}
 
 				{isUnsupported && (
 					<button
 						type="button"
-						className="border border-border bg-secondary px-5 py-2 text-sm font-medium text-muted-foreground opacity-50"
+						className="rounded-md border border-border bg-secondary px-5 py-2 text-sm font-medium text-muted-foreground opacity-50"
 						disabled
 					>
 						Cannot Use

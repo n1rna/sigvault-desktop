@@ -19,18 +19,22 @@ export function Login() {
 	};
 
 	return (
-		<div className="flex h-screen w-full items-center justify-center bg-background">
+		<div className="relative flex h-screen w-full items-center justify-center bg-background">
 			<WindowControls />
-			<div className="w-[90%] max-w-[400px] border border-border bg-card p-12 text-center">
-				<h1 className="mb-2 text-2xl font-semibold text-foreground">
-					Welcome to SigVault
+			<div className="absolute inset-0 bg-dots mask-radial-fade opacity-15" />
+			<div className="relative w-[90%] max-w-[400px] rounded-lg border border-border bg-card p-10 text-center">
+				<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+					§ Authentication
+				</div>
+				<h1 className="mt-3 text-3xl font-medium tracking-tight text-foreground">
+					SigVault
 				</h1>
-				<p className="mb-8 text-sm text-muted-foreground">
+				<p className="mt-2 mb-8 text-sm text-muted-foreground">
 					Secure Bitcoin Wallet Management
 				</p>
 
 				{error && (
-					<div className="mb-4 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+					<div className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
 						{error}
 					</div>
 				)}
@@ -38,9 +42,9 @@ export function Login() {
 				<button
 					onClick={handleLogin}
 					disabled={isLoading}
-					className="mb-4 w-full bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+					className="mb-4 w-full rounded-md bg-primary py-3.5 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
-					{isLoading ? "Connecting..." : "Login with OAuth"}
+					{isLoading ? "Connecting…" : "Login with OAuth"}
 				</button>
 
 				<p className="mt-4 text-xs text-muted-foreground">
