@@ -42,23 +42,26 @@ export default function MachineRegistration() {
 
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden p-8">
-			<div className="mx-auto max-w-[500px]">
-				<h1 className="mb-2 text-2xl font-semibold text-foreground">
+			<div className="mx-auto w-full max-w-[500px]">
+				<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+					§ Registration
+				</div>
+				<h1 className="mt-2 mb-1 text-2xl font-medium tracking-tight text-foreground">
 					Machine Registration
 				</h1>
-				<p className="mb-8 text-muted-foreground">
+				<p className="mb-8 text-sm text-muted-foreground">
 					Register this machine to continue
 				</p>
 
 				{error && (
-					<div className="mb-4 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+					<div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
 						{error}
 					</div>
 				)}
 
 				<form onSubmit={handleSubmit} className="flex flex-col gap-4">
 					<div>
-						<label className="mb-2 block text-sm font-medium text-muted-foreground">
+						<label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
 							Machine Name
 						</label>
 						<input
@@ -68,34 +71,34 @@ export default function MachineRegistration() {
 							onChange={(e) => setMachineName(e.target.value)}
 							disabled={loading}
 							required
-							className="w-full border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+							className="w-full rounded-md border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 						/>
 					</div>
 
 					{machineId && (
 						<div>
-							<label className="mb-2 block text-sm font-medium text-muted-foreground">
+							<label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
 								Machine ID
 							</label>
 							<input
 								type="text"
 								value={machineId}
 								disabled
-								className="w-full border border-border bg-input px-3 py-2.5 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+								className="w-full rounded-md border border-border bg-input px-3 py-2.5 font-mono text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
 							/>
 						</div>
 					)}
 
 					{machineType && (
 						<div>
-							<label className="mb-2 block text-sm font-medium text-muted-foreground">
+							<label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
 								Machine Type
 							</label>
 							<input
 								type="text"
 								value={machineType}
 								disabled
-								className="w-full border border-border bg-input px-3 py-2.5 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+								className="w-full rounded-md border border-border bg-input px-3 py-2.5 font-mono text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
 							/>
 						</div>
 					)}
@@ -103,9 +106,9 @@ export default function MachineRegistration() {
 					<button
 						type="submit"
 						disabled={loading || !machineName}
-						className="bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+						className="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						{loading ? "Registering..." : "Register Machine"}
+						{loading ? "Registering…" : "Register Machine"}
 					</button>
 				</form>
 			</div>

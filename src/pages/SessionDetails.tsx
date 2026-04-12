@@ -74,9 +74,9 @@ export default function SessionDetails() {
 		if (isTransactionSigningSession) {
 			if (!transactionSigningData) {
 				return (
-					<div className="flex flex-col gap-6">
-						<div className="h-48 animate-pulse bg-muted" />
-						<div className="h-64 animate-pulse bg-muted" />
+					<div className="grid gap-px overflow-hidden rounded-lg bg-border">
+						<div className="h-48 animate-pulse bg-card" />
+						<div className="h-64 animate-pulse bg-card" />
 					</div>
 				);
 			}
@@ -95,13 +95,18 @@ export default function SessionDetails() {
 	return (
 		<div className="flex h-full w-full flex-col p-8">
 			<div className="mb-4 flex shrink-0 items-center justify-between">
-				<h1 className="text-[1.75rem] font-semibold text-foreground">
-					Session Details
-				</h1>
+				<div>
+					<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+						§ Active Session
+					</div>
+					<h1 className="mt-2 text-2xl font-medium tracking-tight text-foreground">
+						Session Details
+					</h1>
+				</div>
 				<button
 					type="button"
 					onClick={handleExit}
-					className="bg-destructive px-5 py-2.5 text-sm font-medium text-destructive-foreground hover:opacity-90"
+					className="rounded-md bg-destructive px-5 py-2.5 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
 				>
 					Exit Session
 				</button>
@@ -111,39 +116,39 @@ export default function SessionDetails() {
 				<span
 					className={`h-2.5 w-2.5 shrink-0 rounded-full ${
 						activeSession.isConnected
-							? "bg-green-500"
+							? "bg-success"
 							: "bg-destructive"
 					}`}
 				/>
 				{activeSession.sessionId ? (
-					<span className="font-mono text-sm text-muted-foreground">
+					<span className="font-mono text-sm tabular-nums text-muted-foreground">
 						{activeSession.sessionId}
 					</span>
 				) : (
-					<span className="h-4 w-48 animate-pulse bg-muted" />
+					<span className="h-4 w-48 animate-pulse rounded bg-muted" />
 				)}
 				{sessionType ? (
-					<span className="border border-border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
+					<span className="rounded-md bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-secondary-foreground">
 						{sessionType}
 					</span>
 				) : (
 					activeSession.sessionId && (
-						<span className="h-5 w-28 animate-pulse bg-muted" />
+						<span className="h-5 w-28 animate-pulse rounded bg-muted" />
 					)
 				)}
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto pb-8">
 				{activeSession.sessionState?.error && (
-					<div className="mb-6 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+					<div className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
 						{activeSession.sessionState.error}
 					</div>
 				)}
 
 				{!activeSession.isConnected && !activeSession.sessionState ? (
-					<div className="flex flex-col gap-6">
-						<div className="h-48 animate-pulse bg-muted" />
-						<div className="h-64 animate-pulse bg-muted" />
+					<div className="grid gap-px overflow-hidden rounded-lg bg-border">
+						<div className="h-48 animate-pulse bg-card" />
+						<div className="h-64 animate-pulse bg-card" />
 					</div>
 				) : (
 					renderSessionContent()

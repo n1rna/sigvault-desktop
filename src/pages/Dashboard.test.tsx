@@ -53,7 +53,7 @@ describe("Dashboard", () => {
 
 		render(<Dashboard />);
 
-		expect(screen.getByText("Loading...")).toBeInTheDocument();
+		expect(screen.getByText("Loading…")).toBeInTheDocument();
 	});
 
 	it("displays version from Tauri API", async () => {
