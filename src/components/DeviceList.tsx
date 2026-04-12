@@ -35,7 +35,7 @@ export default function DeviceList({
 	}
 
 	return (
-		<div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+		<div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
 			{devices.map((device) => {
 				const fingerprint = getDeviceFingerprint(device);
 				const isHighlighted = fingerprint

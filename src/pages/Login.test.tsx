@@ -15,7 +15,7 @@ describe("Login", () => {
 
 	it("renders login page with heading and button", () => {
 		render(<Login />);
-		expect(screen.getByText("Welcome to SigVault")).toBeInTheDocument();
+		expect(screen.getByText("SigVault")).toBeInTheDocument();
 		expect(screen.getByText("Login with OAuth")).toBeInTheDocument();
 	});
 
@@ -39,7 +39,7 @@ describe("Login", () => {
 		render(<Login />);
 		await user.click(screen.getByText("Login with OAuth"));
 
-		expect(screen.getByText("Connecting...")).toBeInTheDocument();
+		expect(screen.getByText("Connecting…")).toBeInTheDocument();
 		expect(screen.getByRole("button")).toBeDisabled();
 
 		resolveAuth!();

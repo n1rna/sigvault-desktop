@@ -90,20 +90,25 @@ export default function RemoteSessions() {
 	return (
 		<div className="relative flex h-full w-full flex-col overflow-hidden">
 			{error && (
-				<div className="mx-8 mt-8 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+				<div className="mx-8 mt-8 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
 					{error}
 				</div>
 			)}
 			<div className="shrink-0 px-8 pt-8 pb-4">
 				<div className="flex items-center justify-between">
-					<h1 className="text-[1.75rem] font-semibold text-foreground">
-						Remote Sessions
-					</h1>
+					<div>
+						<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+							§ Sessions
+						</div>
+						<h1 className="mt-2 text-2xl font-medium tracking-tight text-foreground">
+							Remote Sessions
+						</h1>
+					</div>
 					<button
 						type="button"
 						onClick={fetchSessions}
 						disabled={loading}
-						className="bg-transparent p-2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+						className="rounded-md bg-transparent p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
 						title="Refresh sessions"
 					>
 						<svg
@@ -125,16 +130,16 @@ export default function RemoteSessions() {
 
 				{remoteSessions.length > 0 && (
 					<div className="mt-4 flex items-center gap-4">
-						<div className="flex items-center gap-1.5">
+						<div className="flex items-center gap-1">
 							{["all", ...sessionTypes].map((type) => (
 								<button
 									key={type}
 									type="button"
 									onClick={() => setTypeFilter(type)}
-									className={`px-2.5 py-1 text-xs ${
+									className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
 										typeFilter === type
 											? "bg-primary text-primary-foreground"
-											: "bg-secondary text-muted-foreground hover:text-foreground"
+											: "text-muted-foreground hover:bg-muted hover:text-foreground"
 									}`}
 								>
 									{type === "all" ? "All" : type}
@@ -149,7 +154,7 @@ export default function RemoteSessions() {
 									s === "newest" ? "oldest" : "newest",
 								)
 							}
-							className="flex items-center gap-1.5 bg-transparent px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+							className="flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 						>
 							<svg
 								width="12"
@@ -175,7 +180,7 @@ export default function RemoteSessions() {
 						</button>
 
 						{typeFilter !== "all" && (
-							<span className="text-xs text-muted-foreground">
+							<span className="font-mono text-xs tabular-nums text-muted-foreground">
 								{filteredAndSorted.length} of{" "}
 								{remoteSessions.length}
 							</span>
@@ -183,48 +188,53 @@ export default function RemoteSessions() {
 					</div>
 				)}
 
-				<div className="absolute right-0 left-0 h-6 bg-gradient-to-b from-background to-transparent" />
+				<div className="absolute right-0 left-0 h-4 bg-gradient-to-b from-background to-transparent" />
 			</div>
 
 			<div className="flex-1 overflow-y-auto overflow-x-hidden px-8 pb-8">
 				<div className="grid gap-3">
 					{loading && remoteSessions.length === 0 ? (
-						<>
-							<div className="h-16 animate-pulse bg-muted" />
-							<div className="h-16 animate-pulse bg-muted" />
-							<div className="h-16 animate-pulse bg-muted" />
-						</>
+						<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
+							<div className="h-14 animate-pulse bg-card" />
+							<div className="h-14 animate-pulse bg-card" />
+							<div className="h-14 animate-pulse bg-card" />
+						</div>
 					) : filteredAndSorted.length === 0 ? (
-						<p className="py-12 text-center text-muted-foreground">
-							{remoteSessions.length === 0
-								? "No sessions available"
-								: "No sessions match the filter"}
-						</p>
+						<div className="flex flex-col items-center justify-center rounded-lg border border-border py-12 text-center">
+							<p className="text-sm text-muted-foreground">
+								{remoteSessions.length === 0
+									? "No sessions available"
+									: "No sessions match the filter"}
+							</p>
+						</div>
 					) : (
-						filteredAndSorted.map((session) => (
+						<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
+						{filteredAndSorted.map((session) => (
 							<div
 								key={session.id}
-								className="flex items-center justify-between border border-border bg-card px-4 py-3 hover:border-primary"
+								className="flex items-center justify-between bg-card px-4 py-3 transition-colors hover:bg-muted"
 							>
 								<div className="flex items-center gap-3 overflow-hidden">
-									<span className="shrink-0 border border-border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
+									<span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-secondary-foreground">
 										{session.session_type}
 									</span>
-									<span className="truncate font-mono text-xs text-muted-foreground">
+									<span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
 										{session.id}
 									</span>
-									<span
-										className={`shrink-0 px-2 py-0.5 text-xs font-medium ${
-											session.status.toLowerCase() ===
-											"active"
-												? "bg-green-500/10 text-green-500"
-												: "bg-primary/10 text-primary"
-										}`}
-									>
-										{session.status}
+									<span className="flex shrink-0 items-center gap-1.5">
+										<span
+											className={`h-2 w-2 rounded-full ${
+												session.status.toLowerCase() === "active"
+													? "bg-success"
+													: "bg-primary"
+											}`}
+										/>
+										<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+											{session.status}
+										</span>
 									</span>
 									{session.created_at && (
-										<span className="shrink-0 text-xs text-muted-foreground">
+										<span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground/60">
 											{new Date(
 												session.created_at,
 											).toLocaleDateString()}
@@ -235,7 +245,7 @@ export default function RemoteSessions() {
 									type="button"
 									onClick={() => handleConnect(session.id)}
 									disabled={connectingTo === session.id}
-									className="shrink-0 bg-transparent p-2 text-muted-foreground hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+									className="shrink-0 rounded-md bg-transparent p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
 									title="Connect to session"
 								>
 									{connectingTo === session.id ? (
@@ -245,7 +255,7 @@ export default function RemoteSessions() {
 											viewBox="0 0 24 24"
 											fill="none"
 											stroke="currentColor"
-											strokeWidth="2"
+											strokeWidth="1.5"
 											className="animate-spin"
 										>
 											<path d="M21 12a9 9 0 1 1-6.219-8.56" />
@@ -257,7 +267,7 @@ export default function RemoteSessions() {
 											viewBox="0 0 24 24"
 											fill="none"
 											stroke="currentColor"
-											strokeWidth="2"
+											strokeWidth="1.5"
 										>
 											<path d="M5 12h14" />
 											<path d="m12 5 7 7-7 7" />
@@ -265,7 +275,8 @@ export default function RemoteSessions() {
 									)}
 								</button>
 							</div>
-						))
+						))}
+						</div>
 					)}
 				</div>
 			</div>

@@ -44,13 +44,13 @@ export default function Navbar() {
 	return (
 		<nav
 			onMouseDown={onDrag}
-			className="flex h-9 shrink-0 select-none items-center border-b border-border bg-card"
+			className="flex h-10 shrink-0 select-none items-center border-b border-border bg-card"
 		>
-			<span className="px-3 text-xs font-semibold text-foreground">
-				SigVault
+			<span className="px-4 font-mono text-xs font-bold tracking-wider text-primary">
+				SIGVAULT
 			</span>
 
-			<div className="flex items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
+			<div className="flex items-center" onMouseDown={(e) => e.stopPropagation()}>
 				{navItems.map((item) => {
 					const isActive = route === item.route;
 					return (
@@ -58,13 +58,16 @@ export default function Navbar() {
 							key={item.route}
 							type="button"
 							onClick={() => navigate(item.route)}
-							className={`bg-transparent px-2.5 py-1 text-xs ${
+							className={`relative bg-transparent px-3 py-2.5 text-xs font-medium transition-colors ${
 								isActive
-									? "text-primary"
+									? "text-foreground"
 									: "text-muted-foreground hover:text-foreground"
 							}`}
 						>
 							{item.label}
+							{isActive && (
+								<span className="absolute bottom-0 left-3 right-3 h-px bg-primary" />
+							)}
 						</button>
 					);
 				})}
@@ -77,16 +80,18 @@ export default function Navbar() {
 				onClick={handleSignOut}
 				disabled={signingOut}
 				onMouseDown={(e) => e.stopPropagation()}
-				className="bg-transparent px-2.5 py-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
+				className="bg-transparent px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
 			>
-				{signingOut ? "Signing out..." : "Sign Out"}
+				{signingOut ? "Signing out…" : "Sign Out"}
 			</button>
+
+			<div className="mx-1 h-4 w-px bg-border" />
 
 			<button
 				type="button"
 				onMouseDown={(e) => e.stopPropagation()}
 				onClick={() => appWindow.minimize()}
-				className="inline-flex h-full w-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground"
+				className="inline-flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 			>
 				<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 					<path d="M5 12h14" />
@@ -96,7 +101,7 @@ export default function Navbar() {
 				type="button"
 				onMouseDown={(e) => e.stopPropagation()}
 				onClick={() => appWindow.close()}
-				className="inline-flex h-full w-9 items-center justify-center text-muted-foreground hover:bg-destructive hover:text-destructive-foreground"
+				className="inline-flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
 			>
 				<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 					<path d="M18 6 6 18" />

@@ -55,16 +55,16 @@ export default function DeviceCreationSession({
 	return (
 		<div className="flex flex-col gap-4">
 			{error && (
-				<div className="border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+				<div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
 					{error}
 				</div>
 			)}
 
 			{submitting ? (
-				<div className="flex flex-col items-center justify-center border border-border bg-card p-12">
+				<div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card p-12">
 					<div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-muted border-t-primary" />
-					<p className="text-muted-foreground">
-						Submitting device registration...
+					<p className="text-sm text-muted-foreground">
+						Submitting device registration…
 					</p>
 				</div>
 			) : (
