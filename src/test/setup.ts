@@ -16,9 +16,17 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 vi.mock("@tauri-apps/api/app", () => ({
-	getVersion: vi.fn(() => Promise.resolve("0.1.0")),
+	getVersion: vi.fn(() => Promise.resolve("0.0.0-dev")),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
 	openUrl: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/plugin-updater", () => ({
+	check: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock("@tauri-apps/plugin-process", () => ({
+	relaunch: vi.fn(() => Promise.resolve()),
 }));

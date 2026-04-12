@@ -58,6 +58,8 @@ pub fn run() {
             .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(ApplicationState::new())
         .manage(oauth_state)
         .invoke_handler(tauri::generate_handler![
