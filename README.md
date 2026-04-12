@@ -1,14 +1,35 @@
 # SigVault Desktop
 
-A Bitcoin multisig wallet manager built with [Tauri 2](https://v2.tauri.app), React, and Rust. SigVault Desktop connects to hardware signing devices (Trezor, BitBox) and coordinates multisig transaction signing through a WebSocket-based remote session protocol.
+A Bitcoin multisig wallet manager that connects to hardware signing devices and coordinates multisig transaction signing through remote sessions.
 
-## Tech Stack
+## Supported Platforms
 
-- **Frontend** — React 19, TypeScript, Tailwind CSS 4, Vite
-- **Backend** — Rust (Tauri 2), async runtime via Tokio
-- **Hardware wallets** — Trezor and BitBox support via [async-hwi](https://github.com/n1rna/async-hwi)
-- **Security** — Tauri Stronghold for secure local storage
-- **Auth** — OAuth 2.0 (ZITADEL)
+| Platform | Architecture | Formats |
+|----------|-------------|---------|
+| Linux | x86_64 | `.deb`, `.rpm`, `.AppImage` |
+| macOS | Apple Silicon (ARM) | `.dmg` |
+| macOS | Intel (x86_64) | `.dmg` |
+| Windows | x86_64 | `.msi`, `.exe` |
+
+## Supported Hardware Wallets
+
+- **Trezor** — all models (Model One, Model T, Safe series)
+- **BitBox02** — Multi edition
+- **Blockstream Jade** — including QEMU emulator for development
+
+## Remote Sessions
+
+SigVault Desktop connects to the [SigVault](https://sigvault.io) coordination server over WebSocket to participate in remote signing sessions. A session brings together multiple signers — each running the desktop app with their own hardware wallet — to collaboratively sign Bitcoin transactions.
+
+Session workflow:
+
+1. A session is created on the SigVault web app with a transaction to sign
+2. Each signer opens SigVault Desktop, connects their hardware wallet, and joins the session
+3. The app presents the transaction details for review on the hardware device
+4. Each signer approves and signs on their device — partial signatures are relayed through the server
+5. Once the required threshold of signatures is reached, the fully signed transaction is broadcast
+
+The app includes built-in auto-update support. When a new release is available, a banner appears with a one-click update option.
 
 ## Prerequisites
 
@@ -43,12 +64,6 @@ A Bitcoin multisig wallet manager built with [Tauri 2](https://v2.tauri.app), Re
    cp .env.example .env
    ```
 
-   If you have access to the `ee` CLI, you can hydrate directly:
-
-   ```bash
-   ee hydrate development -c .ee.desktop -o .env
-   ```
-
 3. **Install frontend dependencies**
 
    ```bash
@@ -67,7 +82,13 @@ A Bitcoin multisig wallet manager built with [Tauri 2](https://v2.tauri.app), Re
 bun run tauri build
 ```
 
-Build artifacts are placed in `src-tauri/target/release/bundle/` and include `.deb`, `.rpm`, and `.AppImage` packages for Linux.
+Build artifacts are placed in `src-tauri/target/release/bundle/`.
+
+## Running Tests
+
+```bash
+bun run test
+```
 
 ## Project Structure
 
@@ -79,21 +100,8 @@ sigvault-desktop/
 │   ├── contexts/         # React context providers
 │   └── hooks/            # Custom hooks
 ├── src-tauri/            # Rust backend (Tauri)
-│   ├── src/              # Rust source (commands, device integration, WebSocket)
+│   ├── src/              # Commands, device integration, WebSocket client
 │   └── Cargo.toml        # Rust dependencies
 ├── .github/workflows/    # CI/CD (release automation)
 └── package.json          # Frontend dependencies & scripts
 ```
-
-## Releasing
-
-Releases are automated via GitHub Actions. To create a new release:
-
-1. Tag the commit: `git tag v0.x.y && git push origin v0.x.y`
-2. Trigger the workflow: `gh workflow run release.yaml -f tag=v0.x.y`
-
-The workflow builds Linux packages, generates SHA-256 checksums, and publishes a GitHub Release.
-
-## IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
