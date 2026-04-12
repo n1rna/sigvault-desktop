@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 import { useAppState } from "../contexts/AppStateContext";
 
 const appWindow = getCurrentWindow();
@@ -22,7 +23,12 @@ const navItems = [
 export default function Navbar() {
 	const { route } = useAppState();
 	const [signingOut, setSigningOut] = useState(false);
+	const [appVersion, setAppVersion] = useState("");
 	const onDrag = useDrag();
+
+	useEffect(() => {
+		getVersion().then(setAppVersion);
+	}, []);
 
 	const navigate = async (target: string) => {
 		try {
@@ -48,6 +54,9 @@ export default function Navbar() {
 		>
 			<span className="px-4 font-mono text-xs font-bold tracking-wider text-primary">
 				SIGVAULT
+				{appVersion && (
+					<span className="ml-1.5 font-normal text-muted-foreground/50">v{appVersion}</span>
+				)}
 			</span>
 
 			<div className="flex items-center" onMouseDown={(e) => e.stopPropagation()}>
