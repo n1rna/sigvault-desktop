@@ -1,13 +1,10 @@
-// Secure storage using Tauri Stronghold
-// TODO: Integrate with Stronghold once API is properly configured
+// Secure storage for authentication data
 
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tauri::{AppHandle, Manager};
-use tokio::sync::Mutex;
 
 const STORE_FILENAME: &str = "auth.dat";
 
@@ -20,15 +17,11 @@ pub struct StoredAuthData {
 
 pub struct SecureStorage {
     app: AppHandle,
-    _initialized: Arc<Mutex<bool>>,
 }
 
 impl SecureStorage {
     pub fn new(app: AppHandle) -> Self {
-        Self {
-            app,
-            _initialized: Arc::new(Mutex::new(false)),
-        }
+        Self { app }
     }
 
     fn get_storage_path(&self) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
@@ -36,7 +29,7 @@ impl SecureStorage {
             .app
             .path()
             .app_data_dir()
-            .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+            .map_err(|e| format!("Failed to get app data directory: {e}"))?;
 
         // Create directory if it doesn't exist
         fs::create_dir_all(&app_data_dir)?;
@@ -44,14 +37,13 @@ impl SecureStorage {
         Ok(app_data_dir.join(STORE_FILENAME))
     }
 
-    /// Initialize the stronghold with a password
+    /// Initialize the storage
     pub async fn initialize(&self, _password: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         debug!("Initializing secure storage");
-        // TODO: Initialize stronghold when API is available
         Ok(())
     }
 
-    /// Store authentication data securely
+    /// Store authentication data
     pub async fn store_auth_data(
         &self,
         auth_data: &StoredAuthData,
@@ -61,12 +53,10 @@ impl SecureStorage {
         // Serialize auth data
         let json = serde_json::to_string_pretty(auth_data)?;
 
-        // TODO: Use Stronghold for encryption when API is configured
-        // For now, use filesystem storage
         let path = self.get_storage_path()?;
         fs::write(&path, json)?;
 
-        debug!("Auth data stored successfully at: {:?}", path);
+        debug!("Auth data stored successfully at: {path:?}");
         Ok(())
     }
 
@@ -93,7 +83,6 @@ impl SecureStorage {
     pub async fn clear_auth_data(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         debug!("Clearing auth data");
 
-        // TODO: Use Stronghold when API is configured
         let path = self.get_storage_path()?;
 
         if path.exists() {
@@ -109,7 +98,7 @@ impl SecureStorage {
         &self,
         token: String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let mut data = self.get_auth_data().await.unwrap_or_default();
+        let mut data = self.get_auth_data().await?;
         data.oauth_access_token = Some(token);
         self.store_auth_data(&data).await
     }
@@ -131,5 +120,29 @@ mod tests {
         let deserialized: StoredAuthData = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(data.oauth_access_token, deserialized.oauth_access_token);
+    }
+
+    #[test]
+    fn test_stored_auth_data_default() {
+        let data = StoredAuthData::default();
+        assert!(data.oauth_access_token.is_none());
+        assert!(data.refresh_token.is_none());
+        assert!(data.expires_at.is_none());
+    }
+
+    #[test]
+    fn test_stored_auth_data_roundtrip_all_fields() {
+        let data = StoredAuthData {
+            oauth_access_token: Some("access".to_string()),
+            refresh_token: Some("refresh".to_string()),
+            expires_at: Some(9999999999),
+        };
+
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        let restored: StoredAuthData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(data.oauth_access_token, restored.oauth_access_token);
+        assert_eq!(data.refresh_token, restored.refresh_token);
+        assert_eq!(data.expires_at, restored.expires_at);
     }
 }

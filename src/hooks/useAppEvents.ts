@@ -9,6 +9,7 @@ import type {
 	CommandEvent,
 	NotificationEvent,
 	SessionWorkflowPayload,
+	RemoteSession,
 } from "../types/events";
 
 const initialState: AppState = {
@@ -27,8 +28,8 @@ const initialState: AppState = {
 
 type AppAction =
 	| { type: "UPDATE_STATE"; payload: Partial<AppState> }
-	| { type: "SET_REMOTE_SESSIONS"; payload: any[] }
-	| { type: "UPDATE_SESSION_STATE"; payload: any }
+	| { type: "SET_REMOTE_SESSIONS"; payload: RemoteSession[] }
+	| { type: "UPDATE_SESSION_STATE"; payload: Record<string, unknown> }
 	| { type: "PUSH_ACTIVITY"; payload: NotificationEvent }
 	| { type: "CLEAR_ACTIVITY" };
 
@@ -63,8 +64,6 @@ export function useAppEvents() {
 	const [listenerReady, setListenerReady] = useState(false);
 
 	const handleStateUpdate = useCallback((data: StateUpdateEvent) => {
-		console.log("State update:", data);
-
 		const updates: Partial<AppState> = {};
 
 		if (data.authenticated != null) {
@@ -97,27 +96,19 @@ export function useAppEvents() {
 	}, []);
 
 	const handleCommand = useCallback((data: CommandEvent) => {
-		console.log("Command received:", data.command, data.payload);
-
 		switch (data.command) {
 			case "update_remote_sessions":
 				if (data.payload?.sessions) {
 					dispatch({
 						type: "SET_REMOTE_SESSIONS",
-						payload: data.payload.sessions,
+						payload: data.payload.sessions as unknown as RemoteSession[],
 					});
 				}
 				break;
-			case "register_machine":
-				console.log("Register machine requested:", data.payload);
-				break;
-			default:
-				console.log("Unhandled command:", data.command);
 		}
 	}, []);
 
 	const handleSession = useCallback((data: SessionWorkflowPayload) => {
-		console.log("Session event:", data);
 
 		if (data?.success) {
 			dispatch({
@@ -147,11 +138,8 @@ export function useAppEvents() {
 	}, []);
 
 	useEffect(() => {
-		console.log("Setting up event listener...");
-
 		const unlistenPromise = listen<AppEvent>("app_event", (event) => {
 			const appEvent = event.payload;
-			console.log("Received app_event:", appEvent);
 
 			switch (appEvent.type) {
 				case "state_update":
@@ -166,18 +154,14 @@ export function useAppEvents() {
 				case "notification":
 					handleNotification(appEvent.data);
 					break;
-				default:
-					console.warn("Unknown event type:", appEvent);
 			}
 		});
 
 		unlistenPromise.then(() => {
-			console.log("Event listener ready");
 			setListenerReady(true);
 		});
 
 		return () => {
-			console.log("Cleaning up event listener...");
 			unlistenPromise.then((unlisten) => unlisten());
 		};
 	}, [handleStateUpdate, handleCommand, handleSession, handleNotification]);

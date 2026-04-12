@@ -34,8 +34,7 @@ export default function MachineRegistration() {
 				setError(result.message || "Registration failed");
 			}
 		} catch (err) {
-			console.error("Registration failed:", err);
-			setError("Failed to register machine. Please try again.");
+			setError(err instanceof Error ? err.message : "Failed to register machine. Please try again.");
 		} finally {
 			setLoading(false);
 		}

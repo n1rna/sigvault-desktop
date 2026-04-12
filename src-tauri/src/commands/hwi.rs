@@ -24,7 +24,7 @@ pub struct WalletConfigInput {
 
 impl WalletConfigInput {
     fn decode_hmac_hex(hex_str: &str) -> Result<[u8; 32], String> {
-        let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid HMAC hex: {}", e))?;
+        let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid HMAC hex: {e}"))?;
         if bytes.len() != 32 {
             return Err(format!("HMAC must be 32 bytes, got {}", bytes.len()));
         }
@@ -81,7 +81,7 @@ pub async fn cmd_discover_hardware_wallets(
         Ok(devices) => {
             info!("Successfully discovered {} device(s)", devices.len());
             let devices_json = serde_json::to_value(&devices)
-                .map_err(|e| format!("Failed to serialize devices: {}", e))?;
+                .map_err(|e| format!("Failed to serialize devices: {e}"))?;
             Ok(CommandResult {
                 success: true,
                 message: format!("Found {} hardware wallet(s)", devices.len()),
@@ -90,9 +90,9 @@ pub async fn cmd_discover_hardware_wallets(
             })
         }
         Err(e) => {
-            error!("Hardware wallet discovery failed: {}", e);
+            error!("Hardware wallet discovery failed: {e}");
             Ok(CommandResult::error(
-                &format!("Failed to discover devices: {}", e),
+                format!("Failed to discover devices: {e}"),
                 AppErrorCode::HardwareWalletError,
             ))
         }
@@ -108,7 +108,7 @@ pub async fn cmd_unlock_device(
     device_id: String,
     wallet_config: Option<WalletConfigInput>,
 ) -> Result<CommandResult, String> {
-    info!("Unlocking device: {}", device_id);
+    info!("Unlocking device: {device_id}");
 
     let config = match wallet_config {
         Some(input) => Some(input.to_wallet_config()?),
@@ -121,9 +121,9 @@ pub async fn cmd_unlock_device(
         .await
     {
         Ok(device) => {
-            info!("Successfully unlocked device: {}", device_id);
+            info!("Successfully unlocked device: {device_id}");
             let device_json = serde_json::to_value(&device)
-                .map_err(|e| format!("Failed to serialize device: {}", e))?;
+                .map_err(|e| format!("Failed to serialize device: {e}"))?;
             Ok(CommandResult {
                 success: true,
                 message: "Device unlocked successfully".to_string(),
@@ -132,9 +132,9 @@ pub async fn cmd_unlock_device(
             })
         }
         Err(e) => {
-            error!("Failed to unlock device: {}", e);
+            error!("Failed to unlock device: {e}");
             Ok(CommandResult::error(
-                &format!("Failed to unlock device: {}", e),
+                format!("Failed to unlock device: {e}"),
                 AppErrorCode::HardwareWalletError,
             ))
         }
@@ -149,8 +149,7 @@ pub async fn cmd_get_device_xpub(
     derivation_path: String,
 ) -> Result<CommandResult, String> {
     info!(
-        "Extracting xpub for device {} at path {}",
-        fingerprint, derivation_path
+        "Extracting xpub for device {fingerprint} at path {derivation_path}"
     );
 
     match app_state
@@ -159,9 +158,9 @@ pub async fn cmd_get_device_xpub(
         .await
     {
         Ok(device_info) => {
-            info!("Successfully extracted device info for {}", fingerprint);
+            info!("Successfully extracted device info for {fingerprint}");
             let device_info_json = serde_json::to_value(&device_info)
-                .map_err(|e| format!("Failed to serialize device info: {}", e))?;
+                .map_err(|e| format!("Failed to serialize device info: {e}"))?;
 
             Ok(CommandResult {
                 success: true,
@@ -171,9 +170,9 @@ pub async fn cmd_get_device_xpub(
             })
         }
         Err(e) => {
-            error!("Failed to extract device info: {}", e);
+            error!("Failed to extract device info: {e}");
             Ok(CommandResult::error(
-                &format!("Failed to extract device info: {}", e),
+                format!("Failed to extract device info: {e}"),
                 AppErrorCode::HardwareWalletError,
             ))
         }
@@ -187,7 +186,7 @@ pub async fn cmd_submit_device_registration(
     session_id: String,
     device_info: DeviceInfo,
 ) -> Result<CommandResult, String> {
-    info!("Submitting device registration for session {}", session_id);
+    info!("Submitting device registration for session {session_id}");
 
     let ws_handler = app_state.ws_handler.lock().await;
 
@@ -206,7 +205,7 @@ pub async fn cmd_submit_device_registration(
         });
 
         if let Err(e) = handler.send_message(&message).await {
-            error!("Failed to send device registration: {:?}", e);
+            error!("Failed to send device registration: {e:?}");
             return Ok(CommandResult::error(
                 "Failed to send device registration",
                 AppErrorCode::WebsocketConnection,
@@ -235,13 +234,13 @@ pub async fn cmd_sign_psbt(
     psbt: String, // Base64 encoded
     _wallet_config: Option<WalletConfigInput>,
 ) -> Result<CommandResult, String> {
-    info!("Signing PSBT with device {}", device_id);
+    info!("Signing PSBT with device {device_id}");
 
     match app_state.hw_manager.sign_psbt(&device_id, &psbt).await {
         Ok(signed_psbt) => {
-            info!("Successfully signed PSBT with device {}", device_id);
+            info!("Successfully signed PSBT with device {device_id}");
             let signed_psbt_json = serde_json::to_value(&signed_psbt)
-                .map_err(|e| format!("Failed to serialize signed PSBT: {}", e))?;
+                .map_err(|e| format!("Failed to serialize signed PSBT: {e}"))?;
             Ok(CommandResult {
                 success: true,
                 message: "PSBT signed successfully".to_string(),
@@ -250,9 +249,9 @@ pub async fn cmd_sign_psbt(
             })
         }
         Err(e) => {
-            error!("Failed to sign PSBT: {}", e);
+            error!("Failed to sign PSBT: {e}");
             Ok(CommandResult::error(
-                &format!("Failed to sign PSBT: {}", e),
+                format!("Failed to sign PSBT: {e}"),
                 AppErrorCode::HardwareWalletError,
             ))
         }
@@ -271,8 +270,7 @@ pub async fn cmd_submit_transaction_signature(
     ledger_hmacs: Option<std::collections::HashMap<String, String>>,
 ) -> Result<CommandResult, String> {
     info!(
-        "Submitting transaction signature for session {}",
-        session_id
+        "Submitting transaction signature for session {session_id}"
     );
 
     let ws_handler = app_state.ws_handler.lock().await;
@@ -299,7 +297,7 @@ pub async fn cmd_submit_transaction_signature(
         });
 
         if let Err(e) = handler.send_message(&message).await {
-            error!("Failed to send transaction signature: {:?}", e);
+            error!("Failed to send transaction signature: {e:?}");
             return Ok(CommandResult::error(
                 "Failed to send transaction signature",
                 AppErrorCode::WebsocketConnection,
@@ -325,7 +323,7 @@ pub async fn cmd_get_ledger_hmacs(
 ) -> Result<CommandResult, String> {
     let hmacs = app_state.hw_manager.get_ledger_hmacs_hex().await;
     let hmacs_json = serde_json::to_value(&hmacs)
-        .map_err(|e| format!("Failed to serialize HMACs: {}", e))?;
+        .map_err(|e| format!("Failed to serialize HMACs: {e}"))?;
     Ok(CommandResult {
         success: true,
         message: format!("Found {} Ledger HMAC(s)", hmacs.len()),

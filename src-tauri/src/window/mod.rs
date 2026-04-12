@@ -13,7 +13,7 @@ type WindowResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send>>
 
 /// Update application state and emit event to frontend
 pub async fn update_state(window: &WebviewWindow, event: StateUpdateEvent) -> WindowResult<()> {
-    debug!("Updating application state: {:?}", event);
+    debug!("Updating application state: {event:?}");
 
     // Emit state update event
     window
@@ -28,7 +28,7 @@ pub fn emit_notification(window: &WebviewWindow, title: &str, message: &str, lev
 }
 
 pub async fn update_session_state(window: &WebviewWindow, event: SessionEvent) -> WindowResult<()> {
-    debug!("Updating active session state: {:?}", event);
+    debug!("Updating active session state: {event:?}");
 
     // Emit state update event
     window

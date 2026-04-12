@@ -23,7 +23,7 @@ fn get_machine_type() -> String {
         "windows" => "WindowsDesktop".to_string(),
         "macos" => "MacOSDesktop".to_string(),
         "linux" => "LinuxDesktop".to_string(),
-        _ => format!("OtherOS:{}", OS),
+        _ => format!("OtherOS:{OS}"),
     }
 }
 

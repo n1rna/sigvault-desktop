@@ -46,8 +46,7 @@ export default function DeviceCreationSession({
 				setError(result.message || "Failed to submit device registration");
 			}
 		} catch (err) {
-			console.error("Failed to submit device registration:", err);
-			setError(String(err));
+			setError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setSubmitting(false);
 		}

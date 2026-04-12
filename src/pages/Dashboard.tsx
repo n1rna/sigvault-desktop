@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
 
 interface UserInfo {
@@ -9,10 +10,11 @@ interface UserInfo {
 	username?: string;
 }
 
-const WEBAPP_URL = "https://app.dev.sigvault.org";
+const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL || "https://app.sigvault.org";
 
 export default function Dashboard() {
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+	const [appVersion, setAppVersion] = useState<string>("");
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
@@ -20,29 +22,30 @@ export default function Dashboard() {
 			try {
 				const user = await invoke<UserInfo>("cmd_get_current_user");
 				setUserInfo(user);
-			} catch (error) {
-				console.error("Failed to fetch user info:", error);
+			} catch {
+				// User info will remain null
 			} finally {
 				setLoading(false);
 			}
 		};
 
 		fetchUserInfo();
+		getVersion().then(setAppVersion);
 	}, []);
 
 	const navigateTo = async (route: string) => {
 		try {
 			await invoke("cmd_navigate", { route });
-		} catch (error) {
-			console.error("Failed to navigate:", error);
+		} catch {
+			// Navigation handled by backend
 		}
 	};
 
 	const openUrl = async (url: string) => {
 		try {
 			await openExternal(url);
-		} catch (error) {
-			console.error("Failed to open URL:", error);
+		} catch {
+			// URL opening handled by OS
 		}
 	};
 
@@ -155,7 +158,7 @@ export default function Dashboard() {
 			</div>
 
 			<p className="mt-4 text-center text-[10px] text-muted-foreground/50">
-				SigVault Desktop v0.1.0
+				SigVault Desktop{appVersion ? ` v${appVersion}` : ""}
 			</p>
 		</div>
 	);
