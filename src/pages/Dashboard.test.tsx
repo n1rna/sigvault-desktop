@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
-import { getVersion } from "@tauri-apps/api/app";
 import Dashboard from "./Dashboard";
 
 vi.mock("../hooks/useAppEvents", () => ({
@@ -30,7 +29,6 @@ vi.mock("../components/Navbar", () => ({
 describe("Dashboard", () => {
 	beforeEach(() => {
 		vi.mocked(invoke).mockReset();
-		vi.mocked(getVersion).mockResolvedValue("1.2.3");
 	});
 
 	it("renders dashboard with user info", async () => {
@@ -42,7 +40,7 @@ describe("Dashboard", () => {
 		render(<Dashboard />);
 
 		await waitFor(() => {
-			expect(screen.getByText("Welcome, Alice")).toBeInTheDocument();
+			expect(screen.getByText("Alice")).toBeInTheDocument();
 		});
 	});
 
@@ -63,10 +61,10 @@ describe("Dashboard", () => {
 		render(<Dashboard />);
 
 		await waitFor(() => {
-			expect(screen.getByText("Welcome, Alice")).toBeInTheDocument();
+			expect(screen.getByText("Alice")).toBeInTheDocument();
 		});
 
-		const sessionsBtn = screen.getByText("Sessions");
+		const sessionsBtn = screen.getByText("Open Sessions");
 		await user.click(sessionsBtn);
 
 		expect(invoke).toHaveBeenCalledWith("cmd_navigate", {

@@ -16,9 +16,7 @@
         "title": "sigvault-desktop",
         "width": 900,
         "height": 650,
-        "minWidth": 750,
-        "minHeight": 500,
-        "resizable": true,
+        "resizable": false,
         "decorations": false
       }
     ],
