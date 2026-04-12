@@ -1,13 +1,31 @@
 {
   "name": "sigvault-desktop",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/n1rna/sigvault-desktop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/n1rna/sigvault-desktop/issues"
+  },
+  "homepage": "https://github.com/n1rna/sigvault-desktop#readme",
+  "keywords": [
+    "bitcoin",
+    "multisig",
+    "wallet",
+    "hardware-wallet",
+    "tauri",
+    "desktop"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.0",
@@ -21,10 +39,15 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
+    "jsdom": "^29.0.2",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vitest": "^4.1.4"
   }
 }

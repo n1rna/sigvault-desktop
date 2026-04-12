@@ -70,7 +70,7 @@ impl WebsocketHandler {
             }));
 
             if let Err(e) = sender.send(close_frame).await {
-                error!("Error sending close frame: {:?}", e);
+                error!("Error sending close frame: {e:?}");
             }
 
             *sender_lock = None;
@@ -89,7 +89,7 @@ impl WebsocketHandler {
             let init_message = InitializeSessionMessage::new();
             let message = Message::Text(serde_json::to_string(&init_message)?);
             sender.send(message).await.map_err(|e| {
-                crate::error::AppError::WebsocketConnection(format!("Failed to send: {}", e))
+                crate::error::AppError::WebsocketConnection(format!("Failed to send: {e}"))
             })?;
             debug!("Sent initialization message");
         }
@@ -99,7 +99,7 @@ impl WebsocketHandler {
 
     pub async fn run(&mut self) -> Result<()> {
         debug!("Starting websocket connection");
-        debug!("Token: {}", self.token);
+        debug!("Token: [REDACTED]");
 
         let url = format!(
             "{}/api/v2/ws/connect/{}?token={}",
@@ -107,7 +107,7 @@ impl WebsocketHandler {
         );
 
         let (ws_stream, _) = connect_async(url).await.map_err(|e| {
-            crate::error::AppError::WebsocketConnection(format!("Connection failed: {}", e))
+            crate::error::AppError::WebsocketConnection(format!("Connection failed: {e}"))
         })?;
 
         let (sender, mut receiver) = ws_stream.split();
@@ -127,7 +127,7 @@ impl WebsocketHandler {
                     }
                 }
                 Err(e) => {
-                    error!("Error handling message: {:?}", e);
+                    error!("Error handling message: {e:?}");
                     break;
                 }
             }
@@ -142,7 +142,7 @@ impl WebsocketHandler {
 
         if *self.is_connected.lock().await {
             if let Err(e) = self.close().await {
-                error!("Error during connection closure: {:?}", e);
+                error!("Error during connection closure: {e:?}");
             }
         }
 
@@ -156,7 +156,7 @@ impl WebsocketHandler {
     async fn handle_next_message(&mut self, reader: &mut WsReceiver) -> Result<bool> {
         match reader.next().await {
             Some(Ok(Message::Text(msg))) => {
-                debug!("Text message received: {}", msg);
+                debug!("Text message received: {msg}");
 
                 let parsed_msg: std::result::Result<GenericWebsocketMessage, serde_json::Error> =
                     serde_json::from_str(&msg);
@@ -165,7 +165,7 @@ impl WebsocketHandler {
                     Ok(msg) => {
                         match msg.message_type {
                             SessionMessageType::AuthenticationMessage => {
-                                if msg.success != true {
+                                if !msg.success {
                                     error!(
                                         "Authentication failed: {}",
                                         msg.message.unwrap_or_default()
@@ -188,14 +188,13 @@ impl WebsocketHandler {
                                 .await
                                 .map_err(|e| {
                                     crate::error::AppError::WindowError(format!(
-                                        "Failed to set state: {}",
-                                        e
+                                        "Failed to set state: {e}"
                                     ))
                                 })?;
 
                                 // Send the initialize message
                                 if let Err(e) = self.send_initialize_message().await {
-                                    error!("Failed to send initialize message: {:?}", e);
+                                    error!("Failed to send initialize message: {e:?}");
                                     return Ok(true);
                                 }
                             }
@@ -212,7 +211,7 @@ impl WebsocketHandler {
                                         self.handle_workflow_message(payload).await?;
                                     }
                                     None => {
-                                        if msg.success == false {
+                                        if !msg.success {
                                             error!(
                                                 "Workflow message error: {}",
                                                 msg.message.unwrap_or_default()
@@ -228,7 +227,7 @@ impl WebsocketHandler {
                         Ok(false)
                     }
                     Err(e) => {
-                        error!("Error parsing message: {:?}", e);
+                        error!("Error parsing message: {e:?}");
                         Ok(false)
                     }
                 }
@@ -239,12 +238,11 @@ impl WebsocketHandler {
                 Ok(true)
             }
             Some(Ok(other)) => {
-                debug!("Received non-text message: {:?}", other);
+                debug!("Received non-text message: {other:?}");
                 Ok(false)
             }
             Some(Err(e)) => Err(crate::error::AppError::WebsocketConnection(format!(
-                "Stream error: {}",
-                e
+                "Stream error: {e}"
             ))),
             None => {
                 debug!("No message received, waiting for 1 second");
@@ -255,7 +253,7 @@ impl WebsocketHandler {
     }
 
     async fn handle_workflow_message(&mut self, payload: WorkflowMessagePayload) -> Result<()> {
-        debug!("Handling workflow message: {:?}", payload);
+        debug!("Handling workflow message: {payload:?}");
         // Process the workflow message here
         update_session_state(
             &self.window,
@@ -267,11 +265,12 @@ impl WebsocketHandler {
                 .finished(payload.finished)
                 .success(payload.success)
                 .message(payload.message.unwrap_or_default())
-                .build(),
+                .build()
+                    .map_err(|e| crate::error::AppError::WindowError(format!("Failed to build session event: {e}")))?,
         )
         .await
         .map_err(|e: Box<dyn Error + Send + 'static>| {
-            crate::error::AppError::WindowError(format!("Failed to set state: {}", e))
+            crate::error::AppError::WindowError(format!("Failed to set state: {e}"))
         })?;
 
         if payload.finished {
@@ -286,7 +285,7 @@ impl WebsocketHandler {
             )
             .await
             .map_err(|e| {
-                crate::error::AppError::WindowError(format!("Failed to set state: {}", e))
+                crate::error::AppError::WindowError(format!("Failed to set state: {e}"))
             })?;
         }
 
@@ -297,9 +296,9 @@ impl WebsocketHandler {
         if let Some(sender) = &mut *self.sender.lock().await {
             let message = Message::Text(serde_json::to_string(payload)?);
             sender.send(message).await.map_err(|e| {
-                crate::error::AppError::WebsocketConnection(format!("Failed to send: {}", e))
+                crate::error::AppError::WebsocketConnection(format!("Failed to send: {e}"))
             })?;
-            debug!("Message sent successfully: {:?}", payload);
+            debug!("Message sent successfully: {payload:?}");
             Ok(())
         } else {
             error!("No active websocket connection");
@@ -320,7 +319,7 @@ impl WebsocketHandler {
                 .build(),
         )
         .await
-        .map_err(|e| crate::error::AppError::WindowError(format!("Failed to set state: {}", e)))?;
+        .map_err(|e| crate::error::AppError::WindowError(format!("Failed to set state: {e}")))?;
 
         debug!("Connection opened message emitted");
         Ok(())
@@ -336,7 +335,7 @@ impl WebsocketHandler {
                 .build(),
         )
         .await
-        .map_err(|e| crate::error::AppError::WindowError(format!("Failed to set state: {}", e)))?;
+        .map_err(|e| crate::error::AppError::WindowError(format!("Failed to set state: {e}")))?;
 
         Ok(())
     }

@@ -32,23 +32,18 @@ export interface StateUpdateEvent {
 
 export interface CommandEvent {
 	command: string;
-	payload: any;
+	payload: Record<string, unknown>;
 }
 
 export interface SessionWorkflowPayload {
 	session_type: string;
 	step: number;
-	requirements?: any;
-	data?: any;
+	requirements?: Record<string, unknown>;
+	data?: Record<string, unknown>;
 	finished?: boolean;
 	message?: string;
 	success?: boolean;
 }
-
-// export interface SessionEvent {
-// 	message_type: SessionMessageType;
-// 	payload: SessionWorkflowPayload;
-// }
 
 export interface NotificationEvent {
 	level: NotificationLevel;
@@ -75,8 +70,8 @@ export interface AppState {
 		sessionState?: {
 			sessionType?: string;
 			step?: number;
-			requirements?: any;
-			data?: any;
+			requirements?: Record<string, unknown>;
+			data?: Record<string, unknown>;
 			finished?: boolean;
 			message?: string;
 			error?: string;
@@ -92,7 +87,7 @@ export interface RemoteSession {
 	created_at?: string;
 }
 
-export interface CommandResult<T = any> {
+export interface CommandResult<T = unknown> {
 	success: boolean;
 	message: string;
 	data?: T;

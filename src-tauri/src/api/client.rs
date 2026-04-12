@@ -22,14 +22,6 @@ impl ApiClient {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn with_base_url(base_url: String) -> Self {
-        Self {
-            base_url,
-            client: Client::new(),
-        }
-    }
-
     pub async fn user_profile(&self, auth_token: String) -> Result<UserProfile> {
         debug!("Fetching user profile");
         let url = format!("{}/api/v2/user/", self.base_url);
@@ -37,7 +29,7 @@ impl ApiClient {
         let response = self
             .client
             .get(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Authorization", format!("Bearer {auth_token}"))
             .send()
             .await?
             .json()
@@ -56,7 +48,7 @@ impl ApiClient {
         let response = self
             .client
             .get(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Authorization", format!("Bearer {auth_token}"))
             .send()
             .await?
             .json()
@@ -77,7 +69,7 @@ impl ApiClient {
         let response = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Authorization", format!("Bearer {auth_token}"))
             .json(&serde_json::json!({
                 "machine_id": machine_info.machine_id,
                 "machine_type": machine_info.machine_type,

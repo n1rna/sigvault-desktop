@@ -58,7 +58,7 @@ pub async fn cmd_start_session_websocket_connection(
     {
         Ok(response) => response,
         Err(e) => {
-            error!("Failed to fetch remote sessions: {:?}", e);
+            error!("Failed to fetch remote sessions: {e:?}");
             return Ok(CommandResult::error(
                 "Failed to fetch remote sessions",
                 AppErrorCode::FetchRemoteSessionsFailed,
@@ -83,7 +83,7 @@ pub async fn cmd_start_session_websocket_connection(
         ws_handler_clone.lock().await.replace(ws_handler.clone());
 
         if let Err(e) = ws_handler.run().await {
-            error!("WebSocket connection error: {:?}", e);
+            error!("WebSocket connection error: {e:?}");
 
             update_state(
                 &window_clone.clone(),
@@ -95,8 +95,7 @@ pub async fn cmd_start_session_websocket_connection(
             .await
             .map_err(|update_err| {
                 error!(
-                    "Failed to update state after WebSocket error: {:?}",
-                    update_err
+                    "Failed to update state after WebSocket error: {update_err:?}"
                 );
             })
             .ok();
@@ -127,7 +126,7 @@ pub async fn cmd_exit_session(
         let mut ws_handler = app_state.ws_handler.lock().await;
         if let Some(mut handler) = ws_handler.take() {
             if let Err(e) = handler.close().await {
-                error!("Failed to close websocket connection: {:?}", e);
+                error!("Failed to close websocket connection: {e:?}");
             }
         }
     }
@@ -139,7 +138,7 @@ pub async fn cmd_exit_session(
             thread.abort();
             match tokio::time::timeout(std::time::Duration::from_secs(5), thread).await {
                 Ok(_) => debug!("WebSocket thread cleaned up successfully"),
-                Err(e) => warn!("WebSocket thread cleanup timed out: {:?}", e),
+                Err(e) => warn!("WebSocket thread cleanup timed out: {e:?}"),
             }
         }
     }
@@ -176,7 +175,7 @@ pub async fn cmd_submit_user_input_session_websocket(
         });
 
         if let Err(e) = handler.send_message(&message).await {
-            error!("Failed to send message: {:?}", e);
+            error!("Failed to send message: {e:?}");
             return Ok(CommandResult::error(
                 "Failed to send message",
                 AppErrorCode::WebsocketConnection,

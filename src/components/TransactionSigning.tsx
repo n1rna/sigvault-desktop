@@ -86,8 +86,7 @@ export default function TransactionSigning({
 				setError(result.message || "Failed to discover devices");
 			}
 		} catch (err) {
-			console.error("Discovery error:", err);
-			setError(String(err));
+			setError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setDiscovering(false);
 		}
@@ -123,8 +122,7 @@ export default function TransactionSigning({
 				setError(result.message || "Failed to unlock device");
 			}
 		} catch (err) {
-			console.error("Unlock error:", err);
-			setError(String(err));
+			setError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setUnlockingDeviceId(null);
 		}
@@ -196,8 +194,7 @@ export default function TransactionSigning({
 				setError(submitResult.message || "Failed to submit signature");
 			}
 		} catch (err) {
-			console.error("Signing error:", err);
-			setError(String(err));
+			setError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setSigning(false);
 			setSubmitting(false);

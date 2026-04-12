@@ -15,7 +15,6 @@ use oauth2::{
 };
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 
 use crate::api::ApiClient;
@@ -62,7 +61,7 @@ async fn run_oauth_server(handle: AppHandle) -> Result<(), String> {
     let oauth_state = handle.state::<OAuthState>();
     let socket_addr = oauth_state.socket_addr;
 
-    info!("Starting OAuth callback server on {}", socket_addr);
+    info!("Starting OAuth callback server on {socket_addr}");
 
     let app = Router::new()
         .route("/callback", get(authorize_callback))
@@ -70,11 +69,11 @@ async fn run_oauth_server(handle: AppHandle) -> Result<(), String> {
 
     let listener = tokio::net::TcpListener::bind(socket_addr)
         .await
-        .map_err(|e| format!("Failed to bind to {}: {}", socket_addr, e))?;
+        .map_err(|e| format!("Failed to bind to {socket_addr}: {e}"))?;
 
     axum::serve(listener, app)
         .await
-        .map_err(|e| format!("Server error: {}", e))?;
+        .map_err(|e| format!("Server error: {e}"))?;
 
     Ok(())
 }
@@ -97,13 +96,13 @@ pub async fn cmd_authenticate(
         .set_pkce_challenge(oauth_state.pkce_challenge.clone())
         .url();
 
-    info!("Opening browser for authentication: {}", auth_url);
+    info!("Opening browser for authentication: {auth_url}");
 
     // Spawn the OAuth callback server
     let server_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(e) = run_oauth_server(server_handle).await {
-            error!("OAuth server error: {}", e);
+            error!("OAuth server error: {e}");
         }
     });
 
@@ -113,7 +112,7 @@ pub async fn cmd_authenticate(
         .arg(auth_url.to_string())
         .env_remove("LD_LIBRARY_PATH")
         .spawn()
-        .map_err(|e| format!("Failed to open browser: {}", e))?;
+        .map_err(|e| format!("Failed to open browser: {e}"))?;
 
     // Wait for the callback (poll for auth code)
     let auth_code = wait_for_auth_code(oauth_state.auth_code.clone()).await?;
@@ -136,13 +135,13 @@ pub async fn cmd_authenticate(
         .request_async(async_http_client)
         .await;
 
-    let token_response = match &token_result {
+    match &token_result {
         Ok(_) => info!("Token exchange successful"),
-        Err(e) => error!("Token exchange error: {:?}", e),
-    };
+        Err(e) => error!("Token exchange error: {e:?}"),
+    }
 
     let token_response = token_result
-        .map_err(|e| format!("Token exchange failed: {}", e))?;
+        .map_err(|e| format!("Token exchange failed: {e}"))?;
 
     let access_token = token_response.access_token().secret().to_string();
     info!("Successfully obtained access token");
@@ -150,7 +149,7 @@ pub async fn cmd_authenticate(
     // Initialize secure storage
     let storage = SecureStorage::new(app.clone());
     if let Err(e) = storage.initialize(b"sigvault_default_key").await {
-        error!("Failed to initialize storage: {}", e);
+        error!("Failed to initialize storage: {e}");
         return Ok(CommandResult::error(
             "Failed to initialize secure storage",
             AppErrorCode::AuthorizationFailed,
@@ -162,7 +161,7 @@ pub async fn cmd_authenticate(
         .update_oauth_access_token(access_token.clone())
         .await
     {
-        error!("Failed to store OAuth access token: {}", e);
+        error!("Failed to store OAuth access token: {e}");
     } else {
         info!("OAuth access token stored successfully");
     }
@@ -191,12 +190,12 @@ pub(super) async fn authenticate_user(
             Ok(profile)
         }
         Err(e) => {
-            error!("Failed to fetch user profile: {:?}", e);
+            error!("Failed to fetch user profile: {e:?}");
             error!("Cleaning up invalid OAuth token from storage");
 
             // Clean up the invalid token from secure storage
             if let Err(e) = storage.clear_auth_data().await {
-                error!("Failed to clear auth data: {}", e);
+                error!("Failed to clear auth data: {e}");
             }
 
             // Clear in-memory state
@@ -276,12 +275,12 @@ pub async fn cmd_logout(
 
     // Initialize stronghold
     if let Err(e) = storage.initialize(b"sigvault_default_key").await {
-        error!("Failed to initialize storage: {}", e);
+        error!("Failed to initialize storage: {e}");
     }
 
     // Clear stored auth data
     if let Err(e) = storage.clear_auth_data().await {
-        error!("Failed to clear auth data: {}", e);
+        error!("Failed to clear auth data: {e}");
     }
 
     // Clear in-memory tokens, user data, and remote sessions
