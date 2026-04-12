@@ -23,6 +23,15 @@ jobs:
           - platform: ubuntu-22.04
             rust_target: x86_64-unknown-linux-gnu
             label: linux-x86_64
+          - platform: macos-latest
+            rust_target: aarch64-apple-darwin
+            label: darwin-aarch64
+          - platform: macos-13
+            rust_target: x86_64-apple-darwin
+            label: darwin-x86_64
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            label: windows-x86_64
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -36,15 +45,36 @@ jobs:
           env_file: .env
           gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
 
-      - name: Set version from tag
+      - name: Set version from tag (Unix)
+        if: runner.os != 'Windows'
         run: |
           VERSION="${{ inputs.tag }}"
           VERSION="${VERSION#v}"
           echo "Setting version to $VERSION"
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+            sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+            sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+          else
+            sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+            sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+            sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+          fi
           grep '"version"' src-tauri/tauri.conf.json
           grep '^version' src-tauri/Cargo.toml
+          head -5 package.json
+
+      - name: Set version from tag (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.tag }}".TrimStart("v")
+          Write-Host "Setting version to $version"
+          (Get-Content src-tauri/tauri.conf.json) -replace '"version": ".*?"', "`"version`": `"$version`"" | Set-Content src-tauri/tauri.conf.json
+          (Get-Content src-tauri/Cargo.toml) -replace '^version = ".*?"', "version = `"$version`"" | Set-Content src-tauri/Cargo.toml
+          (Get-Content package.json) -replace '"version": ".*?"', "`"version`": `"$version`"" | Set-Content package.json
+          Select-String '"version"' src-tauri/tauri.conf.json
+          Select-String '^version' src-tauri/Cargo.toml
 
       - name: Export env vars for build
         shell: bash
@@ -57,6 +87,7 @@ jobs:
           done < .env
 
       - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -90,21 +121,47 @@ jobs:
         run: bun install
 
       - name: Clean old bundle artifacts
+        shell: bash
         run: rm -rf src-tauri/target/${{ matrix.rust_target }}/release/bundle
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --target ${{ matrix.rust_target }}
 
-      - name: Collect artifacts
+      - name: Collect artifacts (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir -p artifacts
-          cp src-tauri/target/${{ matrix.rust_target }}/release/bundle/deb/*.deb artifacts/ 2>/dev/null || true
-          cp src-tauri/target/${{ matrix.rust_target }}/release/bundle/appimage/*.AppImage artifacts/ 2>/dev/null || true
-          cp src-tauri/target/${{ matrix.rust_target }}/release/bundle/rpm/*.rpm artifacts/ 2>/dev/null || true
+          BUNDLE=src-tauri/target/${{ matrix.rust_target }}/release/bundle
+          cp $BUNDLE/deb/*.deb artifacts/ 2>/dev/null || true
+          cp $BUNDLE/rpm/*.rpm artifacts/ 2>/dev/null || true
+          cp $BUNDLE/appimage/*.AppImage artifacts/ 2>/dev/null || true
+          cp $BUNDLE/appimage/*.AppImage.tar.gz artifacts/ 2>/dev/null || true
+          cp $BUNDLE/appimage/*.AppImage.tar.gz.sig artifacts/ 2>/dev/null || true
+
+      - name: Collect artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p artifacts
+          BUNDLE=src-tauri/target/${{ matrix.rust_target }}/release/bundle
+          cp $BUNDLE/dmg/*.dmg artifacts/ 2>/dev/null || true
+          cp $BUNDLE/macos/*.app.tar.gz artifacts/ 2>/dev/null || true
+          cp $BUNDLE/macos/*.app.tar.gz.sig artifacts/ 2>/dev/null || true
+
+      - name: Collect artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+          $bundle = "src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          Copy-Item "$bundle/nsis/*.exe" artifacts/ -ErrorAction SilentlyContinue
+          Copy-Item "$bundle/nsis/*.nsis.zip" artifacts/ -ErrorAction SilentlyContinue
+          Copy-Item "$bundle/nsis/*.nsis.zip.sig" artifacts/ -ErrorAction SilentlyContinue
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -132,6 +189,54 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           echo "--- SHA256SUMS.txt ---"
           cat SHA256SUMS.txt
+
+      - name: Generate updater manifest (latest.json)
+        shell: bash
+        run: |
+          cd all-artifacts
+          VERSION="${{ inputs.tag }}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          REPO="https://github.com/n1rna/sigvault-desktop/releases/download/${VERSION}"
+
+          read_sig() { cat "$1" 2>/dev/null || echo ""; }
+
+          LINUX_SIG=$(read_sig *AppImage.tar.gz.sig)
+          DARWIN_AARCH64_SIG=$(read_sig *aarch64.app.tar.gz.sig)
+          DARWIN_X86_SIG=$(read_sig *x64.app.tar.gz.sig)
+          WINDOWS_SIG=$(read_sig *nsis.zip.sig)
+
+          LINUX_URL="${REPO}/$(ls *AppImage.tar.gz 2>/dev/null | grep -v '\.sig$' | head -1)"
+          DARWIN_AARCH64_URL="${REPO}/$(ls *aarch64.app.tar.gz 2>/dev/null | grep -v '\.sig$' | head -1)"
+          DARWIN_X86_URL="${REPO}/$(ls *x64.app.tar.gz 2>/dev/null | grep -v '\.sig$' | head -1)"
+          WINDOWS_URL="${REPO}/$(ls *nsis.zip 2>/dev/null | grep -v '\.sig$' | head -1)"
+
+          cat > latest.json << MANIFEST
+          {
+            "version": "${VERSION}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "linux-x86_64": {
+                "url": "${LINUX_URL}",
+                "signature": "${LINUX_SIG}"
+              },
+              "darwin-aarch64": {
+                "url": "${DARWIN_AARCH64_URL}",
+                "signature": "${DARWIN_AARCH64_SIG}"
+              },
+              "darwin-x86_64": {
+                "url": "${DARWIN_X86_URL}",
+                "signature": "${DARWIN_X86_SIG}"
+              },
+              "windows-x86_64": {
+                "url": "${WINDOWS_URL}",
+                "signature": "${WINDOWS_SIG}"
+              }
+            }
+          }
+          MANIFEST
+
+          echo "--- latest.json ---"
+          cat latest.json
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
