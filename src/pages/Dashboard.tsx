@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getVersion } from "@tauri-apps/api/app";
 import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
 
 interface UserInfo {
@@ -14,7 +13,6 @@ const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL || "https://app.sigvault.org"
 
 export default function Dashboard() {
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-	const [appVersion, setAppVersion] = useState<string>("");
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
@@ -30,7 +28,6 @@ export default function Dashboard() {
 		};
 
 		fetchUserInfo();
-		getVersion().then(setAppVersion);
 	}, []);
 
 	const navigateTo = async (route: string) => {
@@ -163,9 +160,6 @@ export default function Dashboard() {
 				</div>
 			</div>
 
-			<p className="mt-4 text-center font-mono text-[10px] tabular-nums text-muted-foreground/40">
-				SigVault Desktop{appVersion ? ` v${appVersion}` : ""}
-			</p>
 		</div>
 	);
 }

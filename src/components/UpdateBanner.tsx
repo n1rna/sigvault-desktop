@@ -16,7 +16,7 @@ export default function UpdateBanner() {
 	if (dismissed || !update) return null;
 
 	return (
-		<div className="fixed top-0 right-0 left-0 z-40 border-b border-primary/20 bg-primary/10 px-4 py-2">
+		<div className="fixed right-0 bottom-0 left-0 z-40 border-t border-primary/20 bg-primary/10 px-4 py-2">
 			<div className="flex items-center gap-3">
 				<span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-primary" />
 

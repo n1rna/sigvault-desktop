@@ -22,11 +22,11 @@ import SessionDetails from "./pages/SessionDetails";
 function AuthenticatedLayout() {
 	return (
 		<div className="flex h-full flex-col">
-			<UpdateBanner />
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
 				<Outlet />
 			</div>
+			<UpdateBanner />
 		</div>
 	);
 }
