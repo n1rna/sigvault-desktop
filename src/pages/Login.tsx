@@ -10,10 +10,8 @@ export function Login() {
 		try {
 			setIsLoading(true);
 			setError(null);
-			const result = await invoke("cmd_authenticate");
-			console.log("Authentication result:", result);
+			await invoke("cmd_authenticate");
 		} catch (err) {
-			console.error("Login error:", err);
 			setError(err instanceof Error ? err.message : "Failed to authenticate");
 		} finally {
 			setIsLoading(false);

@@ -13,8 +13,8 @@ export default function SessionDetails() {
 		clearActivityLog();
 		try {
 			await invoke<CommandResult>("cmd_exit_session");
-		} catch (error) {
-			console.error("Failed to exit session:", error);
+		} catch {
+			// Exit handled by backend
 		}
 	}, [clearActivityLog]);
 
@@ -24,7 +24,7 @@ export default function SessionDetails() {
 
 	useEffect(() => {
 		const handleBeforeUnload = () => {
-			invoke("cmd_exit_session").catch(console.error);
+			invoke("cmd_exit_session").catch(() => {});
 		};
 
 		window.addEventListener("beforeunload", handleBeforeUnload);
@@ -34,11 +34,11 @@ export default function SessionDetails() {
 	}, []);
 
 	const handleDeviceSubmitted = () => {
-		console.log("Device registration submitted");
+		// Device registration completed
 	};
 
 	const handleSignatureSubmitted = () => {
-		console.log("Transaction signature submitted");
+		// Transaction signature completed
 	};
 
 	const sessionType = activeSession.sessionState?.sessionType;
@@ -46,16 +46,14 @@ export default function SessionDetails() {
 	const isTransactionSigningSession = sessionType === "TRANSACTION_SIGNING";
 
 	const network =
-		activeSession.sessionState?.requirements?.network || "testnet";
+		(activeSession.sessionState?.requirements?.network as string) || "testnet";
 	const derivationPath =
-		activeSession.sessionState?.requirements?.derivation_path || "m/84'/0'/0'";
+		(activeSession.sessionState?.requirements?.derivation_path as string) || "m/84'/0'/0'";
 
 	const transactionSigningData: TransactionSigningData | null =
 		isTransactionSigningSession && activeSession.sessionState?.data
-			? (activeSession.sessionState.data as TransactionSigningData)
+			? (activeSession.sessionState.data as unknown as TransactionSigningData)
 			: null;
-
-	console.log("Transaction Signing Data:", transactionSigningData);
 
 	const renderSessionContent = () => {
 		if (!activeSession.isConnected) {

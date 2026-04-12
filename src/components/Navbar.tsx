@@ -27,8 +27,8 @@ export default function Navbar() {
 	const navigate = async (target: string) => {
 		try {
 			await invoke("cmd_navigate", { route: target });
-		} catch (error) {
-			console.error("Failed to navigate:", error);
+		} catch {
+			// Navigation handled by backend
 		}
 	};
 
@@ -36,8 +36,7 @@ export default function Navbar() {
 		setSigningOut(true);
 		try {
 			await invoke("cmd_logout");
-		} catch (error) {
-			console.error("Failed to sign out:", error);
+		} catch {
 			setSigningOut(false);
 		}
 	};

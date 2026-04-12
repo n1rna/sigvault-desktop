@@ -30,7 +30,7 @@ pub async fn cmd_update_remote_sessions(
     {
         Ok(response) => response,
         Err(e) => {
-            error!("Failed to fetch remote sessions: {:?}", e);
+            error!("Failed to fetch remote sessions: {e:?}");
             return Ok(CommandResult::error(
                 "Failed to fetch remote sessions",
                 AppErrorCode::FetchRemoteSessionsFailed,

@@ -21,7 +21,7 @@ pub async fn cmd_close_splashscreen(window: WebviewWindow) {
         Some(splashscreen) => {
             debug!("Splashscreen window found, closing");
             if let Err(e) = splashscreen.close() {
-                error!("Failed to close splashscreen: {:?}", e);
+                error!("Failed to close splashscreen: {e:?}");
             } else {
                 info!("Splashscreen closed successfully");
             }
@@ -36,7 +36,7 @@ pub async fn cmd_close_splashscreen(window: WebviewWindow) {
         Some(main_window) => {
             debug!("Main window found, showing");
             if let Err(e) = main_window.show() {
-                error!("Failed to show main window: {:?}", e);
+                error!("Failed to show main window: {e:?}");
             } else {
                 info!("Main window shown successfully");
             }
@@ -85,7 +85,7 @@ pub async fn cmd_navigate(
         "MachineRegistration" => WindowApplicationRoute::MachineRegistration,
         "RemoteSessions" => WindowApplicationRoute::RemoteSessions,
         "SessionDetails" => WindowApplicationRoute::SessionDetails,
-        _ => return Err(format!("Invalid route: {}", route)),
+        _ => return Err(format!("Invalid route: {route}")),
     };
 
     update_state(

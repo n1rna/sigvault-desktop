@@ -56,8 +56,7 @@ export default function DeviceDiscovery({
 				setError(result.message || "Failed to discover devices");
 			}
 		} catch (err) {
-			console.error("Discovery error:", err);
-			setError(String(err));
+			setError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setDiscovering(false);
 			clearActivityLog();
@@ -94,8 +93,7 @@ export default function DeviceDiscovery({
 				setError(result.message || "Failed to unlock device");
 			}
 		} catch (err) {
-			console.error("Unlock error:", err);
-			setError(String(err));
+			setError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setUnlockingDeviceId(null);
 		}
@@ -122,8 +120,7 @@ export default function DeviceDiscovery({
 				setError(result.message || "Failed to extract device information");
 			}
 		} catch (err) {
-			console.error("Extraction error:", err);
-			setError(String(err));
+			setError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setExtracting(false);
 		}

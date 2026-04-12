@@ -10,6 +10,7 @@ export default function RemoteSessions() {
 	const [remoteSessions, setRemoteSessions] = useState<RemoteSession[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [connectingTo, setConnectingTo] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
 	const [typeFilter, setTypeFilter] = useState<string>("all");
 	const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
 
@@ -18,8 +19,8 @@ export default function RemoteSessions() {
 			const sessions =
 				await invoke<RemoteSession[]>("cmd_get_remote_sessions");
 			setRemoteSessions(sessions);
-		} catch (error) {
-			console.error("Failed to load sessions:", error);
+		} catch {
+			// Session loading errors are non-fatal
 		} finally {
 			setLoading(false);
 		}
@@ -30,8 +31,7 @@ export default function RemoteSessions() {
 		try {
 			await invoke<CommandResult>("cmd_update_remote_sessions");
 			await loadSessions();
-		} catch (error) {
-			console.error("Failed to fetch sessions:", error);
+		} catch {
 			setLoading(false);
 		}
 	};
@@ -44,10 +44,10 @@ export default function RemoteSessions() {
 				{ sessionId },
 			);
 			if (!result.success) {
-				console.log("Failed to connect:", result.message);
+				setError(result.message || "Failed to connect");
 			}
-		} catch (error) {
-			console.log("Failed to connect to session:", error);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to connect to session");
 		} finally {
 			setConnectingTo(null);
 		}
@@ -89,6 +89,11 @@ export default function RemoteSessions() {
 
 	return (
 		<div className="relative flex h-full w-full flex-col overflow-hidden">
+			{error && (
+				<div className="mx-8 mt-8 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+					{error}
+				</div>
+			)}
 			<div className="shrink-0 px-8 pt-8 pb-4">
 				<div className="flex items-center justify-between">
 					<h1 className="text-[1.75rem] font-semibold text-foreground">
