@@ -33,6 +33,33 @@ struct CallbackQuery {
     state: CsrfToken,
 }
 
+/// Launch the user's default browser at `url`. Cross-platform.
+fn open_browser(url: &str) -> std::io::Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        // LD_LIBRARY_PATH from an AppImage bundle can break xdg-open.
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .env_remove("LD_LIBRARY_PATH")
+            .spawn()
+            .map(|_| ())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+            .map(|_| ())
+    }
+}
+
 /// Callback handler for OAuth redirect
 async fn authorize_callback(
     handle: Extension<AppHandle>,
@@ -106,12 +133,10 @@ pub async fn cmd_authenticate(
         }
     });
 
-    // Open the authorization URL in the user's browser.
-    // Clear LD_LIBRARY_PATH so AppImage-bundled libs don't break xdg-open.
-    std::process::Command::new("xdg-open")
-        .arg(auth_url.to_string())
-        .env_remove("LD_LIBRARY_PATH")
-        .spawn()
+    // Open the authorization URL in the user's browser. The launcher is
+    // per-OS; on Linux we also clear LD_LIBRARY_PATH so AppImage-bundled
+    // libs don't break xdg-open.
+    open_browser(auth_url.as_str())
         .map_err(|e| format!("Failed to open browser: {e}"))?;
 
     // Wait for the callback (poll for auth code)
