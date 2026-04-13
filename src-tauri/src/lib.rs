@@ -6,6 +6,7 @@ mod commands;
 mod config;
 mod error;
 pub mod hwi;
+mod kdf;
 mod machine;
 mod oauth;
 mod state;
@@ -48,12 +49,7 @@ pub fn run() {
         )
         .plugin(
             tauri_plugin_stronghold::Builder::new(|password| {
-                // In production, this should use a proper key derivation function
-                let mut key = vec![0u8; 32];
-                let password_bytes = password.as_bytes();
-                let len = password_bytes.len().min(32);
-                key[..len].copy_from_slice(&password_bytes[..len]);
-                key
+                kdf::derive_password_key(password.as_bytes()).to_vec()
             })
             .build(),
         )
