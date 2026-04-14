@@ -3,11 +3,11 @@ use std::path::Path;
 /// Environment variables to burn into the binary at compile time.
 /// (name, default_value)
 const BUILD_ENV_VARS: &[(&str, &str)] = &[
-    ("API_BASE_URL", "https://api.dev.sigvault.org"),
+    ("API_BASE_URL", "https://api.regtest.sigvault.org"),
     ("OAUTH2_CLIENT_ID", "346819126007796376"),
     (
         "OAUTH2_AUTH_URL",
-        "https://app.dev.sigvault.org/auth/desktop-login",
+        "https://regtest.sigvault.org/auth/desktop-login",
     ),
     (
         "OAUTH2_TOKEN_URL",

@@ -22,7 +22,7 @@ A Bitcoin multisig wallet manager that connects to hardware signing devices and 
 
 ## Remote Sessions
 
-SigVault Desktop connects to the [SigVault](https://sigvault.io) coordination server over WebSocket to participate in remote signing sessions. A session brings together multiple signers — each running the desktop app with their own hardware wallet — to collaboratively sign Bitcoin transactions.
+SigVault Desktop connects to the [SigVault](https://sigvault.org) coordination server over WebSocket to participate in remote signing sessions. A session brings together multiple signers — each running the desktop app with their own hardware wallet — to collaboratively sign Bitcoin transactions.
 
 Session workflow:
 
