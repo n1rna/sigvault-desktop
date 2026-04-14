@@ -9,7 +9,7 @@ interface UserInfo {
 	username?: string;
 }
 
-const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL || "https://app.sigvault.org";
+const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL || "https://regtest.sigvault.org";
 
 const resources = [
 	{ label: "Web Dashboard", url: "/dash", key: "dash" },
