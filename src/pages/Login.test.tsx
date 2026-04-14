@@ -15,8 +15,10 @@ describe("Login", () => {
 
 	it("renders login page with heading and button", () => {
 		render(<Login />);
-		expect(screen.getByText("SigVault")).toBeInTheDocument();
-		expect(screen.getByText("Login with OAuth")).toBeInTheDocument();
+		expect(screen.getByText("Welcome back.")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /Continue with SigVault/i }),
+		).toBeInTheDocument();
 	});
 
 	it("calls cmd_authenticate on login click", async () => {
@@ -24,7 +26,9 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(screen.getByText("Login with OAuth"));
+		await user.click(
+			screen.getByRole("button", { name: /Continue with SigVault/i }),
+		);
 
 		expect(invoke).toHaveBeenCalledWith("cmd_authenticate");
 	});
@@ -37,14 +41,20 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(screen.getByText("Login with OAuth"));
+		await user.click(
+			screen.getByRole("button", { name: /Continue with SigVault/i }),
+		);
 
-		expect(screen.getByText("Connecting…")).toBeInTheDocument();
-		expect(screen.getByRole("button")).toBeDisabled();
+		expect(screen.getByText("Opening browser…")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /Opening browser/i }),
+		).toBeDisabled();
 
 		resolveAuth!();
 		await waitFor(() => {
-			expect(screen.getByText("Login with OAuth")).toBeInTheDocument();
+			expect(
+				screen.getByRole("button", { name: /Continue with SigVault/i }),
+			).toBeInTheDocument();
 		});
 	});
 
@@ -53,7 +63,9 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(screen.getByText("Login with OAuth"));
+		await user.click(
+			screen.getByRole("button", { name: /Continue with SigVault/i }),
+		);
 
 		await waitFor(() => {
 			expect(screen.getByText("Network error")).toBeInTheDocument();
@@ -65,7 +77,9 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(screen.getByText("Login with OAuth"));
+		await user.click(
+			screen.getByRole("button", { name: /Continue with SigVault/i }),
+		);
 
 		await waitFor(() => {
 			expect(screen.getByText("Failed to authenticate")).toBeInTheDocument();
@@ -79,13 +93,17 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(screen.getByText("Login with OAuth"));
+		await user.click(
+			screen.getByRole("button", { name: /Continue with SigVault/i }),
+		);
 
 		await waitFor(() => {
 			expect(screen.getByText("First error")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByText("Login with OAuth"));
+		await user.click(
+			screen.getByRole("button", { name: /Continue with SigVault/i }),
+		);
 
 		await waitFor(() => {
 			expect(screen.queryByText("First error")).not.toBeInTheDocument();

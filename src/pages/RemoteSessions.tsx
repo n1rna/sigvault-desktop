@@ -5,6 +5,26 @@ import { useAppState } from "../contexts/AppStateContext";
 
 type SortOrder = "newest" | "oldest";
 
+function shortId(id: string) {
+	if (id.length <= 14) return id;
+	return `${id.slice(0, 6)}…${id.slice(-6)}`;
+}
+
+function formatRelative(iso?: string) {
+	if (!iso) return "—";
+	const then = new Date(iso).getTime();
+	const now = Date.now();
+	const diff = Math.max(0, now - then);
+	const mins = Math.floor(diff / 60000);
+	if (mins < 1) return "just now";
+	if (mins < 60) return `${mins}m ago`;
+	const hrs = Math.floor(mins / 60);
+	if (hrs < 24) return `${hrs}h ago`;
+	const days = Math.floor(hrs / 24);
+	if (days < 7) return `${days}d ago`;
+	return new Date(iso).toLocaleDateString();
+}
+
 export default function RemoteSessions() {
 	useAppState();
 	const [remoteSessions, setRemoteSessions] = useState<RemoteSession[]>([]);
@@ -78,7 +98,6 @@ export default function RemoteSessions() {
 				if (diff !== 0)
 					return sortOrder === "newest" ? diff : -diff;
 			}
-			// Fall back to original order (backend returns oldest first)
 			return sortOrder === "newest"
 				? b._index - a._index
 				: a._index - b._index;
@@ -87,198 +106,278 @@ export default function RemoteSessions() {
 		return sorted;
 	}, [remoteSessions, typeFilter, sortOrder]);
 
+	const activeCount = useMemo(
+		() =>
+			remoteSessions.filter(
+				(s) => s.status.toLowerCase() === "active",
+			).length,
+		[remoteSessions],
+	);
+
 	return (
 		<div className="relative flex h-full w-full flex-col overflow-hidden">
-			{error && (
-				<div className="mx-8 mt-8 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-					{error}
-				</div>
-			)}
-			<div className="shrink-0 px-8 pt-8 pb-4">
-				<div className="flex items-center justify-between">
-					<div>
-						<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+			{/* ── Ambient background ── */}
+			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.05]" />
+
+			{/* ── Header ── */}
+			<div className="relative shrink-0 px-12 pt-10 pb-6">
+				<div className="flex items-start justify-between gap-6">
+					<div className="flex-1">
+						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+							<span className="h-px w-6 bg-primary/60" />
 							§ Sessions
 						</div>
-						<h1 className="mt-2 text-2xl font-medium tracking-tight text-foreground">
+						<h1 className="mt-4 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground">
 							Remote Sessions
 						</h1>
+						<p className="mt-2 max-w-[520px] text-[13px] leading-relaxed text-muted-foreground">
+							Join active signing ceremonies or wait for new ones.
+							Connect with your hardware wallet to contribute a
+							signature.
+						</p>
 					</div>
-					<button
-						type="button"
-						onClick={fetchSessions}
-						disabled={loading}
-						className="rounded-md bg-transparent p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-						title="Refresh sessions"
-					>
-						<svg
-							width="18"
-							height="18"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							className={loading ? "animate-spin" : ""}
-						>
-							<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-							<path d="M3 3v5h5" />
-							<path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-							<path d="M16 16h5v5" />
-						</svg>
-					</button>
-				</div>
 
-				{remoteSessions.length > 0 && (
-					<div className="mt-4 flex items-center gap-4">
-						<div className="flex items-center gap-1">
-							{["all", ...sessionTypes].map((type) => (
-								<button
-									key={type}
-									type="button"
-									onClick={() => setTypeFilter(type)}
-									className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-										typeFilter === type
-											? "bg-primary text-primary-foreground"
-											: "text-muted-foreground hover:bg-muted hover:text-foreground"
-									}`}
-								>
-									{type === "all" ? "All" : type}
-								</button>
-							))}
+					{/* Stat chips + refresh */}
+					<div className="flex items-center gap-3">
+						<div className="flex items-center gap-2 rounded-md border border-border bg-card/60 px-3.5 py-2">
+							<span className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+								total
+							</span>
+							<span className="font-mono text-[15px] font-medium tabular-nums text-foreground">
+								{remoteSessions.length}
+							</span>
 						</div>
-
+						<div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/[0.06] px-3.5 py-2">
+							<span className="relative flex h-1.5 w-1.5">
+								<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+								<span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+							</span>
+							<span className="font-mono text-[9px] uppercase tracking-[0.2em] text-success">
+								active
+							</span>
+							<span className="font-mono text-[15px] font-medium tabular-nums text-foreground">
+								{activeCount}
+							</span>
+						</div>
 						<button
 							type="button"
-							onClick={() =>
-								setSortOrder((s) =>
-									s === "newest" ? "oldest" : "newest",
-								)
-							}
-							className="flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+							onClick={fetchSessions}
+							disabled={loading}
+							className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card/60 text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+							title="Refresh sessions"
 						>
 							<svg
-								width="12"
-								height="12"
+								className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
-								strokeWidth="2"
-								className={
-									sortOrder === "oldest"
-										? "rotate-180"
-										: ""
-								}
+								strokeWidth="1.8"
+								strokeLinecap="round"
+								strokeLinejoin="round"
 							>
-								<path d="m3 8 4-4 4 4" />
-								<path d="M7 4v16" />
-								<path d="M17 20V4" />
-								<path d="m21 16-4 4-4-4" />
+								<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+								<path d="M3 3v5h5" />
+								<path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+								<path d="M16 16h5v5" />
 							</svg>
-							{sortOrder === "newest"
-								? "Newest"
-								: "Oldest"}
 						</button>
+					</div>
+				</div>
 
-						{typeFilter !== "all" && (
-							<span className="font-mono text-xs tabular-nums text-muted-foreground">
-								{filteredAndSorted.length} of{" "}
-								{remoteSessions.length}
-							</span>
-						)}
+				{error && (
+					<div className="mt-5 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
+						<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+							<circle cx="12" cy="12" r="10" />
+							<line x1="12" y1="8" x2="12" y2="12" />
+							<line x1="12" y1="16" x2="12.01" y2="16" />
+						</svg>
+						<span className="leading-snug">{error}</span>
 					</div>
 				)}
 
-				<div className="absolute right-0 left-0 h-4 bg-gradient-to-b from-background to-transparent" />
+				{/* Filter bar */}
+				{remoteSessions.length > 0 && (
+					<div className="mt-6 flex items-center justify-between gap-4">
+						<div className="flex items-center gap-1.5">
+							<span className="mr-2 font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/70">
+								filter
+							</span>
+							{["all", ...sessionTypes].map((type) => {
+								const isActive = typeFilter === type;
+								return (
+									<button
+										key={type}
+										type="button"
+										onClick={() => setTypeFilter(type)}
+										className={`flex h-7 items-center rounded-full border px-3 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+											isActive
+												? "border-primary/50 bg-primary/[0.1] text-foreground"
+												: "border-border/60 bg-transparent text-muted-foreground hover:border-border hover:text-foreground"
+										}`}
+									>
+										{type === "all" ? "all" : type}
+									</button>
+								);
+							})}
+						</div>
+
+						<div className="flex items-center gap-3">
+							{typeFilter !== "all" && (
+								<span className="font-mono text-[10px] uppercase tracking-[0.16em] tabular-nums text-muted-foreground">
+									{filteredAndSorted.length} / {remoteSessions.length}
+								</span>
+							)}
+							<button
+								type="button"
+								onClick={() =>
+									setSortOrder((s) =>
+										s === "newest" ? "oldest" : "newest",
+									)
+								}
+								className="flex h-7 items-center gap-1.5 rounded-full border border-border/60 bg-transparent px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+							>
+								<svg
+									className={`h-3 w-3 transition-transform ${sortOrder === "oldest" ? "rotate-180" : ""}`}
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="M12 5v14" />
+									<path d="m19 12-7 7-7-7" />
+								</svg>
+								{sortOrder}
+							</button>
+						</div>
+					</div>
+				)}
 			</div>
 
-			<div className="flex-1 overflow-y-auto overflow-x-hidden px-8 pb-8">
-				<div className="grid gap-3">
-					{loading && remoteSessions.length === 0 ? (
-						<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
-							<div className="h-14 animate-pulse bg-card" />
-							<div className="h-14 animate-pulse bg-card" />
-							<div className="h-14 animate-pulse bg-card" />
-						</div>
-					) : filteredAndSorted.length === 0 ? (
-						<div className="flex flex-col items-center justify-center rounded-lg border border-border py-12 text-center">
-							<p className="text-sm text-muted-foreground">
-								{remoteSessions.length === 0
-									? "No sessions available"
-									: "No sessions match the filter"}
-							</p>
-						</div>
-					) : (
-						<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
-						{filteredAndSorted.map((session) => (
+			{/* ── List ── */}
+			<div className="relative flex-1 overflow-y-auto overflow-x-hidden px-12 pb-10">
+				{loading && remoteSessions.length === 0 ? (
+					<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
+						{[0, 1, 2, 3].map((i) => (
 							<div
-								key={session.id}
-								className="flex items-center justify-between bg-card px-4 py-3 transition-colors hover:bg-muted"
-							>
-								<div className="flex items-center gap-3 overflow-hidden">
-									<span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-secondary-foreground">
-										{session.session_type}
-									</span>
-									<span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
-										{session.id}
-									</span>
-									<span className="flex shrink-0 items-center gap-1.5">
-										<span
-											className={`h-2 w-2 rounded-full ${
-												session.status.toLowerCase() === "active"
-													? "bg-success"
-													: "bg-primary"
-											}`}
-										/>
-										<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-											{session.status}
-										</span>
-									</span>
-									{session.created_at && (
-										<span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground/60">
-											{new Date(
-												session.created_at,
-											).toLocaleDateString()}
-										</span>
-									)}
-								</div>
-								<button
-									type="button"
-									onClick={() => handleConnect(session.id)}
-									disabled={connectingTo === session.id}
-									className="shrink-0 rounded-md bg-transparent p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-									title="Connect to session"
-								>
-									{connectingTo === session.id ? (
-										<svg
-											width="16"
-											height="16"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="1.5"
-											className="animate-spin"
-										>
-											<path d="M21 12a9 9 0 1 1-6.219-8.56" />
-										</svg>
-									) : (
-										<svg
-											width="16"
-											height="16"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="1.5"
-										>
-											<path d="M5 12h14" />
-											<path d="m12 5 7 7-7 7" />
-										</svg>
-									)}
-								</button>
-							</div>
+								key={i}
+								className="h-[72px] animate-pulse bg-card"
+							/>
 						))}
+					</div>
+				) : filteredAndSorted.length === 0 ? (
+					<div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-card/30 py-20 text-center">
+						<div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-background">
+							<svg className="h-6 w-6 text-muted-foreground/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+								<rect x="3" y="4" width="18" height="16" rx="2" />
+								<path d="M8 2v4" />
+								<path d="M16 2v4" />
+								<path d="M3 10h18" />
+							</svg>
 						</div>
-					)}
-				</div>
+						<h3 className="mt-5 text-[14px] font-medium text-foreground">
+							{remoteSessions.length === 0
+								? "No sessions yet"
+								: "Nothing matches that filter"}
+						</h3>
+						<p className="mt-1.5 max-w-[320px] text-[12px] leading-relaxed text-muted-foreground">
+							{remoteSessions.length === 0
+								? "When someone invites you to a signing ceremony it will appear here."
+								: "Try clearing the filter or refreshing the list."}
+						</p>
+					</div>
+				) : (
+					<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
+						{filteredAndSorted.map((session) => {
+							const isActive =
+								session.status.toLowerCase() === "active";
+							const isConnecting = connectingTo === session.id;
+							return (
+								<div
+									key={session.id}
+									className="group relative flex items-center gap-5 bg-card px-5 py-4 transition-colors hover:bg-muted/60"
+								>
+									{/* Type icon */}
+									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
+										<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+											<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
+										</svg>
+									</div>
+
+									{/* Meta */}
+									<div className="flex flex-1 flex-col gap-1 overflow-hidden">
+										<div className="flex items-center gap-2">
+											<span className="font-mono text-[9px] uppercase tracking-[0.18em] text-accent">
+												{session.session_type}
+											</span>
+											<span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+											<span className="flex items-center gap-1.5">
+												<span
+													className={`h-1.5 w-1.5 rounded-full ${
+														isActive
+															? "bg-success shadow-[0_0_6px_1px] shadow-success/40"
+															: "bg-muted-foreground/40"
+													}`}
+												/>
+												<span className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+													{session.status}
+												</span>
+											</span>
+										</div>
+										<div className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-foreground">
+											<span className="truncate">
+												{shortId(session.id)}
+											</span>
+											{session.created_at && (
+												<>
+													<span className="text-muted-foreground/40">
+														·
+													</span>
+													<span className="text-muted-foreground">
+														{formatRelative(session.created_at)}
+													</span>
+												</>
+											)}
+										</div>
+									</div>
+
+									{/* Connect button */}
+									<button
+										type="button"
+										onClick={() => handleConnect(session.id)}
+										disabled={isConnecting}
+										className="flex h-9 shrink-0 items-center gap-2 rounded-md border border-primary/30 bg-primary/[0.06] px-4 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground transition-all hover:border-primary/60 hover:bg-primary/[0.12] disabled:cursor-not-allowed disabled:opacity-60"
+									>
+										{isConnecting ? (
+											<>
+												<svg
+													className="h-3 w-3 animate-spin"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													strokeWidth="2"
+													strokeLinecap="round"
+												>
+													<path d="M21 12a9 9 0 1 1-6.219-8.56" />
+												</svg>
+												joining
+											</>
+										) : (
+											<>
+												join
+												<svg className="h-3 w-3 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+													<path d="M5 12h14" />
+													<path d="m12 5 7 7-7 7" />
+												</svg>
+											</>
+										)}
+									</button>
+								</div>
+							);
+						})}
+					</div>
+				)}
 			</div>
 		</div>
 	);
