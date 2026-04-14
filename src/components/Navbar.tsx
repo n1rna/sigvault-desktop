@@ -15,8 +15,8 @@ function useDrag() {
 	}, []);
 }
 
-const navItems = [
-	{ label: "Home", route: "MainPage" },
+const navItems: Array<{ label: string; route: string }> = [
+	{ label: "Overview", route: "MainPage" },
 	{ label: "Sessions", route: "RemoteSessions" },
 ];
 
@@ -50,16 +50,36 @@ export default function Navbar() {
 	return (
 		<nav
 			onMouseDown={onDrag}
-			className="flex h-10 shrink-0 select-none items-center border-b border-border bg-card"
+			className="relative flex h-14 shrink-0 select-none items-stretch border-b border-border bg-card/80 backdrop-blur-sm"
 		>
-			<span className="px-4 font-mono text-xs font-bold tracking-wider text-primary">
-				SIGVAULT
-				{appVersion && (
-					<span className="ml-1.5 font-normal text-muted-foreground/50">v{appVersion}</span>
-				)}
-			</span>
+			{/* ── Brand ── */}
+			<div className="flex items-center gap-3 pl-5 pr-6">
+				<div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+						<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
+						<path d="m9 12 2 2 4-4" />
+					</svg>
+				</div>
+				<div className="flex flex-col leading-none">
+					<span className="font-mono text-[11px] font-bold tracking-[0.22em] text-foreground">
+						SIGVAULT
+					</span>
+					{appVersion && (
+						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60">
+							v{appVersion}
+						</span>
+					)}
+				</div>
+			</div>
 
-			<div className="flex items-center" onMouseDown={(e) => e.stopPropagation()}>
+			{/* ── Divider ── */}
+			<div className="my-3 w-px bg-border/60" />
+
+			{/* ── Nav items ── */}
+			<div
+				className="flex items-center gap-1 px-4"
+				onMouseDown={(e) => e.stopPropagation()}
+			>
 				{navItems.map((item) => {
 					const isActive = route === item.route;
 					return (
@@ -67,15 +87,15 @@ export default function Navbar() {
 							key={item.route}
 							type="button"
 							onClick={() => navigate(item.route)}
-							className={`relative bg-transparent px-3 py-2.5 text-xs font-medium transition-colors ${
+							className={`relative flex h-8 items-center rounded-md px-3.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors ${
 								isActive
-									? "text-foreground"
-									: "text-muted-foreground hover:text-foreground"
+									? "bg-primary/[0.08] text-foreground"
+									: "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
 							}`}
 						>
 							{item.label}
 							{isActive && (
-								<span className="absolute bottom-0 left-3 right-3 h-px bg-primary" />
+								<span className="absolute -bottom-[1px] left-3 right-3 h-[2px] rounded-full bg-primary" />
 							)}
 						</button>
 					);
@@ -84,39 +104,68 @@ export default function Navbar() {
 
 			<div className="flex-1" />
 
+			{/* ── Status pill ── */}
+			<div
+				className="flex items-center gap-2 pr-5"
+				onMouseDown={(e) => e.stopPropagation()}
+			>
+				<div className="flex h-7 items-center gap-2 rounded-full border border-border/80 bg-background/60 px-3">
+					<span className="relative flex h-1.5 w-1.5">
+						<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+						<span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+					</span>
+					<span className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+						connected
+					</span>
+				</div>
+			</div>
+
+			{/* ── Sign out ── */}
 			<button
 				type="button"
 				onClick={handleSignOut}
 				disabled={signingOut}
 				onMouseDown={(e) => e.stopPropagation()}
-				className="bg-transparent px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+				className="flex items-center gap-1.5 border-l border-border/60 bg-transparent px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
 			>
-				{signingOut ? "Signing out…" : "Sign Out"}
+				<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+					<polyline points="16 17 21 12 16 7" />
+					<line x1="21" y1="12" x2="9" y2="12" />
+				</svg>
+				{signingOut ? "Exiting…" : "Sign out"}
 			</button>
 
-			<div className="mx-1 h-4 w-px bg-border" />
+			{/* ── Window controls ── */}
+			<div
+				className="flex items-stretch border-l border-border/60"
+				onMouseDown={(e) => e.stopPropagation()}
+			>
+				<button
+					type="button"
+					onClick={() => appWindow.minimize()}
+					className="inline-flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					aria-label="Minimize"
+				>
+					<svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+						<path d="M5 12h14" />
+					</svg>
+				</button>
+				<button
+					type="button"
+					onClick={() => appWindow.close()}
+					className="inline-flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+					aria-label="Close"
+				>
+					<svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+						<path d="M18 6 6 18" />
+						<path d="m6 6 12 12" />
+					</svg>
+				</button>
+			</div>
 
-			<button
-				type="button"
-				onMouseDown={(e) => e.stopPropagation()}
-				onClick={() => appWindow.minimize()}
-				className="inline-flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-			>
-				<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-					<path d="M5 12h14" />
-				</svg>
-			</button>
-			<button
-				type="button"
-				onMouseDown={(e) => e.stopPropagation()}
-				onClick={() => appWindow.close()}
-				className="inline-flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
-			>
-				<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-					<path d="M18 6 6 18" />
-					<path d="m6 6 12 12" />
-				</svg>
-			</button>
+			{/* ── Accent hairline ── */}
+			<div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
 		</nav>
 	);
 }

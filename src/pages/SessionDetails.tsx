@@ -6,6 +6,11 @@ import type { TransactionSigningData } from "../types/transaction";
 import DeviceCreationSession from "../components/DeviceCreationSession";
 import TransactionSigning from "../components/TransactionSigning";
 
+function shortId(id: string) {
+	if (id.length <= 14) return id;
+	return `${id.slice(0, 6)}…${id.slice(-6)}`;
+}
+
 export default function SessionDetails() {
 	const { activeSession, clearActivityLog } = useAppState();
 
@@ -74,7 +79,7 @@ export default function SessionDetails() {
 		if (isTransactionSigningSession) {
 			if (!transactionSigningData) {
 				return (
-					<div className="grid gap-px overflow-hidden rounded-lg bg-border">
+					<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
 						<div className="h-48 animate-pulse bg-card" />
 						<div className="h-64 animate-pulse bg-card" />
 					</div>
@@ -92,61 +97,121 @@ export default function SessionDetails() {
 		return null;
 	};
 
+	const friendlyType = sessionType
+		? sessionType.replace(/_/g, " ").toLowerCase()
+		: null;
+
 	return (
-		<div className="flex h-full w-full flex-col p-8">
-			<div className="mb-4 flex shrink-0 items-center justify-between">
-				<div>
-					<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-						§ Active Session
+		<div className="relative flex h-full w-full flex-col overflow-hidden">
+			{/* ── Ambient background ── */}
+			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.05]" />
+
+			{/* ── Header ── */}
+			<div className="relative shrink-0 px-12 pt-10 pb-6">
+				<div className="flex items-start justify-between gap-6">
+					<div className="flex-1">
+						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+							<span className="h-px w-6 bg-primary/60" />
+							§ Active session
+						</div>
+						<h1 className="mt-4 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground">
+							{friendlyType
+								? friendlyType.replace(/^\w/, (c) => c.toUpperCase())
+								: "Session details"}
+						</h1>
 					</div>
-					<h1 className="mt-2 text-2xl font-medium tracking-tight text-foreground">
-						Session Details
-					</h1>
+
+					<button
+						type="button"
+						onClick={handleExit}
+						className="flex h-10 items-center gap-2 rounded-md border border-destructive/30 bg-destructive/[0.06] px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-destructive transition-colors hover:border-destructive/60 hover:bg-destructive/[0.12]"
+					>
+						<svg
+							className="h-3.5 w-3.5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
+							<path d="M18 6 6 18" />
+							<path d="m6 6 12 12" />
+						</svg>
+						Exit session
+					</button>
 				</div>
-				<button
-					type="button"
-					onClick={handleExit}
-					className="rounded-md bg-destructive px-5 py-2.5 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
-				>
-					Exit Session
-				</button>
+
+				{/* Meta chips */}
+				<div className="mt-5 flex flex-wrap items-center gap-2">
+					{/* Connection status */}
+					<div
+						className={`flex h-8 items-center gap-2 rounded-full border px-3 font-mono text-[10px] uppercase tracking-[0.16em] ${
+							activeSession.isConnected
+								? "border-success/30 bg-success/[0.06] text-success"
+								: "border-destructive/30 bg-destructive/[0.06] text-destructive"
+						}`}
+					>
+						<span className="relative flex h-1.5 w-1.5">
+							{activeSession.isConnected && (
+								<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+							)}
+							<span
+								className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
+									activeSession.isConnected
+										? "bg-success"
+										: "bg-destructive"
+								}`}
+							/>
+						</span>
+						{activeSession.isConnected ? "connected" : "disconnected"}
+					</div>
+
+					{/* Session type */}
+					{sessionType ? (
+						<div className="flex h-8 items-center gap-2 rounded-full border border-primary/30 bg-primary/[0.06] px-3 font-mono text-[10px] uppercase tracking-[0.16em]">
+							<span className="text-muted-foreground">type</span>
+							<span className="text-foreground">
+								{sessionType}
+							</span>
+						</div>
+					) : (
+						activeSession.sessionId && (
+							<span className="h-8 w-36 animate-pulse rounded-full bg-muted/40" />
+						)
+					)}
+
+					{/* Session ID */}
+					{activeSession.sessionId ? (
+						<div className="flex h-8 items-center gap-2 rounded-full border border-border bg-card/60 px-3 font-mono text-[10px] uppercase tracking-[0.16em]">
+							<span className="text-muted-foreground">id</span>
+							<span className="font-mono text-[11px] normal-case tracking-normal tabular-nums text-foreground">
+								{shortId(activeSession.sessionId)}
+							</span>
+						</div>
+					) : (
+						<span className="h-8 w-48 animate-pulse rounded-full bg-muted/40" />
+					)}
+				</div>
 			</div>
 
-			<div className="mb-6 flex items-center gap-3">
-				<span
-					className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-						activeSession.isConnected
-							? "bg-success"
-							: "bg-destructive"
-					}`}
-				/>
-				{activeSession.sessionId ? (
-					<span className="font-mono text-sm tabular-nums text-muted-foreground">
-						{activeSession.sessionId}
-					</span>
-				) : (
-					<span className="h-4 w-48 animate-pulse rounded bg-muted" />
-				)}
-				{sessionType ? (
-					<span className="rounded-md bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-secondary-foreground">
-						{sessionType}
-					</span>
-				) : (
-					activeSession.sessionId && (
-						<span className="h-5 w-28 animate-pulse rounded bg-muted" />
-					)
-				)}
-			</div>
-
-			<div className="min-h-0 flex-1 overflow-y-auto pb-8">
+			{/* ── Content ── */}
+			<div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-12 pb-10">
 				{activeSession.sessionState?.error && (
-					<div className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-						{activeSession.sessionState.error}
+					<div className="mb-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
+						<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+							<circle cx="12" cy="12" r="10" />
+							<line x1="12" y1="8" x2="12" y2="12" />
+							<line x1="12" y1="16" x2="12.01" y2="16" />
+						</svg>
+						<span className="leading-snug">
+							{activeSession.sessionState.error}
+						</span>
 					</div>
 				)}
 
 				{!activeSession.isConnected && !activeSession.sessionState ? (
-					<div className="grid gap-px overflow-hidden rounded-lg bg-border">
+					<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
 						<div className="h-48 animate-pulse bg-card" />
 						<div className="h-64 animate-pulse bg-card" />
 					</div>

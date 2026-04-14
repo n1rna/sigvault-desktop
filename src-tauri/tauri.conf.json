@@ -13,11 +13,15 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "sigvault-desktop",
-        "width": 900,
-        "height": 650,
+        "title": "SigVault",
+        "width": 1120,
+        "height": 720,
+        "minWidth": 1120,
+        "minHeight": 720,
         "resizable": false,
-        "decorations": false
+        "decorations": false,
+        "transparent": false,
+        "center": true
       }
     ],
     "security": {

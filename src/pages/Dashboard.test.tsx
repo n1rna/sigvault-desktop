@@ -51,7 +51,7 @@ describe("Dashboard", () => {
 
 		render(<Dashboard />);
 
-		expect(screen.getByText("Loading…")).toBeInTheDocument();
+		expect(screen.getByText(/Join a signing session/i)).toBeInTheDocument();
 	});
 
 	it("handles navigation button clicks", async () => {
@@ -64,7 +64,9 @@ describe("Dashboard", () => {
 			expect(screen.getByText("Alice")).toBeInTheDocument();
 		});
 
-		const sessionsBtn = screen.getByText("Open Sessions");
+		const sessionsBtn = screen.getByRole("button", {
+			name: /Join a signing session/i,
+		});
 		await user.click(sessionsBtn);
 
 		expect(invoke).toHaveBeenCalledWith("cmd_navigate", {
