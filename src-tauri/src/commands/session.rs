@@ -51,7 +51,8 @@ pub async fn cmd_start_session_websocket_connection(
 
     // Fetch WebSocket token from API
     let machine_info = get_machine_information();
-    let api_client = ApiClient::new();
+    let env = app_state_clone.require_env().await?;
+    let api_client = ApiClient::new(env.api_base_url.clone());
     let websocket_token = match api_client
         .fetch_websocket_token(oauth_access_token, session_id.clone(), machine_info)
         .await
@@ -75,7 +76,7 @@ pub async fn cmd_start_session_websocket_connection(
     let join_handler = tauri::async_runtime::spawn(async move {
         let mut ws_handler = WebsocketHandler::new(
             window_clone.clone(),
-            env!("API_BASE_URL").replace("https://", "wss://").replace("http://", "ws://"),
+            env.websocket_base_url(),
             session_id_clone.clone(),
             websocket_token.token,
         );

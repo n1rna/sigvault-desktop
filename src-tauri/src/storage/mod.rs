@@ -21,8 +21,10 @@ use tauri::{AppHandle, Manager};
 use crate::kdf;
 
 const STORE_FILENAME: &str = "auth.dat";
+const ENV_STORE_FILENAME: &str = "env.dat";
 const NONCE_LEN: usize = 12;
 const KEY_PURPOSE: &[u8] = b"auth-storage";
+const ENV_KEY_PURPOSE: &[u8] = b"env-storage";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StoredAuthData {
@@ -166,6 +168,104 @@ impl SecureStorage {
         let mut data = self.get_auth_data().await?;
         data.oauth_access_token = Some(token);
         self.store_auth_data(&data).await
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StoredEnvData {
+    pub selected_env_id: Option<String>,
+}
+
+/// Encrypted persistence for the user's selected environment.
+/// Mirrors `SecureStorage` but uses a separate file + key purpose so the
+/// two stores are independently rotatable.
+pub struct EnvStorage {
+    app: AppHandle,
+}
+
+impl EnvStorage {
+    pub fn new(app: AppHandle) -> Self {
+        Self { app }
+    }
+
+    fn path(&self) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+        let dir = self
+            .app
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("Failed to get app data directory: {e}"))?;
+        fs::create_dir_all(&dir)?;
+        Ok(dir.join(ENV_STORE_FILENAME))
+    }
+
+    fn cipher() -> ChaCha20Poly1305 {
+        let key_bytes = kdf::derive_machine_key(ENV_KEY_PURPOSE);
+        ChaCha20Poly1305::new(Key::from_slice(&key_bytes))
+    }
+
+    fn encrypt(plaintext: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        let cipher = Self::cipher();
+        let mut nonce_bytes = [0u8; NONCE_LEN];
+        getrandom::getrandom(&mut nonce_bytes)
+            .map_err(|e| format!("Failed to generate nonce: {e}"))?;
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext)
+            .map_err(|e| format!("Encryption failed: {e}"))?;
+        let mut out = Vec::with_capacity(NONCE_LEN + ciphertext.len());
+        out.extend_from_slice(&nonce_bytes);
+        out.extend_from_slice(&ciphertext);
+        Ok(out)
+    }
+
+    fn decrypt(blob: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        if blob.len() < NONCE_LEN {
+            return Err("env.dat is too short to contain a nonce".into());
+        }
+        let (nonce_bytes, ciphertext) = blob.split_at(NONCE_LEN);
+        let cipher = Self::cipher();
+        let nonce = Nonce::from_slice(nonce_bytes);
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| format!("Decryption failed (wrong machine or corrupt file): {e}").into())
+    }
+
+    pub async fn store(
+        &self,
+        data: &StoredEnvData,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let json = serde_json::to_vec(data)?;
+        let encrypted = Self::encrypt(&json)?;
+        let path = self.path()?;
+        fs::write(&path, encrypted)?;
+        debug!("Env data stored at: {path:?}");
+        Ok(())
+    }
+
+    pub async fn load(&self) -> Result<StoredEnvData, Box<dyn std::error::Error + Send + Sync>> {
+        let path = self.path()?;
+        if !path.exists() {
+            return Ok(StoredEnvData::default());
+        }
+        let blob = fs::read(&path)?;
+        let plaintext = match Self::decrypt(&blob) {
+            Ok(pt) => pt,
+            Err(e) => {
+                debug!("Failed to decrypt env data, clearing: {e}");
+                let _ = fs::remove_file(&path);
+                return Ok(StoredEnvData::default());
+            }
+        };
+        let data: StoredEnvData = serde_json::from_slice(&plaintext)?;
+        Ok(data)
+    }
+
+    pub async fn clear(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let path = self.path()?;
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
+        Ok(())
     }
 }
 

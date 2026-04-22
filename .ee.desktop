@@ -11,32 +11,11 @@
 	},
 	"schema": {
 		"variables": {
-			"API_BASE_URL": {
-				"name": "API_BASE_URL",
-				"title": "API server base URL",
-				"type": "string",
-				"default": "https://api.regtest.sigvault.org",
-				"required": true
-			},
-			"BITCOIN_NETWORK": {
-				"name": "BITCOIN_NETWORK",
-				"title": "Bitcoin network",
-				"type": "string",
-				"default": "regtest",
-				"required": true
-			},
 			"OAUTH2_CLIENT_ID": {
 				"name": "OAUTH2_CLIENT_ID",
 				"title": "OAuth2 client ID (Zitadel)",
 				"type": "string",
 				"default": "346819126007796376",
-				"required": true
-			},
-			"OAUTH2_AUTH_URL": {
-				"name": "OAUTH2_AUTH_URL",
-				"title": "OAuth2 authorization URL",
-				"type": "string",
-				"default": "https://sigvault-jsyfl0.us1.zitadel.cloud/oauth/v2/authorize",
 				"required": true
 			},
 			"OAUTH2_TOKEN_URL": {
