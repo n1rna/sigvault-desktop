@@ -14,6 +14,7 @@ import Navbar from "./components/Navbar";
 import UpdateBanner from "./components/UpdateBanner";
 import Loading from "./pages/Loading";
 import { Login } from "./pages/Login";
+import SelectEnv from "./pages/SelectEnv";
 import Dashboard from "./pages/Dashboard";
 import MachineRegistration from "./pages/MachineRegistration";
 import RemoteSessions from "./pages/RemoteSessions";
@@ -46,13 +47,12 @@ function AppRouter() {
 
 	// Navigate based on backend-controlled route
 	useEffect(() => {
-		if (!authenticated && route !== "Login") {
-			navigate("/login");
-		}
-
 		switch (route) {
 			case "Loading":
 				navigate("/");
+				break;
+			case "SelectEnv":
+				navigate("/select-env");
 				break;
 			case "Login":
 				navigate("/login");
@@ -75,6 +75,7 @@ function AppRouter() {
 	return (
 		<Routes>
 			<Route path="/" element={<Loading />} />
+			<Route path="/select-env" element={<SelectEnv />} />
 			<Route path="/login" element={<Login />} />
 			<Route element={<AuthenticatedLayout />}>
 				<Route path="/dashboard" element={<Dashboard />} />

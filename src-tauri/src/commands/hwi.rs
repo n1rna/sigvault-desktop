@@ -77,7 +77,8 @@ pub async fn cmd_discover_hardware_wallets(
         None => None,
     };
 
-    match app_state.hw_manager.discover_devices(config.as_ref(), Some(&app)).await {
+    let hw_manager = app_state.require_hw_manager().await?;
+    match hw_manager.discover_devices(config.as_ref(), Some(&app)).await {
         Ok(devices) => {
             info!("Successfully discovered {} device(s)", devices.len());
             let devices_json = serde_json::to_value(&devices)
@@ -115,8 +116,8 @@ pub async fn cmd_unlock_device(
         None => None,
     };
 
-    match app_state
-        .hw_manager
+    let hw_manager = app_state.require_hw_manager().await?;
+    match hw_manager
         .unlock_device(&device_id, config.as_ref(), Some(&app))
         .await
     {
@@ -152,8 +153,8 @@ pub async fn cmd_get_device_xpub(
         "Extracting xpub for device {fingerprint} at path {derivation_path}"
     );
 
-    match app_state
-        .hw_manager
+    let hw_manager = app_state.require_hw_manager().await?;
+    match hw_manager
         .get_device_info(&fingerprint, &derivation_path)
         .await
     {
@@ -236,7 +237,8 @@ pub async fn cmd_sign_psbt(
 ) -> Result<CommandResult, String> {
     info!("Signing PSBT with device {device_id}");
 
-    match app_state.hw_manager.sign_psbt(&device_id, &psbt).await {
+    let hw_manager = app_state.require_hw_manager().await?;
+    match hw_manager.sign_psbt(&device_id, &psbt).await {
         Ok(signed_psbt) => {
             info!("Successfully signed PSBT with device {device_id}");
             let signed_psbt_json = serde_json::to_value(&signed_psbt)
@@ -321,7 +323,8 @@ pub async fn cmd_get_ledger_hmacs(
     _window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
-    let hmacs = app_state.hw_manager.get_ledger_hmacs_hex().await;
+    let hw_manager = app_state.require_hw_manager().await?;
+    let hmacs = hw_manager.get_ledger_hmacs_hex().await;
     let hmacs_json = serde_json::to_value(&hmacs)
         .map_err(|e| format!("Failed to serialize HMACs: {e}"))?;
     Ok(CommandResult {

@@ -23,6 +23,8 @@ pub enum SessionMessageType {
 pub enum WindowApplicationRoute {
     #[serde(rename = "Loading")]
     Loading,
+    #[serde(rename = "SelectEnv")]
+    SelectEnv,
     #[serde(rename = "Login")]
     Login,
     #[serde(rename = "MainPage")]

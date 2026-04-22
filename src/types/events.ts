@@ -2,11 +2,25 @@
 
 export type WindowApplicationRoute =
 	| "Loading"
+	| "SelectEnv"
 	| "Login"
 	| "MainPage"
 	| "MachineRegistration"
 	| "RemoteSessions"
 	| "SessionDetails";
+
+export interface EnvironmentConfig {
+	id: string;
+	name: string;
+	network: string;
+	apiBaseUrl: string;
+	comingSoon?: boolean;
+}
+
+export interface EnvironmentsResponse {
+	environments: EnvironmentConfig[];
+	selected_id: string | null;
+}
 
 export type SessionMessageType =
 	| "AuthorizationSuccess"
