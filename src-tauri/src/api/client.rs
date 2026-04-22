@@ -15,9 +15,9 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
-    pub fn new() -> Self {
+    pub fn new(base_url: String) -> Self {
         Self {
-            base_url: env!("API_BASE_URL").to_string(),
+            base_url,
             client: Client::new(),
         }
     }

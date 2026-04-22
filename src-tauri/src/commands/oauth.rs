@@ -1,4 +1,8 @@
-// OAuth authentication commands with PKCE and CSRF protection
+// OAuth authentication commands with PKCE and CSRF protection.
+//
+// A fresh `OAuthState` is built for every `cmd_authenticate` call so that
+// (a) PKCE/CSRF tokens are not reused across login attempts and
+// (b) the authorization URL reflects the currently selected environment.
 
 use std::sync::Arc;
 
@@ -60,39 +64,49 @@ fn open_browser(url: &str) -> std::io::Result<()> {
     }
 }
 
-/// Callback handler for OAuth redirect
+async fn current_oauth_flow(app_state: &ApplicationState) -> Result<OAuthState, String> {
+    app_state
+        .oauth_flow
+        .read()
+        .await
+        .clone()
+        .ok_or_else(|| "OAuth flow not initialized".to_string())
+}
+
 async fn authorize_callback(
-    handle: Extension<AppHandle>,
+    Extension(app_state): Extension<ApplicationState>,
     query: Query<CallbackQuery>,
 ) -> impl IntoResponse {
     info!("Received OAuth callback");
 
-    let oauth_state = handle.state::<OAuthState>();
+    let oauth_state = match current_oauth_flow(&app_state).await {
+        Ok(s) => s,
+        Err(e) => {
+            error!("OAuth callback received without active flow: {e}");
+            return "Authorization failed: no active flow".to_string();
+        }
+    };
 
-    // Verify CSRF token
     if query.state.secret() != oauth_state.csrf_token.secret() {
         error!("CSRF token mismatch - possible MITM attack!");
         return "Authorization failed: invalid state".to_string();
     }
 
-    // Store the authorization code for the main authenticate command to use
-    let mut auth_code = oauth_state.auth_code.lock().await;
-    *auth_code = Some(query.code.secret().to_string());
+    *oauth_state.auth_code.lock().await = Some(query.code.secret().to_string());
 
     info!("OAuth authorization code received successfully");
     "Authorization successful! You can close this window and return to the application.".to_string()
 }
 
-/// Run the local OAuth callback server
-async fn run_oauth_server(handle: AppHandle) -> Result<(), String> {
-    let oauth_state = handle.state::<OAuthState>();
-    let socket_addr = oauth_state.socket_addr;
-
+async fn run_oauth_server(
+    app_state: ApplicationState,
+    socket_addr: std::net::SocketAddr,
+) -> Result<(), String> {
     info!("Starting OAuth callback server on {socket_addr}");
 
     let app = Router::new()
         .route("/callback", get(authorize_callback))
-        .layer(Extension(handle.clone()));
+        .layer(Extension(app_state));
 
     let listener = tokio::net::TcpListener::bind(socket_addr)
         .await
@@ -105,7 +119,6 @@ async fn run_oauth_server(handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Main authenticate command - initiates OAuth flow and handles the complete authentication
 #[tauri::command]
 pub async fn cmd_authenticate(
     app: AppHandle,
@@ -113,39 +126,46 @@ pub async fn cmd_authenticate(
 ) -> Result<CommandResult, String> {
     info!("Starting OAuth authentication flow");
 
-    let oauth_state = app.state::<OAuthState>();
+    // Refuse to start auth without a chosen environment so we don't end up
+    // with a token pinned to no backend.
+    let env = app_state.require_env().await?;
 
-    // Generate authorization URL with PKCE challenge
-    let (auth_url, _) = oauth_state
+    // Build a fresh OAuth flow for this attempt: new PKCE + CSRF, and an
+    // auth URL pointing at the currently selected environment.
+    let new_flow = OAuthState::new(
+        env!("OAUTH2_CLIENT_ID").to_string(),
+        env.resolved_auth_url(),
+        env!("OAUTH2_TOKEN_URL").to_string(),
+    )
+    .map_err(|e| format!("Failed to build OAuth flow: {e}"))?;
+
+    *app_state.oauth_flow.write().await = Some(new_flow.clone());
+
+    let (auth_url, _) = new_flow
         .client
-        .authorize_url(|| oauth_state.csrf_token.clone())
+        .authorize_url(|| new_flow.csrf_token.clone())
         .add_scope(Scope::new("openid".to_string()))
-        .set_pkce_challenge(oauth_state.pkce_challenge.clone())
+        .set_pkce_challenge(new_flow.pkce_challenge.clone())
         .url();
 
     info!("Opening browser for authentication: {auth_url}");
 
-    // Spawn the OAuth callback server
-    let server_handle = app.clone();
+    let server_state = app_state.inner().clone();
+    let socket_addr = new_flow.socket_addr;
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = run_oauth_server(server_handle).await {
+        if let Err(e) = run_oauth_server(server_state, socket_addr).await {
             error!("OAuth server error: {e}");
         }
     });
 
-    // Open the authorization URL in the user's browser. The launcher is
-    // per-OS; on Linux we also clear LD_LIBRARY_PATH so AppImage-bundled
-    // libs don't break xdg-open.
     open_browser(auth_url.as_str())
         .map_err(|e| format!("Failed to open browser: {e}"))?;
 
-    // Wait for the callback (poll for auth code)
-    let auth_code = wait_for_auth_code(oauth_state.auth_code.clone()).await?;
+    let auth_code = wait_for_auth_code(new_flow.auth_code.clone()).await?;
 
     info!("Exchanging authorization code for token");
 
-    // Exchange authorization code for access token
-    let pkce_verifier = oauth_state
+    let pkce_verifier = new_flow
         .pkce_verifier
         .lock()
         .await
@@ -153,7 +173,7 @@ pub async fn cmd_authenticate(
         .ok_or("PKCE verifier not found")?;
 
     info!("Sending token exchange request to Zitadel");
-    let token_result = oauth_state
+    let token_result = new_flow
         .client
         .exchange_code(AuthorizationCode::new(auth_code))
         .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
@@ -171,7 +191,9 @@ pub async fn cmd_authenticate(
     let access_token = token_response.access_token().secret().to_string();
     info!("Successfully obtained access token");
 
-    // Initialize secure storage
+    // Drop the flow now that we have the token; nothing else needs it.
+    *app_state.oauth_flow.write().await = None;
+
     let storage = SecureStorage::new(app.clone());
     if let Err(e) = storage.initialize(b"sigvault_default_key").await {
         error!("Failed to initialize storage: {e}");
@@ -181,7 +203,6 @@ pub async fn cmd_authenticate(
         ));
     }
 
-    // Store the OAuth access token in secure storage
     if let Err(e) = storage
         .update_oauth_access_token(access_token.clone())
         .await
@@ -191,7 +212,6 @@ pub async fn cmd_authenticate(
         info!("OAuth access token stored successfully");
     }
 
-    // Authenticate user with the access token (shared logic)
     authenticate_user(app, app_state.inner().clone(), access_token).await
 }
 
@@ -206,9 +226,9 @@ pub(super) async fn authenticate_user(
     info!("Authenticating user with access token");
 
     let storage = SecureStorage::new(app.clone());
-    let api_client = ApiClient::new();
+    let api_base_url = app_state.require_api_base_url().await?;
+    let api_client = ApiClient::new(api_base_url);
 
-    // Fetch user profile to verify token and get user data
     let user_profile = match api_client.user_profile(access_token.clone()).await {
         Ok(profile) => {
             info!("User profile fetched successfully: {:?}", profile.id);
@@ -218,12 +238,10 @@ pub(super) async fn authenticate_user(
             error!("Failed to fetch user profile: {e:?}");
             error!("Cleaning up invalid OAuth token from storage");
 
-            // Clean up the invalid token from secure storage
             if let Err(e) = storage.clear_auth_data().await {
                 error!("Failed to clear auth data: {e}");
             }
 
-            // Clear in-memory state
             app_state.auth_tokens.lock().await.clear();
             app_state.user_data.lock().await.clear();
             app_state.remote_sessions.lock().await.clear();
@@ -235,16 +253,14 @@ pub(super) async fn authenticate_user(
         }
     };
 
-    // Store OAuth token in app state
     app_state
         .auth_tokens
         .lock()
         .await
         .set_oauth_access_token(access_token);
 
-    // Store user profile in app state
-    let mut authenticated = false; // This will be set to true after successful authentication
-    let mut route = WindowApplicationRoute::Login; // Default to login route on failure
+    let mut authenticated = false;
+    let mut route = WindowApplicationRoute::Login;
     match user_profile {
         Ok(profile) => {
             app_state.user_data.lock().await.set_from_profile(profile);
@@ -252,12 +268,10 @@ pub(super) async fn authenticate_user(
             route = WindowApplicationRoute::MainPage;
         }
         Err(_) => {
-            // This case should not happen since we return early on profile fetch failure
             error!("User profile is not available, cannot set user data in state");
         }
     }
 
-    // Update window state to show logged in
     if let Some(window) = app.get_webview_window("main") {
         update_state(
             &window,
@@ -274,9 +288,7 @@ pub(super) async fn authenticate_user(
     Ok(CommandResult::success("Authentication finished"))
 }
 
-/// Wait for the authorization code from the callback
 async fn wait_for_auth_code(auth_code: Arc<Mutex<Option<String>>>) -> Result<String, String> {
-    // Poll for up to 5 minutes
     for _ in 0..300 {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
@@ -298,22 +310,19 @@ pub async fn cmd_logout(
 
     let storage = SecureStorage::new(app.clone());
 
-    // Initialize stronghold
     if let Err(e) = storage.initialize(b"sigvault_default_key").await {
         error!("Failed to initialize storage: {e}");
     }
 
-    // Clear stored auth data
     if let Err(e) = storage.clear_auth_data().await {
         error!("Failed to clear auth data: {e}");
     }
 
-    // Clear in-memory tokens, user data, and remote sessions
     app_state.auth_tokens.lock().await.clear();
     app_state.user_data.lock().await.clear();
     app_state.remote_sessions.lock().await.clear();
+    *app_state.oauth_flow.write().await = None;
 
-    // Navigate to loading/login
     if let Some(window) = app.get_webview_window("main") {
         update_state(
             &window,
