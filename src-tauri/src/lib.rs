@@ -4,6 +4,7 @@
 mod api;
 mod commands;
 mod config;
+mod env_config;
 mod error;
 pub mod hwi;
 mod kdf;
@@ -18,20 +19,11 @@ use log::info;
 use tauri::Manager;
 
 use commands::*;
-use oauth::OAuthState;
 use state::ApplicationState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     info!("Starting Sigvault Desktop application");
-
-    // Initialize OAuth state (values burned in at build time from .env)
-    let oauth_state = OAuthState::new(
-        env!("OAUTH2_CLIENT_ID").to_string(),
-        env!("OAUTH2_AUTH_URL").to_string(),
-        env!("OAUTH2_TOKEN_URL").to_string(),
-    )
-    .expect("Failed to initialize OAuth state");
 
     tauri::Builder::default()
         // .plugin(tauri_plugin_deep_link::init())
@@ -57,9 +49,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(ApplicationState::new())
-        .manage(oauth_state)
         .invoke_handler(tauri::generate_handler![
             cmd_initialize_app,
+            cmd_list_environments,
+            cmd_set_environment,
+            cmd_clear_environment,
             cmd_authenticate,
             // cmd_check_authentication,
             // cmd_authenticate_with_session,

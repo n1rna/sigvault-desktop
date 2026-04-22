@@ -1,11 +1,48 @@
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import WindowControls from "../components/WindowControls";
+import type { EnvironmentConfig, EnvironmentsResponse } from "../types/events";
 
 export function Login() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [currentEnv, setCurrentEnv] = useState<EnvironmentConfig | null>(null);
+	const [changingEnv, setChangingEnv] = useState(false);
+
+	useEffect(() => {
+		(async () => {
+			try {
+				const resp = await invoke<EnvironmentsResponse>(
+					"cmd_list_environments",
+				);
+				const match = resp?.environments?.find(
+					(e) => e.id === resp.selected_id,
+				);
+				setCurrentEnv(match ?? null);
+			} catch {
+				setCurrentEnv(null);
+			}
+		})();
+	}, []);
+
+	const handleChangeEnv = async () => {
+		try {
+			setChangingEnv(true);
+			setError(null);
+			await invoke("cmd_clear_environment");
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: typeof err === "string"
+						? err
+						: "Failed to change environment",
+			);
+		} finally {
+			setChangingEnv(false);
+		}
+	};
 
 	const onDrag = useCallback((e: React.MouseEvent) => {
 		if (e.buttons === 1 && e.detail === 1) {
@@ -121,6 +158,31 @@ export function Login() {
 						Sign in with your SigVault account to join sessions and
 						coordinate with other signers.
 					</p>
+
+					{/* Active environment badge */}
+					<div className="mt-6 flex items-center justify-between rounded-md border border-border bg-card px-3.5 py-2.5">
+						<div className="flex flex-col">
+							<span className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+								Connecting to
+							</span>
+							<span className="mt-0.5 text-[12px] font-medium text-foreground">
+								{currentEnv ? currentEnv.name : "—"}
+								{currentEnv && (
+									<span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+										· {currentEnv.network}
+									</span>
+								)}
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={handleChangeEnv}
+							disabled={changingEnv || isLoading}
+							className="rounded-sm border border-border bg-background px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:opacity-50"
+						>
+							{changingEnv ? "…" : "Change"}
+						</button>
+					</div>
 
 					{/* Error */}
 					{error && (

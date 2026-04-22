@@ -2,18 +2,18 @@ use std::path::Path;
 
 /// Environment variables to burn into the binary at compile time.
 /// (name, default_value)
+///
+/// API_BASE_URL, BITCOIN_NETWORK, and OAUTH2_AUTH_URL all live in the
+/// runtime environment manifest (fetched from
+/// sigvault.org/environments.json) because they are per-deployment.
+/// The OAuth client_id and token_url are shared across all envs and so
+/// remain compile-time.
 const BUILD_ENV_VARS: &[(&str, &str)] = &[
-    ("API_BASE_URL", "https://api.regtest.sigvault.org"),
     ("OAUTH2_CLIENT_ID", "346819126007796376"),
-    (
-        "OAUTH2_AUTH_URL",
-        "https://regtest.sigvault.org/auth/desktop-login",
-    ),
     (
         "OAUTH2_TOKEN_URL",
         "https://sigvault-jsyfl0.us1.zitadel.cloud/oauth/v2/token",
     ),
-    ("BITCOIN_NETWORK", "regtest"),
 ];
 
 fn main() {
