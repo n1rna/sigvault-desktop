@@ -15,6 +15,7 @@ pub async fn cmd_update_remote_sessions(
     window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     let api_base_url = app_state.require_api_base_url().await?;
     let api_client = ApiClient::new(api_base_url);
 

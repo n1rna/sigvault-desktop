@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::types::WindowApplicationRoute;
 use crate::api::types::RemoteSession;
+use crate::app_mode::AppMode;
 
 /// State update event - updates the global application state
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -20,6 +21,12 @@ pub struct StateUpdateEvent {
     pub route: Option<WindowApplicationRoute>,
     pub active_session: Option<ActiveSession>,
     pub remote_sessions: Option<Vec<RemoteSession>>,
+    /// Top-level mode. `Some(Cloud)` / `Some(Local)` carries an explicit
+    /// update; `None` here just means "no change" — the frontend keeps
+    /// whatever it had. To clear the mode (return to chooser), the backend
+    /// sends a `route: ModeChooser` update; the frontend resets `appMode`
+    /// to null when it sees that route.
+    pub app_mode: Option<AppMode>,
 }
 
 impl StateUpdateEvent {
@@ -33,6 +40,7 @@ pub struct StateUpdateEventBuilder {
     authenticated: Option<bool>,
     route: Option<WindowApplicationRoute>,
     active_session: ActiveSession,
+    app_mode: Option<AppMode>,
 }
 
 impl StateUpdateEventBuilder {
@@ -56,12 +64,18 @@ impl StateUpdateEventBuilder {
         self
     }
 
+    pub fn app_mode(mut self, mode: AppMode) -> Self {
+        self.app_mode = Some(mode);
+        self
+    }
+
     pub fn build(self) -> StateUpdateEvent {
         StateUpdateEvent {
             authenticated: self.authenticated,
             route: self.route,
             active_session: Some(self.active_session),
             remote_sessions: None,
+            app_mode: self.app_mode,
         }
     }
 }

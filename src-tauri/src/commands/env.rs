@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::env_config::{self, EnvConfig};
 use crate::error::AppErrorCode;
 use crate::state::ApplicationState;
-use crate::storage::{EnvStorage, SecureStorage, StoredEnvData};
+use crate::storage::{EnvStorage, SecureStorage};
 use crate::window::{update_state, StateUpdateEvent, WindowApplicationRoute};
 
 use super::types::CommandResult;
@@ -88,12 +88,9 @@ pub async fn cmd_set_environment(
     let _ = secure.clear_auth_data().await;
 
     let env_storage = EnvStorage::new(app.clone());
-    if let Err(e) = env_storage
-        .store(&StoredEnvData {
-            selected_env_id: Some(env.id.clone()),
-        })
-        .await
-    {
+    let mut stored = env_storage.load().await.unwrap_or_default();
+    stored.selected_env_id = Some(env.id.clone());
+    if let Err(e) = env_storage.store(&stored).await {
         error!("Failed to persist env selection: {e}");
         return Err(format!("Failed to persist env selection: {e}"));
     }

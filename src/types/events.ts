@@ -1,13 +1,17 @@
 // Event types for backend-frontend communication
 
+export type AppMode = "cloud" | "local";
+
 export type WindowApplicationRoute =
 	| "Loading"
+	| "ModeChooser"
 	| "SelectEnv"
 	| "Login"
 	| "MainPage"
 	| "MachineRegistration"
 	| "RemoteSessions"
-	| "SessionDetails";
+	| "SessionDetails"
+	| "LocalWallets";
 
 export interface EnvironmentConfig {
 	id: string;
@@ -42,6 +46,7 @@ export interface StateUpdateEvent {
 		session_type: string;
 	};
 	remote_sessions?: RemoteSession[];
+	app_mode?: AppMode;
 }
 
 export interface CommandEvent {
@@ -75,6 +80,10 @@ export type AppEvent =
 export interface AppState {
 	authenticated: boolean;
 	route: WindowApplicationRoute;
+	/** Top-level app mode chosen at launch. `null` means the user has not
+	 * picked yet (or has explicitly cleared the choice via Settings) and
+	 * the Mode Chooser screen should be shown. */
+	appMode: AppMode | null;
 	listenerReady: boolean;
 	notification: NotificationEvent | null;
 	activityLog: NotificationEvent[];

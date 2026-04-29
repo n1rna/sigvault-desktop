@@ -2,6 +2,7 @@
 // Clean architecture with modular design
 
 mod api;
+mod app_mode;
 mod commands;
 mod config;
 mod env_config;
@@ -51,6 +52,8 @@ pub fn run() {
         .manage(ApplicationState::new())
         .invoke_handler(tauri::generate_handler![
             cmd_initialize_app,
+            cmd_set_app_mode,
+            cmd_clear_app_mode,
             cmd_list_environments,
             cmd_set_environment,
             cmd_clear_environment,
