@@ -18,6 +18,7 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+use crate::app_mode::AppMode;
 use crate::kdf;
 
 const STORE_FILENAME: &str = "auth.dat";
@@ -174,6 +175,13 @@ impl SecureStorage {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StoredEnvData {
     pub selected_env_id: Option<String>,
+    /// Top-level mode the user picked from the pre-login chooser. `None`
+    /// means the chooser should be shown on next launch. Existing installs
+    /// (which have `selected_env_id.is_some()` but `app_mode.is_none()`)
+    /// are treated as Cloud mode by `cmd_initialize_app` to avoid an
+    /// unexpected re-prompt after an app update.
+    #[serde(default)]
+    pub app_mode: Option<AppMode>,
 }
 
 /// Encrypted persistence for the user's selected environment.

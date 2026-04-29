@@ -124,6 +124,7 @@ pub async fn cmd_authenticate(
     app: AppHandle,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     info!("Starting OAuth authentication flow");
 
     // Refuse to start auth without a chosen environment so we don't end up
@@ -306,6 +307,7 @@ pub async fn cmd_logout(
     app: AppHandle,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     info!("Logging out");
 
     let storage = SecureStorage::new(app.clone());

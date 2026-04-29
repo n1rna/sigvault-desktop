@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::api::types::{RemoteSession, UserProfile};
+use crate::app_mode::AppMode;
 use crate::config::parse_network_str;
 use crate::env_config::EnvConfig;
 use crate::hwi::HardwareWalletManager;
@@ -74,6 +75,11 @@ pub struct ApplicationState {
     /// and CSRF tokens are not reused, and so the auth URL reflects the
     /// currently selected environment.
     pub oauth_flow: Arc<RwLock<Option<OAuthState>>>,
+    /// Selected top-level mode: Cloud (existing remote-signing flow) or
+    /// Local (standalone wallet). `None` until the user picks one from the
+    /// pre-login chooser; persisted in `EnvStorage` so the choice survives
+    /// restarts.
+    pub app_mode: Arc<RwLock<Option<AppMode>>>,
 }
 
 impl ApplicationState {
@@ -87,6 +93,48 @@ impl ApplicationState {
             current_env: Arc::new(RwLock::new(None)),
             hw_manager: Arc::new(RwLock::new(None)),
             oauth_flow: Arc::new(RwLock::new(None)),
+            app_mode: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Set the top-level app mode and propagate side effects. Call sites
+    /// that also need persistence should pass the new mode to
+    /// `EnvStorage` separately.
+    pub async fn set_app_mode(&self, mode: AppMode) {
+        *self.app_mode.write().await = Some(mode);
+    }
+
+    pub async fn clear_app_mode(&self) {
+        *self.app_mode.write().await = None;
+    }
+
+    pub async fn get_app_mode(&self) -> Option<AppMode> {
+        *self.app_mode.read().await
+    }
+
+    /// Reject the call when the app is not in Cloud mode. Used by every
+    /// gRPC/OAuth/session command that only makes sense once the user has
+    /// chosen the cloud experience.
+    pub async fn require_cloud_mode(&self) -> Result<(), String> {
+        match self.get_app_mode().await {
+            Some(AppMode::Cloud) => Ok(()),
+            Some(AppMode::Local) => {
+                Err("command not available in local mode".to_string())
+            }
+            None => Err("app mode not selected; call cmd_set_app_mode first".to_string()),
+        }
+    }
+
+    /// Symmetric of `require_cloud_mode` — used by local-wallet commands
+    /// (added in QBL-216 onward).
+    #[allow(dead_code)]
+    pub async fn require_local_mode(&self) -> Result<(), String> {
+        match self.get_app_mode().await {
+            Some(AppMode::Local) => Ok(()),
+            Some(AppMode::Cloud) => {
+                Err("command not available in cloud mode".to_string())
+            }
+            None => Err("app mode not selected; call cmd_set_app_mode first".to_string()),
         }
     }
 
