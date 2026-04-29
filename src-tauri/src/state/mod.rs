@@ -8,6 +8,7 @@ use crate::app_mode::AppMode;
 use crate::config::parse_network_str;
 use crate::env_config::EnvConfig;
 use crate::hwi::HardwareWalletManager;
+use crate::local_wallet::state::{LocalWalletState as LWState, SharedLocalWalletState};
 use crate::oauth::OAuthState;
 use crate::websocket::WebsocketHandler;
 
@@ -80,6 +81,11 @@ pub struct ApplicationState {
     /// pre-login chooser; persisted in `EnvStorage` so the choice survives
     /// restarts.
     pub app_mode: Arc<RwLock<Option<AppMode>>>,
+    /// In-memory map of unlocked local wallets. The map itself is shared
+    /// across commands so the `LocalWalletManager` constructed in each
+    /// command handler sees the same handles. Locking a wallet drops its
+    /// entry, which Zeroize-wipes the seed bytes.
+    pub local_wallet_state: SharedLocalWalletState,
 }
 
 impl ApplicationState {
@@ -94,6 +100,7 @@ impl ApplicationState {
             hw_manager: Arc::new(RwLock::new(None)),
             oauth_flow: Arc::new(RwLock::new(None)),
             app_mode: Arc::new(RwLock::new(None)),
+            local_wallet_state: Arc::new(LWState::new()),
         }
     }
 

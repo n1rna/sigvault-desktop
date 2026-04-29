@@ -61,6 +61,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.8.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
+dependencies = [
+ "cfg-if",
+ "once_cell",
+ "version_check",
+ "zerocopy",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,6 +542,72 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "bdk_chain"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4955734f97b2baed3f36d16ae7c203fdde31ae85391ac44ee3cbcaf0886db5ce"
+dependencies = [
+ "bdk_core",
+ "bitcoin",
+ "miniscript",
+ "serde",
+]
+
+[[package]]
+name = "bdk_coin_select"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43064fa3dd1d3a8b24079cfcb5ede6b785857edc782277f17a1736511ccc1916"
+
+[[package]]
+name = "bdk_core"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b545aea1efc090e4f71f1dd5468090d9f54c3de48002064c04895ef811fbe0b2"
+dependencies = [
+ "bitcoin",
+ "hashbrown 0.14.5",
+ "serde",
+]
+
+[[package]]
+name = "bdk_electrum"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb2ac12acbf8f263c59d74ceeeed015e0fd00982aa8e71824f63d102999be040"
+dependencies = [
+ "bdk_core",
+ "electrum-client 0.23.1",
+]
+
+[[package]]
+name = "bdk_file_store"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2502fb75506a21d0b6e1b2002ecd9953ad1f70d82d4c3aaf812db1c028662ff1"
+dependencies = [
+ "bdk_core",
+ "bincode",
+ "serde",
+]
+
+[[package]]
+name = "bdk_wallet"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "461b92c4e47b688a92740b204f4580e0a51775df16b67dde1d2db6ede1f0ba09"
+dependencies = [
+ "bdk_chain",
+ "bdk_file_store",
+ "bip39",
+ "bitcoin",
+ "miniscript",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bech32"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -542,6 +620,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "bip39"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
+dependencies = [
+ "bitcoin_hashes 0.14.1",
+ "serde",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -1751,6 +1840,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "electrum-client"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ed9a037f88aa61d3627a20af1c68fa0405ed5a16d9a0d9dc0e66adcda44afbe"
+dependencies = [
+ "bitcoin",
+ "byteorder",
+ "libc",
+ "log",
+ "rustls 0.23.38",
+ "serde",
+ "serde_json",
+ "webpki-roots 0.25.4",
+ "winapi",
+]
+
+[[package]]
 name = "elliptic-curve"
 version = "0.13.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2538,7 +2644,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
- "ahash",
+ "ahash 0.7.8",
 ]
 
 [[package]]
@@ -2546,6 +2652,10 @@ name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+dependencies = [
+ "ahash 0.8.12",
+ "serde",
+]
 
 [[package]]
 name = "hashbrown"
@@ -3402,6 +3512,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "liana"
+version = "12.0.0"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feature%2Fpolicy-core-extraction#492471c6674e74229922836ee3cf681b5aceafc7"
+dependencies = [
+ "bdk_coin_select",
+ "bip39",
+ "getrandom 0.2.17",
+ "log",
+ "miniscript",
+ "rdrand",
+ "serde",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3680,6 +3804,7 @@ checksum = "487906208f38448e186e3deb02f2b8ef046a9078b0de00bdb28bf4fb9b76951c"
 dependencies = [
  "bech32",
  "bitcoin",
+ "serde",
 ]
 
 [[package]]
@@ -4516,6 +4641,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "policy-core"
+version = "0.1.0"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feature%2Fpolicy-core-extraction#492471c6674e74229922836ee3cf681b5aceafc7"
+dependencies = [
+ "bdk_wallet",
+ "hex",
+ "liana",
+ "log",
+ "miniscript",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "polling"
 version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5025,6 +5165,15 @@ name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+
+[[package]]
+name = "rdrand"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d92195228612ac8eed47adbc2ed0f04e513a4ccb98175b6f2bd04d963b533655"
+dependencies = [
+ "rand_core 0.6.4",
+]
 
 [[package]]
 name = "redox_syscall"
@@ -5676,6 +5825,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
  "bitcoin_hashes 0.14.1",
+ "rand 0.8.5",
  "secp256k1-sys",
  "serde",
 ]
@@ -6058,10 +6208,12 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
+ "bdk_file_store",
+ "bdk_wallet",
  "bitcoin",
  "chacha20poly1305",
  "dotenvy",
- "electrum-client",
+ "electrum-client 0.21.0",
  "env_logger",
  "futures",
  "futures-util",
@@ -6073,6 +6225,7 @@ dependencies = [
  "oauth2",
  "once_cell",
  "open",
+ "policy-core",
  "rand 0.10.1",
  "reqwest 0.12.28",
  "serde",
@@ -6093,6 +6246,8 @@ dependencies = [
  "tower",
  "tungstenite",
  "uuid",
+ "wallet-runtime",
+ "zeroize",
 ]
 
 [[package]]
@@ -7626,6 +7781,24 @@ checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",
+]
+
+[[package]]
+name = "wallet-runtime"
+version = "0.1.0"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feature%2Fpolicy-core-extraction#492471c6674e74229922836ee3cf681b5aceafc7"
+dependencies = [
+ "bdk_electrum",
+ "bdk_file_store",
+ "bdk_wallet",
+ "hex",
+ "liana",
+ "log",
+ "miniscript",
+ "policy-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
