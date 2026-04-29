@@ -21,6 +21,12 @@ use log::info;
 use tauri::Manager;
 
 use commands::*;
+use local_wallet::commands::{
+    cmd_local_create_wallet, cmd_local_delete_wallet, cmd_local_get_balance,
+    cmd_local_get_history, cmd_local_get_receive_address, cmd_local_get_settings,
+    cmd_local_list_wallets, cmd_local_lock_wallet, cmd_local_recover_from_mnemonic,
+    cmd_local_set_settings, cmd_local_unlock_wallet,
+};
 use state::ApplicationState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -76,7 +82,19 @@ pub fn run() {
             cmd_submit_device_registration,
             cmd_sign_psbt,
             cmd_submit_transaction_signature,
-            cmd_get_ledger_hmacs
+            cmd_get_ledger_hmacs,
+            // Local wallet commands (QBL-216 onward).
+            cmd_local_list_wallets,
+            cmd_local_create_wallet,
+            cmd_local_recover_from_mnemonic,
+            cmd_local_unlock_wallet,
+            cmd_local_lock_wallet,
+            cmd_local_delete_wallet,
+            cmd_local_get_receive_address,
+            cmd_local_get_balance,
+            cmd_local_get_history,
+            cmd_local_get_settings,
+            cmd_local_set_settings,
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

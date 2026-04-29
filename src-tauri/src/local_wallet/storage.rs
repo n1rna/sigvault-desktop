@@ -79,6 +79,18 @@ impl AsRef<str> for WalletId {
     }
 }
 
+impl From<String> for WalletId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for WalletId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
 /// Resolves filesystem paths for a wallet's sidecars relative to a root
 /// `local/` directory.
 #[derive(Debug, Clone)]
