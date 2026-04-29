@@ -45,6 +45,34 @@ pub fn derive_password_key(password: &[u8]) -> [u8; 32] {
     out
 }
 
+/// Derive a 32-byte key from a user-provided passphrase + per-wallet salt
+/// using Argon2id with hardened parameters (m=64MiB, t=3, p=4). Output is
+/// a 32-byte key suitable for ChaCha20-Poly1305.
+///
+/// Used by the local-wallet `seed.enc` envelope. The salt is stored
+/// alongside the ciphertext so the wallet is portable across machines —
+/// this is a deliberate divergence from `derive_password_key`, which mixes
+/// in a machine identifier (for Stronghold) and would prevent migration.
+///
+/// Wrong passphrase ⇒ a different key ⇒ AEAD authentication failure on
+/// decrypt. No machine binding here.
+// `dead_code` allow can be lifted once QBL-216's manager wires this in.
+#[allow(dead_code)]
+pub fn derive_passphrase_key(passphrase: &[u8], salt: &[u8; 16]) -> [u8; 32] {
+    // 64 MiB = 65 536 KiB. t_cost = 3 passes, p_cost = 4 lanes.
+    // OWASP 2024 baselines top out around m=46MiB / t=1 / p=1; we run hotter
+    // because (a) the ciphertext protects long-lived seed material and (b)
+    // unlock latency happens only once per session, not per request.
+    let params = Params::new(65_536, 3, 4, Some(32))
+        .expect("argon2 params constants must be valid");
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut out = [0u8; 32];
+    argon2
+        .hash_password_into(passphrase, salt, &mut out)
+        .expect("argon2 derivation failed");
+    out
+}
+
 /// Derive a 32-byte key bound to this machine for a given purpose label.
 /// Not password-protected — the security property is "cannot be decrypted
 /// without also having access to this machine's identifier".

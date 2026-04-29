@@ -9,6 +9,7 @@ mod env_config;
 mod error;
 pub mod hwi;
 mod kdf;
+mod local_wallet;
 mod machine;
 mod oauth;
 mod state;
