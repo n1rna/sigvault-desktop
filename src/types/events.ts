@@ -115,6 +115,15 @@ export interface LocalWalletCreateResponse {
 	mnemonic_words: string[];
 }
 
+/** Mirrors `local_wallet::commands::ReceiveAddress`. v1 always returns
+ * external keychain index 0; richer next-unused / per-index lookups land
+ * with later receive UX work. */
+export interface LocalReceiveAddress {
+	address: string;
+	keychain: string;
+	index: number;
+}
+
 export type AppEvent =
 	| { type: "state_update"; data: StateUpdateEvent }
 	| { type: "command"; data: CommandEvent }
