@@ -10,6 +10,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use bdk_wallet::bitcoin::Network;
+use bdk_wallet::chain::ChainPosition;
 use bdk_wallet::KeychainKind;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -79,7 +80,24 @@ pub struct CreateWalletResponse {
 #[derive(Debug, Serialize, Default)]
 pub struct LocalBalance {
     pub confirmed_sat: u64,
+    /// Sum of trusted_pending + untrusted_pending + immature. Includes
+    /// incoming change and unmatured coinbase; the dashboard renders this
+    /// as a separate "pending" line under the spendable balance.
     pub unconfirmed_sat: u64,
+}
+
+/// One row in the wallet history view. `net_sat` is positive for incoming
+/// (received > sent) and negative for outgoing. `fee_sat` is 0 for
+/// transactions we did not author. `block_time` / `block_height` are
+/// `None` for unconfirmed transactions.
+#[derive(Debug, Serialize)]
+pub struct LocalTxRecord {
+    pub txid: String,
+    pub net_sat: i64,
+    pub fee_sat: u64,
+    pub confirmed: bool,
+    pub block_height: Option<u32>,
+    pub block_time: Option<u64>,
 }
 
 // ---------- helpers ----------
@@ -245,29 +263,94 @@ pub async fn cmd_local_get_receive_address(
     })
 }
 
-/// Stub — proper balance lookup needs an Electrum sync (QBL-218). The
-/// returned zeros are a placeholder so the dashboard can render before
-/// the sync engine lands.
+/// Read the live balance off the unlocked BDK wallet. Reflects whatever
+/// the most recent sync (`cmd_local_sync` / auto-sync after unlock) wrote
+/// to the persister; if no sync has run yet the totals are zero.
 #[tauri::command]
 pub async fn cmd_local_get_balance(
     _app: AppHandle,
     app_state: State<'_, ApplicationState>,
-    _wallet_id: String,
+    wallet_id: String,
 ) -> Result<LocalBalance, String> {
     app_state.require_local_mode().await?;
-    Ok(LocalBalance::default())
+    let id = WalletId::from(wallet_id);
+    let handle = app_state
+        .local_wallet_state
+        .get(&id)
+        .await
+        .ok_or_else(|| ManagerError::NotUnlocked(id.to_string()).to_string())?;
+    let guard = handle.lock().await;
+    let balance = guard.wallet.balance();
+    Ok(LocalBalance {
+        confirmed_sat: balance.confirmed.to_sat(),
+        unconfirmed_sat: (balance.trusted_pending
+            + balance.untrusted_pending
+            + balance.immature)
+            .to_sat(),
+    })
 }
 
-/// Stub — transaction history requires a synced wallet (QBL-218). Empty
-/// list for the v1 scaffold; replaced once sync is wired.
+/// Project the BDK wallet's transaction graph into a flat history list
+/// the dashboard can render directly. Sorted newest-first by confirmation
+/// time (or last-seen for unconfirmed).
 #[tauri::command]
 pub async fn cmd_local_get_history(
     _app: AppHandle,
     app_state: State<'_, ApplicationState>,
-    _wallet_id: String,
-) -> Result<Vec<serde_json::Value>, String> {
+    wallet_id: String,
+) -> Result<Vec<LocalTxRecord>, String> {
     app_state.require_local_mode().await?;
-    Ok(Vec::new())
+    let id = WalletId::from(wallet_id);
+    let handle = app_state
+        .local_wallet_state
+        .get(&id)
+        .await
+        .ok_or_else(|| ManagerError::NotUnlocked(id.to_string()).to_string())?;
+    let guard = handle.lock().await;
+    let wallet = &guard.wallet;
+
+    let mut rows: Vec<LocalTxRecord> = wallet
+        .transactions()
+        .map(|canonical| {
+            let tx = canonical.tx_node.tx.as_ref();
+            let (sent, received) = wallet.sent_and_received(tx);
+            let net_sat = received.to_sat() as i64 - sent.to_sat() as i64;
+            let fee_sat = wallet
+                .calculate_fee(tx)
+                .map(|f| f.to_sat())
+                .unwrap_or(0);
+            let (confirmed, block_height, block_time) = match canonical.chain_position {
+                ChainPosition::Confirmed { anchor, .. } => (
+                    true,
+                    Some(anchor.block_id.height),
+                    Some(anchor.confirmation_time),
+                ),
+                ChainPosition::Unconfirmed { last_seen } => (false, None, last_seen),
+            };
+            LocalTxRecord {
+                txid: canonical.tx_node.txid.to_string(),
+                net_sat,
+                fee_sat,
+                confirmed,
+                block_height,
+                block_time,
+            }
+        })
+        .collect();
+
+    // Newest first. Confirmed ranks above unconfirmed at the same time;
+    // among confirmed, higher height wins; among unconfirmed, higher
+    // last_seen wins. Stable secondary sort on txid keeps the order
+    // deterministic across calls.
+    rows.sort_by(|a, b| {
+        b.confirmed
+            .cmp(&a.confirmed)
+            .then_with(|| b.block_height.cmp(&a.block_height))
+            .then_with(|| b.block_time.cmp(&a.block_time))
+            .then_with(|| a.txid.cmp(&b.txid))
+    });
+
+    Ok(rows)
 }
 
 #[tauri::command]
