@@ -71,6 +71,29 @@ export interface NotificationEvent {
 	duration_ms?: number;
 }
 
+export type LocalWalletSyncPhase =
+	| "connecting"
+	| "fetching_history"
+	| "persisting"
+	| "complete";
+
+export interface LocalWalletSyncProgress {
+	wallet_id: string;
+	phase: LocalWalletSyncPhase;
+	/** 0..=100. Coarse — the backend only emits boundaries between
+	 * phases, since bdk_electrum's full_scan does not expose intra-scan
+	 * progress callbacks. */
+	percent: number;
+	message: string;
+}
+
+export interface LocalWalletSyncSummary {
+	wallet_id: string;
+	tip_height: number;
+	txs_synced: number;
+	balance_sat: number;
+}
+
 export type AppEvent =
 	| { type: "state_update"; data: StateUpdateEvent }
 	| { type: "command"; data: CommandEvent }

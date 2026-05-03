@@ -25,7 +25,7 @@ use local_wallet::commands::{
     cmd_local_create_wallet, cmd_local_delete_wallet, cmd_local_get_balance,
     cmd_local_get_history, cmd_local_get_receive_address, cmd_local_get_settings,
     cmd_local_list_wallets, cmd_local_lock_wallet, cmd_local_recover_from_mnemonic,
-    cmd_local_set_settings, cmd_local_unlock_wallet,
+    cmd_local_set_settings, cmd_local_sync, cmd_local_unlock_wallet,
 };
 use state::ApplicationState;
 
@@ -95,6 +95,7 @@ pub fn run() {
             cmd_local_get_history,
             cmd_local_get_settings,
             cmd_local_set_settings,
+            cmd_local_sync,
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]
