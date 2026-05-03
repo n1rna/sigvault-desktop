@@ -20,7 +20,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use bdk_wallet::bitcoin::bip32::Xpriv;
+use bdk_wallet::bitcoin::bip32::{Fingerprint, Xpriv};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::keys::bip39::{Language, Mnemonic};
 use bdk_wallet::KeychainKind;
@@ -250,17 +250,7 @@ impl LocalWalletManager {
     ) -> Result<WalletId, ManagerError> {
         ensure_supported_network(network)?;
 
-        let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_str)
-            .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
-        let seed = mnemonic.to_seed("");
-        let master_xpriv = Xpriv::new_master(network, &seed)
-            .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
-
-        let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
-        let account_path = KeyUtils::get_primary_derivation_path(network);
-        let account_xpriv = master_xpriv
-            .derive_priv(&secp, &account_path)
-            .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+        let (account_xpriv, _) = derive_account_from_mnemonic(network, mnemonic_str)?;
         let (external_descriptor, internal_descriptor, _xpub, fingerprint) =
             KeyUtils::get_account_extended_descriptor(account_xpriv);
 
@@ -381,6 +371,29 @@ impl LocalWalletManager {
         let handle = handle_arc.lock().await;
         Ok(wallet_runtime::peek_address(&handle.wallet, kind, index).to_string())
     }
+}
+
+/// Parse a BIP39 mnemonic and derive the singlesig segwit-v0 account
+/// xprv (`m/84'/{coin}'/0'`) along with its fingerprint. Shared by
+/// `recover_singlesig_hot` (wallet creation) and `cmd_local_sign_psbt_*`
+/// (signing — re-derives the xprv from the just-decrypted seed rather
+/// than persisting it in memory across the unlock session).
+pub fn derive_account_from_mnemonic(
+    network: Network,
+    mnemonic_str: &str,
+) -> Result<(Xpriv, Fingerprint), ManagerError> {
+    let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_str)
+        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+    let seed = mnemonic.to_seed("");
+    let master_xpriv = Xpriv::new_master(network, &seed)
+        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+    let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
+    let account_path = KeyUtils::get_primary_derivation_path(network);
+    let account_xpriv = master_xpriv
+        .derive_priv(&secp, &account_path)
+        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+    let fingerprint = account_xpriv.fingerprint(&secp);
+    Ok((account_xpriv, fingerprint))
 }
 
 fn ensure_supported_network(network: Network) -> Result<(), ManagerError> {
