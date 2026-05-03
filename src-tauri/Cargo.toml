@@ -52,6 +52,20 @@ argon2 = "0.5"
 sha2 = "0.10"
 chacha20poly1305 = "0.10"
 getrandom = "0.2"
+base64 = "0.22"
+zeroize = "1.8"
+
+# Standalone-wallet shared crates from walletrs. QBL-211 (policy-core),
+# QBL-212 (wallet-runtime), and QBL-213 (server refactor) are merged on
+# walletrs `main`. Pin to a tag when one is cut; until then `main` is
+# the stable reference.
+policy-core = { git = "https://github.com/n1rna/walletrs.git", branch = "main" }
+wallet-runtime = { git = "https://github.com/n1rna/walletrs.git", branch = "main" }
+# `file_store` feature wires up `WalletPersister for bdk_file_store::Store`,
+# which `LocalBdkPersister` delegates to. wallet-runtime doesn't enable it
+# (it's persister-agnostic by design), so we opt in here.
+bdk_wallet = { version = "1.1.0", features = ["file_store", "bip39", "keys-bip39"] }
+bdk_file_store = "0.18.1"
 
 # Force libusb to be statically linked (vendored from source) so the produced
 # binary does not depend on Homebrew's libusb on macOS or a system libusb on Linux.
@@ -61,3 +75,4 @@ libusb1-sys = { version = "0.7", features = ["vendored"] }
 [dev-dependencies]
 env_logger = "0.11"
 electrum-client = "0.21"
+tempfile = "3"

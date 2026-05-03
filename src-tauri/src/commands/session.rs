@@ -18,6 +18,7 @@ pub async fn cmd_start_session_websocket_connection(
     app_state: State<'_, ApplicationState>,
     session_id: String,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     let app_state_clone = app_state.clone();
     let ws_thread = app_state_clone.ws_thread.lock().await;
 
@@ -95,9 +96,7 @@ pub async fn cmd_start_session_websocket_connection(
             )
             .await
             .map_err(|update_err| {
-                error!(
-                    "Failed to update state after WebSocket error: {update_err:?}"
-                );
+                error!("Failed to update state after WebSocket error: {update_err:?}");
             })
             .ok();
         }
@@ -122,6 +121,7 @@ pub async fn cmd_exit_session(
     window: WebviewWindow,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     // First, close the WebSocket connection
     {
         let mut ws_handler = app_state.ws_handler.lock().await;
@@ -166,6 +166,7 @@ pub async fn cmd_submit_user_input_session_websocket(
     _session_id: String,
     input: String,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     let ws_handler = app_state.ws_handler.lock().await;
 
     if let Some(handler) = &*ws_handler {

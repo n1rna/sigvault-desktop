@@ -1,13 +1,17 @@
 // Event types for backend-frontend communication
 
+export type AppMode = "cloud" | "local";
+
 export type WindowApplicationRoute =
 	| "Loading"
+	| "ModeChooser"
 	| "SelectEnv"
 	| "Login"
 	| "MainPage"
 	| "MachineRegistration"
 	| "RemoteSessions"
-	| "SessionDetails";
+	| "SessionDetails"
+	| "LocalWallets";
 
 export interface EnvironmentConfig {
 	id: string;
@@ -42,6 +46,7 @@ export interface StateUpdateEvent {
 		session_type: string;
 	};
 	remote_sessions?: RemoteSession[];
+	app_mode?: AppMode;
 }
 
 export interface CommandEvent {
@@ -66,6 +71,29 @@ export interface NotificationEvent {
 	duration_ms?: number;
 }
 
+export type LocalWalletSyncPhase =
+	| "connecting"
+	| "fetching_history"
+	| "persisting"
+	| "complete";
+
+export interface LocalWalletSyncProgress {
+	wallet_id: string;
+	phase: LocalWalletSyncPhase;
+	/** 0..=100. Coarse — the backend only emits boundaries between
+	 * phases, since bdk_electrum's full_scan does not expose intra-scan
+	 * progress callbacks. */
+	percent: number;
+	message: string;
+}
+
+export interface LocalWalletSyncSummary {
+	wallet_id: string;
+	tip_height: number;
+	txs_synced: number;
+	balance_sat: number;
+}
+
 export type AppEvent =
 	| { type: "state_update"; data: StateUpdateEvent }
 	| { type: "command"; data: CommandEvent }
@@ -75,6 +103,10 @@ export type AppEvent =
 export interface AppState {
 	authenticated: boolean;
 	route: WindowApplicationRoute;
+	/** Top-level app mode chosen at launch. `null` means the user has not
+	 * picked yet (or has explicitly cleared the choice via Settings) and
+	 * the Mode Chooser screen should be shown. */
+	appMode: AppMode | null;
 	listenerReady: boolean;
 	notification: NotificationEvent | null;
 	activityLog: NotificationEvent[];

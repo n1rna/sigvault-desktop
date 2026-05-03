@@ -65,6 +65,7 @@ pub async fn cmd_get_current_user(
 pub async fn cmd_get_remote_sessions(
     app_state: State<'_, ApplicationState>,
 ) -> Result<Vec<crate::api::types::RemoteSession>, String> {
+    app_state.require_cloud_mode().await?;
     let remote_sessions = app_state.remote_sessions.lock().await;
     Ok(remote_sessions.clone())
 }
@@ -80,12 +81,14 @@ pub async fn cmd_navigate(
     // Parse the route string to WindowApplicationRoute
     let app_route = match route.as_str() {
         "Loading" => WindowApplicationRoute::Loading,
+        "ModeChooser" => WindowApplicationRoute::ModeChooser,
         "SelectEnv" => WindowApplicationRoute::SelectEnv,
         "Login" => WindowApplicationRoute::Login,
         "MainPage" => WindowApplicationRoute::MainPage,
         "MachineRegistration" => WindowApplicationRoute::MachineRegistration,
         "RemoteSessions" => WindowApplicationRoute::RemoteSessions,
         "SessionDetails" => WindowApplicationRoute::SessionDetails,
+        "LocalWallets" => WindowApplicationRoute::LocalWallets,
         _ => return Err(format!("Invalid route: {route}")),
     };
 

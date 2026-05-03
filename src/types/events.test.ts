@@ -14,6 +14,7 @@ describe("Event types", () => {
 		const state: AppState = {
 			authenticated: false,
 			route: "Loading",
+			appMode: null,
 			listenerReady: false,
 			notification: null,
 			activityLog: [],
@@ -23,6 +24,7 @@ describe("Event types", () => {
 
 		expect(state.authenticated).toBe(false);
 		expect(state.route).toBe("Loading");
+		expect(state.appMode).toBeNull();
 		expect(state.remoteSessions).toHaveLength(0);
 	});
 
@@ -104,13 +106,16 @@ describe("Event types", () => {
 	it("WindowApplicationRoute covers all routes", () => {
 		const routes: WindowApplicationRoute[] = [
 			"Loading",
+			"ModeChooser",
+			"SelectEnv",
 			"Login",
 			"MainPage",
 			"MachineRegistration",
 			"RemoteSessions",
 			"SessionDetails",
+			"LocalWallets",
 		];
 
-		expect(routes).toHaveLength(6);
+		expect(routes).toHaveLength(9);
 	});
 });

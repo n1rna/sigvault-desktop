@@ -23,6 +23,8 @@ pub enum SessionMessageType {
 pub enum WindowApplicationRoute {
     #[serde(rename = "Loading")]
     Loading,
+    #[serde(rename = "ModeChooser")]
+    ModeChooser,
     #[serde(rename = "SelectEnv")]
     SelectEnv,
     #[serde(rename = "Login")]
@@ -35,6 +37,8 @@ pub enum WindowApplicationRoute {
     RemoteSessions,
     #[serde(rename = "SessionDetails")]
     SessionDetails,
+    #[serde(rename = "LocalWallets")]
+    LocalWallets,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
