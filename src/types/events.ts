@@ -94,6 +94,27 @@ export interface LocalWalletSyncSummary {
 	balance_sat: number;
 }
 
+/** Mirrors `local_wallet::manager::WalletSummary`. Returned by
+ * `cmd_local_list_wallets`. `id` is a UUID v4 string. */
+export interface LocalWalletSummary {
+	id: string;
+	name: string;
+	network: string;
+	policy_type: string;
+	fingerprints: string[];
+	has_hot_keys: boolean;
+	created_at: number;
+	locked: boolean;
+}
+
+/** Mirrors `local_wallet::commands::CreateWalletResponse`. For hot creates
+ * `mnemonic_words` carries the freshly generated BIP39 phrase that the
+ * wizard shows once for backup. */
+export interface LocalWalletCreateResponse {
+	wallet_id: string;
+	mnemonic_words: string[];
+}
+
 export type AppEvent =
 	| { type: "state_update"; data: StateUpdateEvent }
 	| { type: "command"; data: CommandEvent }

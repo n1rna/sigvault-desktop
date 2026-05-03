@@ -197,7 +197,7 @@ impl LocalWalletManager {
         name: &str,
         network: Network,
         passphrase: &[u8],
-    ) -> Result<WalletId, ManagerError> {
+    ) -> Result<(WalletId, Vec<String>), ManagerError> {
         ensure_supported_network(network)?;
 
         let keyset = KeyUtils::generate_complete_key_set(network);
@@ -208,7 +208,8 @@ impl LocalWalletManager {
         // The mnemonic is the durable secret. Persist as an encrypted
         // UTF-8 string of space-separated words; on recovery we re-derive
         // the xprv from it via Mnemonic::parse + to_seed.
-        let mnemonic_str = keyset.words.join(" ");
+        let words = keyset.words.clone();
+        let mnemonic_str = words.join(" ");
         write_seed_file(&layout, mnemonic_str.as_bytes(), passphrase)?;
 
         let descriptors = WalletDescriptors::new(
@@ -233,7 +234,7 @@ impl LocalWalletManager {
         };
         self.write_metadata(&layout, &meta)?;
 
-        Ok(id)
+        Ok((id, words))
     }
 
     /// Recover from a BIP39 mnemonic the user typed in. v1 only handles
@@ -429,10 +430,11 @@ mod tests {
         assert!(summaries.is_empty());
 
         // Create singlesig hot regtest wallet.
-        let id = mgr
+        let (id, words) = mgr
             .create_singlesig_hot("My Test Wallet", Network::Regtest, b"passw0rd!")
             .await
             .expect("create");
+        assert_eq!(words.len(), 24, "policy-core generates 24 BIP39 words");
 
         // List shows it as locked.
         let summaries = mgr.list_wallets().await.expect("list 2");
@@ -483,7 +485,7 @@ mod tests {
     async fn cannot_double_unlock() {
         let tmp = TempDir::new().unwrap();
         let mgr = manager_in(&tmp);
-        let id = mgr
+        let (id, _) = mgr
             .create_singlesig_hot("dup", Network::Regtest, b"x")
             .await
             .unwrap();
