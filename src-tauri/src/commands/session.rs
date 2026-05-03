@@ -96,9 +96,7 @@ pub async fn cmd_start_session_websocket_connection(
             )
             .await
             .map_err(|update_err| {
-                error!(
-                    "Failed to update state after WebSocket error: {update_err:?}"
-                );
+                error!("Failed to update state after WebSocket error: {update_err:?}");
             })
             .ok();
         }

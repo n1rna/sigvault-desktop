@@ -63,8 +63,8 @@ pub fn derive_passphrase_key(passphrase: &[u8], salt: &[u8; 16]) -> [u8; 32] {
     // OWASP 2024 baselines top out around m=46MiB / t=1 / p=1; we run hotter
     // because (a) the ciphertext protects long-lived seed material and (b)
     // unlock latency happens only once per session, not per request.
-    let params = Params::new(65_536, 3, 4, Some(32))
-        .expect("argon2 params constants must be valid");
+    let params =
+        Params::new(65_536, 3, 4, Some(32)).expect("argon2 params constants must be valid");
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut out = [0u8; 32];
     argon2

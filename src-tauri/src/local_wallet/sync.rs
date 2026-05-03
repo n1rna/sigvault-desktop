@@ -98,7 +98,13 @@ impl ProgressSink for NoopSink {
     fn emit(&self, _: SyncProgress) {}
 }
 
-fn emit(sink: &Arc<dyn ProgressSink>, wallet_id: &WalletId, phase: SyncPhase, percent: u32, message: impl Into<String>) {
+fn emit(
+    sink: &Arc<dyn ProgressSink>,
+    wallet_id: &WalletId,
+    phase: SyncPhase,
+    percent: u32,
+    message: impl Into<String>,
+) {
     sink.emit(SyncProgress {
         wallet_id: wallet_id.to_string(),
         phase,
@@ -123,7 +129,13 @@ pub async fn run_sync(
     let _ = network; // checked at unlock time + by descriptor; reserved for future per-network sync params.
 
     // Phase 1: connect (blocking I/O on the dedicated blocking pool).
-    emit(&sink, &wallet_id, SyncPhase::Connecting, 5, format!("Connecting to {electrs_url}…"));
+    emit(
+        &sink,
+        &wallet_id,
+        SyncPhase::Connecting,
+        5,
+        format!("Connecting to {electrs_url}…"),
+    );
     let url_for_blocking = electrs_url.clone();
     let client = tokio::task::spawn_blocking(move || ElectrumClient::connect(&url_for_blocking))
         .await
@@ -209,7 +221,10 @@ mod tests {
 
     #[test]
     fn sync_phase_serialises_as_snake_case() {
-        assert_eq!(serde_json::to_string(&SyncPhase::Connecting).unwrap(), "\"connecting\"");
+        assert_eq!(
+            serde_json::to_string(&SyncPhase::Connecting).unwrap(),
+            "\"connecting\""
+        );
         assert_eq!(
             serde_json::to_string(&SyncPhase::FetchingHistory).unwrap(),
             "\"fetching_history\""
@@ -218,7 +233,10 @@ mod tests {
             serde_json::to_string(&SyncPhase::Persisting).unwrap(),
             "\"persisting\""
         );
-        assert_eq!(serde_json::to_string(&SyncPhase::Complete).unwrap(), "\"complete\"");
+        assert_eq!(
+            serde_json::to_string(&SyncPhase::Complete).unwrap(),
+            "\"complete\""
+        );
     }
 
     #[test]

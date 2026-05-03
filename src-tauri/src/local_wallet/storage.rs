@@ -296,7 +296,10 @@ mod tests {
         let a = encrypt_seed(SEED, b"pass").expect("a");
         let b = encrypt_seed(SEED, b"pass").expect("b");
         assert_ne!(a.salt_b64, b.salt_b64, "salt must be random per envelope");
-        assert_ne!(a.nonce_b64, b.nonce_b64, "nonce must be random per envelope");
+        assert_ne!(
+            a.nonce_b64, b.nonce_b64,
+            "nonce must be random per envelope"
+        );
         assert_ne!(
             a.ciphertext_b64, b.ciphertext_b64,
             "ciphertext must differ when nonce + salt do"

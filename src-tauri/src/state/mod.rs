@@ -125,9 +125,7 @@ impl ApplicationState {
     pub async fn require_cloud_mode(&self) -> Result<(), String> {
         match self.get_app_mode().await {
             Some(AppMode::Cloud) => Ok(()),
-            Some(AppMode::Local) => {
-                Err("command not available in local mode".to_string())
-            }
+            Some(AppMode::Local) => Err("command not available in local mode".to_string()),
             None => Err("app mode not selected; call cmd_set_app_mode first".to_string()),
         }
     }
@@ -138,9 +136,7 @@ impl ApplicationState {
     pub async fn require_local_mode(&self) -> Result<(), String> {
         match self.get_app_mode().await {
             Some(AppMode::Local) => Ok(()),
-            Some(AppMode::Cloud) => {
-                Err("command not available in cloud mode".to_string())
-            }
+            Some(AppMode::Cloud) => Err("command not available in cloud mode".to_string()),
             None => Err("app mode not selected; call cmd_set_app_mode first".to_string()),
         }
     }
@@ -171,11 +167,9 @@ impl ApplicationState {
     }
 
     pub async fn require_hw_manager(&self) -> Result<Arc<HardwareWalletManager>, String> {
-        self.hw_manager
-            .read()
-            .await
-            .clone()
-            .ok_or_else(|| "Hardware wallet manager not initialized (no environment selected)".to_string())
+        self.hw_manager.read().await.clone().ok_or_else(|| {
+            "Hardware wallet manager not initialized (no environment selected)".to_string()
+        })
     }
 }
 
