@@ -59,12 +59,9 @@ pub async fn cmd_set_app_mode(
         AppMode::Cloud => {
             // Push the mode update first so the frontend has it before the
             // existing init flow starts emitting routing events.
-            update_state(
-                &window,
-                StateUpdateEvent::builder().app_mode(mode).build(),
-            )
-            .await
-            .map_err(|e| format!("Failed to update state: {e}"))?;
+            update_state(&window, StateUpdateEvent::builder().app_mode(mode).build())
+                .await
+                .map_err(|e| format!("Failed to update state: {e}"))?;
             // Re-enter the existing init flow: it'll route to SelectEnv if
             // no env is chosen yet, Login if env+no token, MainPage otherwise.
             super::init::cmd_initialize_app(app.clone(), app_state).await

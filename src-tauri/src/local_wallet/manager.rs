@@ -34,9 +34,7 @@ use zeroize::Zeroizing;
 
 use super::persister::{LocalBdkPersister, LocalPersisterError};
 use super::state::{SharedLocalWalletState, UnlockedHandle};
-use super::storage::{
-    read_seed_file, write_seed_file, SeedStoreError, WalletDirLayout, WalletId,
-};
+use super::storage::{read_seed_file, write_seed_file, SeedStoreError, WalletDirLayout, WalletId};
 
 const POLICY_TYPE_SINGLESIG: &str = "singlesig";
 
@@ -271,7 +269,8 @@ impl LocalWalletManager {
 
         write_seed_file(&layout, mnemonic_str.as_bytes(), passphrase)?;
 
-        let descriptors = WalletDescriptors::new(external_descriptor.clone(), internal_descriptor.clone());
+        let descriptors =
+            WalletDescriptors::new(external_descriptor.clone(), internal_descriptor.clone());
 
         let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
         let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
@@ -451,9 +450,7 @@ mod tests {
         }
 
         // Right passphrase unlocks and exposes a peekable address.
-        mgr.unlock_wallet(&id, b"passw0rd!")
-            .await
-            .expect("unlock");
+        mgr.unlock_wallet(&id, b"passw0rd!").await.expect("unlock");
         let summaries = mgr.list_wallets().await.expect("list 3");
         assert!(!summaries[0].locked);
 
@@ -501,9 +498,7 @@ mod tests {
     async fn mainnet_is_refused() {
         let tmp = TempDir::new().unwrap();
         let mgr = manager_in(&tmp);
-        let result = mgr
-            .create_singlesig_hot("mn", Network::Bitcoin, b"x")
-            .await;
+        let result = mgr.create_singlesig_hot("mn", Network::Bitcoin, b"x").await;
         assert!(matches!(result, Err(ManagerError::UnsupportedNetwork(_))));
     }
 

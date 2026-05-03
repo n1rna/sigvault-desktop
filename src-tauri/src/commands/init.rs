@@ -131,7 +131,9 @@ pub async fn cmd_initialize_app(
         )
         .await
         .map_err(|e| format!("Failed to update state: {e}"))?;
-        return Ok(CommandResult::success("Initialization complete - select env"));
+        return Ok(CommandResult::success(
+            "Initialization complete - select env",
+        ));
     };
 
     app_state.set_environment(env).await;

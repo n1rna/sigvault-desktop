@@ -48,11 +48,7 @@ impl LocalWalletState {
 
     /// Insert a handle. Returns the previous handle if any (caller can
     /// decide what to do with it — usually drop, which Zeroize-wipes).
-    pub async fn insert(
-        &self,
-        id: WalletId,
-        handle: UnlockedHandle,
-    ) -> Option<SharedHandle> {
+    pub async fn insert(&self, id: WalletId, handle: UnlockedHandle) -> Option<SharedHandle> {
         self.unlocked
             .lock()
             .await

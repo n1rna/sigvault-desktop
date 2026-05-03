@@ -63,9 +63,8 @@ impl LocalSettings {
     /// mainnet in v1" gate (QBL-232) holds even if a wallet's metadata
     /// somehow declares mainnet.
     pub fn electrs_url_for(&self, network: Network) -> Result<String, SettingsError> {
-        let key = network_key(network).ok_or(SettingsError::UnsupportedNetwork(
-            network.to_string(),
-        ))?;
+        let key =
+            network_key(network).ok_or(SettingsError::UnsupportedNetwork(network.to_string()))?;
         match self.electrs_urls.get(key) {
             Some(url) if !url.is_empty() => Ok(url.clone()),
             _ => Err(SettingsError::EmptyEndpoint(key.to_string())),
@@ -300,7 +299,9 @@ mod tests {
         let store = SettingsStore::new(tmp.path().to_path_buf());
         // Defaults have empty testnet4/signet entries; save must accept
         // them (they mean "user hasn't configured this network yet").
-        store.save(&LocalSettings::default()).expect("save defaults");
+        store
+            .save(&LocalSettings::default())
+            .expect("save defaults");
     }
 
     #[test]
@@ -327,8 +328,10 @@ mod tests {
         // Even if someone shoves a mainnet URL into the map, the v1
         // gate refuses it: lookup goes through network_key which
         // returns None for Bitcoin → UnsupportedNetwork.
-        s.electrs_urls
-            .insert("bitcoin".to_string(), "ssl://main.example:50002".to_string());
+        s.electrs_urls.insert(
+            "bitcoin".to_string(),
+            "ssl://main.example:50002".to_string(),
+        );
         match s.electrs_url_for(Network::Bitcoin) {
             Err(SettingsError::UnsupportedNetwork(n)) => assert_eq!(n, "bitcoin"),
             other => panic!("expected UnsupportedNetwork(bitcoin), got {other:?}"),
