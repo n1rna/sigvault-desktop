@@ -24,6 +24,8 @@ import SessionDetails from "./pages/SessionDetails";
 import LocalWalletList from "./pages/local/LocalWalletList";
 import CreateWalletWizard from "./pages/local/CreateWalletWizard";
 import WalletDashboard from "./pages/local/WalletDashboard";
+import ReceiveScreen from "./pages/local/ReceiveScreen";
+import SendScreen from "./pages/local/SendScreen";
 
 function AuthenticatedLayout() {
 	return (
@@ -84,6 +86,11 @@ function AppRouter() {
 			<Route path="/local/wallets" element={<LocalWalletList />} />
 			<Route path="/local/wallets/new" element={<CreateWalletWizard />} />
 			<Route path="/local/wallets/:walletId" element={<WalletDashboard />} />
+			<Route
+				path="/local/wallets/:walletId/receive"
+				element={<ReceiveScreen />}
+			/>
+			<Route path="/local/wallets/:walletId/send" element={<SendScreen />} />
 			<Route element={<AuthenticatedLayout />}>
 				<Route path="/dashboard" element={<Dashboard />} />
 				<Route path="/register" element={<MachineRegistration />} />
