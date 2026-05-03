@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+use bdk_wallet::bitcoin::Network;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -29,13 +30,19 @@ pub struct LocalSettings {
 impl Default for LocalSettings {
     fn default() -> Self {
         let mut electrs_urls = BTreeMap::new();
+        // Regtest: the sigvault-hosted electrs that walletrs targets.
+        // Mirrors `regtest.sigvault.org` from the walletrs CONFIG.
         electrs_urls.insert(
             "regtest".to_string(),
             "tcp://regtest.sigvault.org:50001".to_string(),
         );
-        // testnet4 + signet defaults are filled in by QBL-217 once we
-        // pick the public servers we want to ship with. Empty-string
-        // here means "user must override before sync".
+        // Testnet4 and signet ship empty: there is no single public
+        // electrs server with both broad uptime and a stable URL we
+        // can point users at without setting them up for downtime.
+        // The settings UI (QBL-231) shows these as "configure your own
+        // server" rather than as preconfigured working endpoints. Users
+        // who run their own node (Sparrow / Mempool.space self-hosted /
+        // electrs.bublina) supply the URL there.
         electrs_urls.insert("testnet4".to_string(), String::new());
         electrs_urls.insert("signet".to_string(), String::new());
         Self {
@@ -45,12 +52,82 @@ impl Default for LocalSettings {
     }
 }
 
+impl LocalSettings {
+    /// Resolve the configured Electrs URL for `network`. Returns an
+    /// `EmptyEndpoint` error when the user has not configured a URL for
+    /// a non-mainnet network the manager supports — the sync engine
+    /// uses this and surfaces the error to the UI as "Configure an
+    /// Electrs server in Settings".
+    ///
+    /// Mainnet is intentionally rejected here as well so the "no
+    /// mainnet in v1" gate (QBL-232) holds even if a wallet's metadata
+    /// somehow declares mainnet.
+    pub fn electrs_url_for(&self, network: Network) -> Result<String, SettingsError> {
+        let key = network_key(network).ok_or(SettingsError::UnsupportedNetwork(
+            network.to_string(),
+        ))?;
+        match self.electrs_urls.get(key) {
+            Some(url) if !url.is_empty() => Ok(url.clone()),
+            _ => Err(SettingsError::EmptyEndpoint(key.to_string())),
+        }
+    }
+}
+
+/// Map a `bitcoin::Network` to the JSON key used in `electrs_urls`.
+/// Returns `None` for networks not supported in v1 (mainnet today, plus
+/// any future variants bitcoin's enum gains).
+fn network_key(network: Network) -> Option<&'static str> {
+    match network {
+        Network::Regtest => Some("regtest"),
+        Network::Signet => Some("signet"),
+        Network::Testnet4 => Some("testnet4"),
+        Network::Testnet => Some("testnet"),
+        Network::Bitcoin => None,
+    }
+}
+
+/// Validate an electrs URL accepted by `electrum_client::Client::new`.
+/// Accepts `tcp://host:port`, `ssl://host:port`, or bare `host:port`.
+/// We do not attempt a TCP connection here — connecting is QBL-218 sync
+/// territory; this is just structural validation so set_settings rejects
+/// obvious typos before they get persisted.
+pub fn validate_electrs_url(url: &str) -> Result<(), String> {
+    if url.is_empty() {
+        return Err("URL cannot be empty".to_string());
+    }
+    let host_port = url
+        .strip_prefix("tcp://")
+        .or_else(|| url.strip_prefix("ssl://"))
+        .unwrap_or(url);
+    let mut parts = host_port.rsplitn(2, ':');
+    let port_str = parts.next().unwrap_or("");
+    let host = parts.next().unwrap_or("");
+    if host.is_empty() {
+        return Err(format!(
+            "URL must include host:port (got '{url}'); use tcp://host:port, ssl://host:port, or host:port"
+        ));
+    }
+    let port: u16 = port_str
+        .parse()
+        .map_err(|_| format!("URL port must be a number 1-65535 (got '{port_str}')"))?;
+    if port == 0 {
+        return Err("URL port must be in 1-65535".to_string());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Error)]
 pub enum SettingsError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
+    #[error("invalid electrs URL for {network}: {message}")]
+    InvalidUrl { network: String, message: String },
+    #[error("no electrs URL configured for {0} — set one in Settings")]
+    EmptyEndpoint(String),
+    #[error("network '{0}' is not supported in v1 standalone mode")]
+    UnsupportedNetwork(String),
 }
 
 pub struct SettingsStore {
@@ -82,7 +159,19 @@ impl SettingsStore {
         }
     }
 
+    /// Validate every non-empty URL in the settings, then persist. Empty
+    /// strings are accepted (they mean "user has not configured this
+    /// network yet"); structural junk is rejected before disk write.
     pub fn save(&self, settings: &LocalSettings) -> Result<(), SettingsError> {
+        for (network, url) in &settings.electrs_urls {
+            if url.is_empty() {
+                continue;
+            }
+            validate_electrs_url(url).map_err(|message| SettingsError::InvalidUrl {
+                network: network.clone(),
+                message,
+            })?;
+        }
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -105,6 +194,19 @@ mod tests {
             s.electrs_urls.get("regtest"),
             Some(&"tcp://regtest.sigvault.org:50001".to_string())
         );
+    }
+
+    #[test]
+    fn defaults_have_blank_testnet4_and_signet() {
+        let s = LocalSettings::default();
+        assert_eq!(s.electrs_urls.get("testnet4"), Some(&String::new()));
+        assert_eq!(s.electrs_urls.get("signet"), Some(&String::new()));
+    }
+
+    #[test]
+    fn defaults_have_no_mainnet_entry() {
+        let s = LocalSettings::default();
+        assert!(s.electrs_urls.get("bitcoin").is_none());
     }
 
     #[test]
@@ -138,5 +240,98 @@ mod tests {
         fs::write(store.path(), b"not json{").unwrap();
         let loaded = store.load().expect("load");
         assert_eq!(loaded, LocalSettings::default());
+    }
+
+    #[test]
+    fn validate_accepts_known_good_urls() {
+        for ok in [
+            "tcp://regtest.sigvault.org:50001",
+            "ssl://electrum.example.org:50002",
+            "host.local:8080",
+            "127.0.0.1:50001",
+        ] {
+            validate_electrs_url(ok)
+                .unwrap_or_else(|e| panic!("expected '{ok}' to validate, got error: {e}"));
+        }
+    }
+
+    #[test]
+    fn validate_rejects_obvious_junk() {
+        for (bad, why) in [
+            ("", "empty"),
+            ("nohost", "missing port"),
+            ("host:notaport", "non-numeric port"),
+            ("host:0", "zero port"),
+            (":50001", "missing host"),
+            ("ssl://", "scheme only"),
+        ] {
+            assert!(
+                validate_electrs_url(bad).is_err(),
+                "expected '{bad}' to fail ({why})"
+            );
+        }
+    }
+
+    #[test]
+    fn save_rejects_invalid_url_and_does_not_write() {
+        let tmp = TempDir::new().unwrap();
+        let store = SettingsStore::new(tmp.path().to_path_buf());
+
+        let mut bad = LocalSettings::default();
+        bad.electrs_urls
+            .insert("regtest".to_string(), "broken-no-port".to_string());
+
+        match store.save(&bad) {
+            Err(SettingsError::InvalidUrl { network, .. }) => {
+                assert_eq!(network, "regtest");
+            }
+            other => panic!("expected InvalidUrl, got {other:?}"),
+        }
+
+        assert!(
+            !store.path().exists(),
+            "settings file must NOT be written when validation fails"
+        );
+    }
+
+    #[test]
+    fn save_accepts_blank_url_for_unconfigured_network() {
+        let tmp = TempDir::new().unwrap();
+        let store = SettingsStore::new(tmp.path().to_path_buf());
+        // Defaults have empty testnet4/signet entries; save must accept
+        // them (they mean "user hasn't configured this network yet").
+        store.save(&LocalSettings::default()).expect("save defaults");
+    }
+
+    #[test]
+    fn electrs_url_for_returns_configured_url() {
+        let s = LocalSettings::default();
+        assert_eq!(
+            s.electrs_url_for(Network::Regtest).unwrap(),
+            "tcp://regtest.sigvault.org:50001"
+        );
+    }
+
+    #[test]
+    fn electrs_url_for_errors_when_blank() {
+        let s = LocalSettings::default();
+        match s.electrs_url_for(Network::Testnet4) {
+            Err(SettingsError::EmptyEndpoint(net)) => assert_eq!(net, "testnet4"),
+            other => panic!("expected EmptyEndpoint(testnet4), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn electrs_url_for_rejects_mainnet() {
+        let mut s = LocalSettings::default();
+        // Even if someone shoves a mainnet URL into the map, the v1
+        // gate refuses it: lookup goes through network_key which
+        // returns None for Bitcoin → UnsupportedNetwork.
+        s.electrs_urls
+            .insert("bitcoin".to_string(), "ssl://main.example:50002".to_string());
+        match s.electrs_url_for(Network::Bitcoin) {
+            Err(SettingsError::UnsupportedNetwork(n)) => assert_eq!(n, "bitcoin"),
+            other => panic!("expected UnsupportedNetwork(bitcoin), got {other:?}"),
+        }
     }
 }
