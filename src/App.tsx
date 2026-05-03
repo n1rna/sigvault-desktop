@@ -6,6 +6,7 @@ import {
 	Routes,
 	Route,
 	Outlet,
+	useLocation,
 	useNavigate,
 } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
@@ -21,6 +22,8 @@ import MachineRegistration from "./pages/MachineRegistration";
 import RemoteSessions from "./pages/RemoteSessions";
 import SessionDetails from "./pages/SessionDetails";
 import LocalWalletList from "./pages/local/LocalWalletList";
+import CreateWalletWizard from "./pages/local/CreateWalletWizard";
+import WalletDashboard from "./pages/local/WalletDashboard";
 
 function AuthenticatedLayout() {
 	return (
@@ -34,9 +37,23 @@ function AuthenticatedLayout() {
 	);
 }
 
+// Map backend route enum → frontend pathname.
+const ROUTE_PATHS: Record<string, string> = {
+	Loading: "/",
+	ModeChooser: "/mode-chooser",
+	SelectEnv: "/select-env",
+	Login: "/login",
+	MainPage: "/dashboard",
+	MachineRegistration: "/register",
+	RemoteSessions: "/sessions",
+	SessionDetails: "/session-details",
+	LocalWallets: "/local/wallets",
+};
+
 function AppRouter() {
 	const { route, authenticated, listenerReady } = useAppState();
 	const navigate = useNavigate();
+	const location = useLocation();
 
 	// Initialize app only after event listener is ready
 	useEffect(() => {
@@ -47,38 +64,16 @@ function AppRouter() {
 		initializeApp();
 	}, [listenerReady]);
 
-	// Navigate based on backend-controlled route
+	// Navigate based on backend-controlled route. Idempotent: if the user
+	// has already drilled into a child route (e.g. /local/wallets/new),
+	// this stays put rather than snapping back to the parent.
 	useEffect(() => {
-		switch (route) {
-			case "Loading":
-				navigate("/");
-				break;
-			case "ModeChooser":
-				navigate("/mode-chooser");
-				break;
-			case "SelectEnv":
-				navigate("/select-env");
-				break;
-			case "Login":
-				navigate("/login");
-				break;
-			case "MainPage":
-				navigate("/dashboard");
-				break;
-			case "MachineRegistration":
-				navigate("/register");
-				break;
-			case "RemoteSessions":
-				navigate("/sessions");
-				break;
-			case "SessionDetails":
-				navigate("/session-details");
-				break;
-			case "LocalWallets":
-				navigate("/local/wallets");
-				break;
-		}
-	}, [route, navigate, authenticated]);
+		const target = ROUTE_PATHS[route];
+		if (!target) return;
+		if (location.pathname === target) return;
+		if (target !== "/" && location.pathname.startsWith(`${target}/`)) return;
+		navigate(target);
+	}, [route, navigate, authenticated, location.pathname]);
 
 	return (
 		<Routes>
@@ -87,6 +82,8 @@ function AppRouter() {
 			<Route path="/select-env" element={<SelectEnv />} />
 			<Route path="/login" element={<Login />} />
 			<Route path="/local/wallets" element={<LocalWalletList />} />
+			<Route path="/local/wallets/new" element={<CreateWalletWizard />} />
+			<Route path="/local/wallets/:walletId" element={<WalletDashboard />} />
 			<Route element={<AuthenticatedLayout />}>
 				<Route path="/dashboard" element={<Dashboard />} />
 				<Route path="/register" element={<MachineRegistration />} />

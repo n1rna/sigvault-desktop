@@ -66,6 +66,16 @@ pub struct ReceiveAddress {
     pub index: u32,
 }
 
+/// Returned by `cmd_local_create_wallet`. For hot creates, `mnemonic_words`
+/// carries the freshly generated BIP39 phrase so the wizard can show it
+/// once for backup. Empty for watch-only / hardware-only flows that don't
+/// produce on-device key material.
+#[derive(Debug, Serialize)]
+pub struct CreateWalletResponse {
+    pub wallet_id: WalletId,
+    pub mnemonic_words: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Default)]
 pub struct LocalBalance {
     pub confirmed_sat: u64,
@@ -113,7 +123,7 @@ pub async fn cmd_local_create_wallet(
     app: AppHandle,
     app_state: State<'_, ApplicationState>,
     request: CreateWalletRequest,
-) -> Result<WalletId, String> {
+) -> Result<CreateWalletResponse, String> {
     app_state.require_local_mode().await?;
     let network = parse_network(&request.network)?;
     let mgr = manager_for(&app, &app_state)?;
@@ -123,9 +133,14 @@ pub async fn cmd_local_create_wallet(
             let pass = request
                 .passphrase
                 .ok_or_else(|| "passphrase required for hot wallets".to_string())?;
-            mgr.create_singlesig_hot(&request.name, network, pass.as_bytes())
+            let (wallet_id, mnemonic_words) = mgr
+                .create_singlesig_hot(&request.name, network, pass.as_bytes())
                 .await
-                .map_err(map_err)
+                .map_err(map_err)?;
+            Ok(CreateWalletResponse {
+                wallet_id,
+                mnemonic_words,
+            })
         }
         "multisig" | "liana" | "watch_only" => Err(format!(
             "policy type '{}' not yet supported in v1 (lands in a later milestone ticket)",
