@@ -33,7 +33,7 @@ use wallet_runtime::{
 use zeroize::Zeroizing;
 
 use super::persister::{LocalBdkPersister, LocalPersisterError};
-use super::state::{LocalWalletState, SharedLocalWalletState, UnlockedHandle};
+use super::state::{SharedLocalWalletState, UnlockedHandle};
 use super::storage::{
     read_seed_file, write_seed_file, SeedStoreError, WalletDirLayout, WalletId,
 };
@@ -133,7 +133,7 @@ impl LocalWalletManager {
         Ok(())
     }
 
-    fn read_metadata(&self, id: &WalletId) -> Result<LocalWalletMetadata, ManagerError> {
+    pub fn read_metadata(&self, id: &WalletId) -> Result<LocalWalletMetadata, ManagerError> {
         let layout = self.layout(id);
         if !layout.metadata_path().exists() {
             return Err(ManagerError::NotFound(id.to_string()));
@@ -151,7 +151,6 @@ impl LocalWalletManager {
         if !self.local_root.exists() {
             return Ok(Vec::new());
         }
-        let unlocked = self.state.lock().await;
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.local_root)? {
             let entry = entry?;
@@ -171,7 +170,10 @@ impl LocalWalletManager {
                 Ok(m) => m,
                 Err(_) => continue,
             };
-            let locked = !unlocked.contains_key(&meta.id);
+            // Per-wallet `is_unlocked` lookup; the state's outer mutex
+            // is held only briefly each call, so a slow op on one
+            // wallet doesn't stall list_wallets.
+            let locked = !self.state.is_unlocked(&meta.id).await;
             // Defensive: id in metadata should match dir name; if not,
             // trust the metadata (the dir might have been moved by hand).
             let _ = id_str;
@@ -371,10 +373,12 @@ impl LocalWalletManager {
         kind: KeychainKind,
         index: u32,
     ) -> Result<String, ManagerError> {
-        let unlocked = self.state.lock().await;
-        let handle = unlocked
+        let handle_arc = self
+            .state
             .get(id)
+            .await
             .ok_or_else(|| ManagerError::NotUnlocked(id.to_string()))?;
+        let handle = handle_arc.lock().await;
         Ok(wallet_runtime::peek_address(&handle.wallet, kind, index).to_string())
     }
 }
@@ -407,6 +411,7 @@ fn now_unix_seconds() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::local_wallet::state::LocalWalletState;
     use std::sync::Arc;
     use tempfile::TempDir;
 
