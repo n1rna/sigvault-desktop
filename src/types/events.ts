@@ -124,6 +124,31 @@ export interface LocalReceiveAddress {
 	index: number;
 }
 
+/** Mirrors `local_wallet::commands::LocalBalance`. `unconfirmed_sat` is
+ * the sum of trusted_pending + untrusted_pending + immature outputs. */
+export interface LocalBalance {
+	confirmed_sat: number;
+	unconfirmed_sat: number;
+}
+
+/** Mirrors `local_wallet::commands::BuildPsbtResponse`. */
+export interface LocalBuildPsbtResponse {
+	psbt_base64: string;
+}
+
+/** Mirrors `local_wallet::commands::SignPsbtResponse`. `fully_signed` is
+ * false when at least one input is still missing signatures (e.g.
+ * multisig cosigner not yet signed). */
+export interface LocalSignPsbtResponse {
+	psbt_base64: string;
+	fully_signed: boolean;
+}
+
+/** Mirrors `local_wallet::commands::BroadcastPsbtResponse`. */
+export interface LocalBroadcastPsbtResponse {
+	txid: string;
+}
+
 export type AppEvent =
 	| { type: "state_update"; data: StateUpdateEvent }
 	| { type: "command"; data: CommandEvent }

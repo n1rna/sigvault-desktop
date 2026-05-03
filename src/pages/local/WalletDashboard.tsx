@@ -12,12 +12,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import WindowControls from "../../components/WindowControls";
 import { useLocalWalletSync } from "../../hooks/useLocalWalletSync";
-import type { LocalWalletSummary } from "../../types/events";
-
-interface LocalBalance {
-	confirmed_sat: number;
-	unconfirmed_sat: number;
-}
+import type {
+	LocalBalance,
+	LocalWalletSummary,
+} from "../../types/events";
 
 interface LocalTxRecord {
 	txid: string;
