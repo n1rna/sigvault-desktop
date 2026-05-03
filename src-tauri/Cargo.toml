@@ -55,12 +55,12 @@ getrandom = "0.2"
 base64 = "0.22"
 zeroize = "1.8"
 
-# Standalone-wallet shared crates from walletrs. The branch carries QBL-211
-# (policy-core extraction) + QBL-212 (wallet-runtime) + QBL-213 (server
-# refactor). Pin to a branch for now; switch to a tag when the branch
-# lands on walletrs main.
-policy-core = { git = "https://github.com/n1rna/walletrs.git", branch = "feature/policy-core-extraction" }
-wallet-runtime = { git = "https://github.com/n1rna/walletrs.git", branch = "feature/policy-core-extraction" }
+# Standalone-wallet shared crates from walletrs. QBL-211 (policy-core),
+# QBL-212 (wallet-runtime), and QBL-213 (server refactor) are merged on
+# walletrs `main`. Pin to a tag when one is cut; until then `main` is
+# the stable reference.
+policy-core = { git = "https://github.com/n1rna/walletrs.git", branch = "main" }
+wallet-runtime = { git = "https://github.com/n1rna/walletrs.git", branch = "main" }
 # `file_store` feature wires up `WalletPersister for bdk_file_store::Store`,
 # which `LocalBdkPersister` delegates to. wallet-runtime doesn't enable it
 # (it's persister-agnostic by design), so we opt in here.
