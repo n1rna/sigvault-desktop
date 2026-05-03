@@ -15,6 +15,7 @@ import type {
 const initialState: AppState = {
 	authenticated: false,
 	route: "Loading",
+	appMode: null,
 	listenerReady: false,
 	notification: null,
 	activityLog: [],
@@ -71,6 +72,15 @@ export function useAppEvents() {
 		}
 		if (data.route != null) {
 			updates.route = data.route;
+			// The ModeChooser route is the canonical "no mode selected"
+			// signal — clear appMode whenever we land there so the chooser
+			// screen never sees a stale Cloud/Local label.
+			if (data.route === "ModeChooser") {
+				updates.appMode = null;
+			}
+		}
+		if (data.app_mode != null) {
+			updates.appMode = data.app_mode;
 		}
 		if (data.active_session != null) {
 			const activeSession: Partial<AppState["activeSession"]> = {};

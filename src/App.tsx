@@ -13,12 +13,14 @@ import { AppStateProvider, useAppState } from "./contexts/AppStateContext";
 import Navbar from "./components/Navbar";
 import UpdateBanner from "./components/UpdateBanner";
 import Loading from "./pages/Loading";
+import ModeChooser from "./pages/ModeChooser";
 import { Login } from "./pages/Login";
 import SelectEnv from "./pages/SelectEnv";
 import Dashboard from "./pages/Dashboard";
 import MachineRegistration from "./pages/MachineRegistration";
 import RemoteSessions from "./pages/RemoteSessions";
 import SessionDetails from "./pages/SessionDetails";
+import LocalWalletList from "./pages/local/LocalWalletList";
 
 function AuthenticatedLayout() {
 	return (
@@ -51,6 +53,9 @@ function AppRouter() {
 			case "Loading":
 				navigate("/");
 				break;
+			case "ModeChooser":
+				navigate("/mode-chooser");
+				break;
 			case "SelectEnv":
 				navigate("/select-env");
 				break;
@@ -69,14 +74,19 @@ function AppRouter() {
 			case "SessionDetails":
 				navigate("/session-details");
 				break;
+			case "LocalWallets":
+				navigate("/local/wallets");
+				break;
 		}
 	}, [route, navigate, authenticated]);
 
 	return (
 		<Routes>
 			<Route path="/" element={<Loading />} />
+			<Route path="/mode-chooser" element={<ModeChooser />} />
 			<Route path="/select-env" element={<SelectEnv />} />
 			<Route path="/login" element={<Login />} />
+			<Route path="/local/wallets" element={<LocalWalletList />} />
 			<Route element={<AuthenticatedLayout />}>
 				<Route path="/dashboard" element={<Dashboard />} />
 				<Route path="/register" element={<MachineRegistration />} />

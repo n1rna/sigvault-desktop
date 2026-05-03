@@ -4,6 +4,7 @@ use log::{debug, error, info, warn};
 use std::error::Error;
 use tauri::{AppHandle, Manager, State};
 
+use crate::app_mode::AppMode;
 use crate::env_config;
 use crate::state::ApplicationState;
 use crate::storage::{EnvStorage, SecureStorage};
@@ -37,7 +38,7 @@ pub async fn cmd_initialize_app(
         update_state(
             &window,
             StateUpdateEvent::builder()
-                .route(WindowApplicationRoute::SelectEnv)
+                .route(WindowApplicationRoute::ModeChooser)
                 .build(),
         )
         .await
@@ -47,14 +48,68 @@ pub async fn cmd_initialize_app(
         ));
     }
 
+    // Hydrate previously-selected environment.
+    let env_storage = EnvStorage::new(app.clone());
+    let stored_env = env_storage.load().await.unwrap_or_default();
+
+    // Resolve the top-level mode. New installs start at None → mode chooser.
+    // Existing installs (pre-mode-chooser) had `selected_env_id` set with no
+    // `app_mode` — treat those as Cloud so they don't get re-prompted.
+    let app_mode = match stored_env.app_mode {
+        Some(mode) => Some(mode),
+        None if stored_env.selected_env_id.is_some() => Some(AppMode::Cloud),
+        None => None,
+    };
+    if let Some(mode) = app_mode {
+        app_state.set_app_mode(mode).await;
+    } else {
+        app_state.clear_app_mode().await;
+    }
+
+    match app_mode {
+        None => {
+            update_state(
+                &window,
+                StateUpdateEvent::builder()
+                    .route(WindowApplicationRoute::ModeChooser)
+                    .build(),
+            )
+            .await
+            .map_err(|e| format!("Failed to update state: {e}"))?;
+            return Ok(CommandResult::success(
+                "Initialization complete - mode chooser",
+            ));
+        }
+        Some(AppMode::Local) => {
+            update_state(
+                &window,
+                StateUpdateEvent::builder()
+                    .app_mode(AppMode::Local)
+                    .route(WindowApplicationRoute::LocalWallets)
+                    .build(),
+            )
+            .await
+            .map_err(|e| format!("Failed to update state: {e}"))?;
+            return Ok(CommandResult::success(
+                "Initialization complete - local mode",
+            ));
+        }
+        Some(AppMode::Cloud) => {
+            // Push the cloud mode signal before falling through; subsequent
+            // routing events (SelectEnv / Login / MainPage) flow naturally.
+            update_state(
+                &window,
+                StateUpdateEvent::builder().app_mode(AppMode::Cloud).build(),
+            )
+            .await
+            .map_err(|e| format!("Failed to update state: {e}"))?;
+        }
+    }
+
     // Load the environments manifest. If even the cache is unavailable we
     // still send the user to the picker; the picker will surface the error
     // and offer a retry.
     let manifest = env_config::load(&app).await.ok();
-
-    // Hydrate previously-selected environment.
-    let env_storage = EnvStorage::new(app.clone());
-    let stored_env = env_storage.load().await.unwrap_or_default();
 
     let mut selected_env = None;
     if let (Some(manifest), Some(env_id)) = (&manifest, &stored_env.selected_env_id) {
@@ -76,7 +131,9 @@ pub async fn cmd_initialize_app(
         )
         .await
         .map_err(|e| format!("Failed to update state: {e}"))?;
-        return Ok(CommandResult::success("Initialization complete - select env"));
+        return Ok(CommandResult::success(
+            "Initialization complete - select env",
+        ));
     };
 
     app_state.set_environment(env).await;

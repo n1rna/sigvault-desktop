@@ -124,6 +124,7 @@ pub async fn cmd_authenticate(
     app: AppHandle,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     info!("Starting OAuth authentication flow");
 
     // Refuse to start auth without a chosen environment so we don't end up
@@ -158,8 +159,7 @@ pub async fn cmd_authenticate(
         }
     });
 
-    open_browser(auth_url.as_str())
-        .map_err(|e| format!("Failed to open browser: {e}"))?;
+    open_browser(auth_url.as_str()).map_err(|e| format!("Failed to open browser: {e}"))?;
 
     let auth_code = wait_for_auth_code(new_flow.auth_code.clone()).await?;
 
@@ -185,8 +185,7 @@ pub async fn cmd_authenticate(
         Err(e) => error!("Token exchange error: {e:?}"),
     }
 
-    let token_response = token_result
-        .map_err(|e| format!("Token exchange failed: {e}"))?;
+    let token_response = token_result.map_err(|e| format!("Token exchange failed: {e}"))?;
 
     let access_token = token_response.access_token().secret().to_string();
     info!("Successfully obtained access token");
@@ -306,6 +305,7 @@ pub async fn cmd_logout(
     app: AppHandle,
     app_state: State<'_, ApplicationState>,
 ) -> Result<CommandResult, String> {
+    app_state.require_cloud_mode().await?;
     info!("Logging out");
 
     let storage = SecureStorage::new(app.clone());
