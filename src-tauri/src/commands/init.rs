@@ -81,6 +81,10 @@ pub async fn cmd_initialize_app(
             ));
         }
         Some(AppMode::Local) => {
+            // Mirror cmd_set_app_mode: initialize HW manager so HW
+            // wallet creation (QBL-220) works on app restart, not just
+            // on the first mode-pick of a session.
+            app_state.ensure_hw_manager_for_local().await;
             update_state(
                 &window,
                 StateUpdateEvent::builder()
