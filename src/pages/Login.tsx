@@ -31,14 +31,19 @@ export function Login() {
 		try {
 			setChangingEnv(true);
 			setError(null);
-			await invoke("cmd_clear_environment");
+			// Navigate to the picker without clearing the persisted env —
+			// SelectEnv reads `selected_id` off cmd_list_environments and
+			// pre-selects the current one. Clearing here would null out
+			// `app_state.current_env` and leave the picker defaulting to
+			// the first non-coming-soon network in the manifest.
+			await invoke("cmd_navigate", { route: "SelectEnv" });
 		} catch (err) {
 			setError(
 				err instanceof Error
 					? err.message
 					: typeof err === "string"
 						? err
-						: "Failed to change environment",
+						: "Failed to open the environment picker",
 			);
 		} finally {
 			setChangingEnv(false);
