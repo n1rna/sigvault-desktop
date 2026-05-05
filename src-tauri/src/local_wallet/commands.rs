@@ -500,10 +500,6 @@ pub struct SignPsbtSoftwareRequest {
 #[derive(Debug, Serialize)]
 pub struct SignPsbtResponse {
     pub psbt_base64: String,
-    /// True when every input had a signer that completed; false if at
-    /// least one input is still missing signatures (e.g. multisig
-    /// cosigner not yet signed).
-    pub fully_signed: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -636,12 +632,16 @@ pub async fn cmd_local_sign_psbt_software(
         .map_err(|e| format!("add_xprv_signer: {}", e))?;
     }
 
-    let fully_signed =
-        sign_psbt(&guard.wallet, &mut psbt).map_err(|e| format!("sign_psbt: {}", e))?;
+    // wallet_runtime::sign_psbt hardcodes try_finalize: false, and BDK
+    // 1.x's wallet.sign() returns Ok(false) unconditionally in that
+    // case (see bdk_wallet 1.1.0 wallet/mod.rs:1785). The bool is
+    // therefore meaningless for our purposes — we drop it here. Whether
+    // a PSBT is "fully signed" is determined at broadcast time, when
+    // miniscript's finalize_mut is the authoritative check.
+    let _ = sign_psbt(&guard.wallet, &mut psbt).map_err(|e| format!("sign_psbt: {}", e))?;
 
     Ok(SignPsbtResponse {
         psbt_base64: psbt.to_string(),
-        fully_signed,
     })
 }
 

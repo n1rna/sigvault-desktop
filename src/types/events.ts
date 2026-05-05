@@ -136,12 +136,11 @@ export interface LocalBuildPsbtResponse {
 	psbt_base64: string;
 }
 
-/** Mirrors `local_wallet::commands::SignPsbtResponse`. `fully_signed` is
- * false when at least one input is still missing signatures (e.g.
- * multisig cosigner not yet signed). */
+/** Mirrors `local_wallet::commands::SignPsbtResponse`. Whether all
+ * inputs are signed enough to broadcast is determined at finalize time
+ * inside `cmd_local_broadcast_psbt`, not here. */
 export interface LocalSignPsbtResponse {
 	psbt_base64: string;
-	fully_signed: boolean;
 }
 
 /** Mirrors `local_wallet::commands::BroadcastPsbtResponse`. */
