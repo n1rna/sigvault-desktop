@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import SwitchModeButton from "../../components/SwitchModeButton";
 import WindowControls from "../../components/WindowControls";
 import type { LocalWalletSummary } from "../../types/events";
 
@@ -223,13 +224,7 @@ export default function LocalWalletList() {
 					)}
 
 					<div className="mt-10 flex items-center justify-center">
-						<button
-							type="button"
-							onClick={() => invoke("cmd_clear_app_mode")}
-							className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-						>
-							Switch to SigVault Cloud
-						</button>
+						<SwitchModeButton />
 					</div>
 				</div>
 			</main>

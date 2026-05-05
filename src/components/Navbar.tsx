@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
 import { useAppState } from "../contexts/AppStateContext";
+import SwitchModeButton from "./SwitchModeButton";
 
 const appWindow = getCurrentWindow();
 
@@ -118,6 +119,7 @@ export default function Navbar() {
 						connected
 					</span>
 				</div>
+				<SwitchModeButton />
 			</div>
 
 			{/* ── Sign out ── */}
