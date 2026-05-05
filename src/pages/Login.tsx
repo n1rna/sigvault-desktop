@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import SwitchModeButton from "../components/SwitchModeButton";
 import WindowControls from "../components/WindowControls";
 import type { EnvironmentConfig, EnvironmentsResponse } from "../types/events";
 
@@ -238,6 +239,10 @@ export function Login() {
 						<span>no keys stored</span>
 						<span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
 						<span>end-to-end signed</span>
+					</div>
+
+					<div className="mt-6 flex justify-center">
+						<SwitchModeButton />
 					</div>
 				</div>
 			</main>
