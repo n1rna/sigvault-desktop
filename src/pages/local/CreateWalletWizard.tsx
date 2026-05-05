@@ -22,9 +22,21 @@ import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalWalletCreateResponse } from "../../types/events";
 import type { DeviceInfo } from "../../types/hardware";
 
-type Method = "generate" | "recover" | "hardware";
+type Method =
+	| "generate"
+	| "recover"
+	| "hardware"
+	| "watch_only"
+	| "multisig";
 
-type Step = "basics" | "passphrase" | "hw" | "mnemonic" | "done";
+type Step =
+	| "basics"
+	| "passphrase"
+	| "hw"
+	| "watch_only"
+	| "multisig"
+	| "mnemonic"
+	| "done";
 
 /** BIP44 coin index by network — mirrors policy-core's
  * `KeyUtils::get_primary_derivation_path`. Mainnet uses coin 0, every
@@ -127,6 +139,66 @@ export default function CreateWalletWizard() {
 		}
 	};
 
+	const submitMultisig = async (input: {
+		threshold: number;
+		cosigners: { key: string; fingerprint?: string }[];
+	}) => {
+		setSubmitting(true);
+		setError(null);
+		try {
+			const walletId = await invoke<string>("cmd_local_create_multisig", {
+				request: {
+					name: basics.name,
+					network: basics.network,
+					threshold: input.threshold,
+					cosigners: input.cosigners,
+				},
+			});
+			await invoke("cmd_local_unlock_wallet", {
+				request: { wallet_id: walletId, passphrase: "" },
+			});
+			setCreatedId(walletId);
+			setStep("done");
+		} catch (err) {
+			setError(
+				typeof err === "string" ? err : "Failed to create multisig wallet",
+			);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	const submitWatchOnly = async (descriptors: {
+		external: string;
+		internal: string;
+		fingerprints: string[];
+	}) => {
+		setSubmitting(true);
+		setError(null);
+		try {
+			const walletId = await invoke<string>("cmd_local_create_watch_only", {
+				request: {
+					name: basics.name,
+					network: basics.network,
+					external_descriptor: descriptors.external,
+					internal_descriptor: descriptors.internal,
+					fingerprints: descriptors.fingerprints,
+				},
+			});
+			await invoke("cmd_local_unlock_wallet", {
+				request: { wallet_id: walletId, passphrase: "" },
+			});
+			setCreatedId(walletId);
+			setStep("done");
+		} catch (err) {
+			setError(
+				typeof err === "string" ? err : "Failed to create watch-only wallet",
+			);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
 	const submitHardware = async (deviceInfo: DeviceInfo) => {
 		setSubmitting(true);
 		setError(null);
@@ -167,6 +239,18 @@ export default function CreateWalletWizard() {
 		if (basics.method === "hardware") {
 			if (step === "basics") return 0;
 			if (step === "hw") return 1;
+			if (step === "done") return 2;
+			return 0;
+		}
+		if (basics.method === "watch_only") {
+			if (step === "basics") return 0;
+			if (step === "watch_only") return 1;
+			if (step === "done") return 2;
+			return 0;
+		}
+		if (basics.method === "multisig") {
+			if (step === "basics") return 0;
+			if (step === "multisig") return 1;
 			if (step === "done") return 2;
 			return 0;
 		}
@@ -225,7 +309,13 @@ export default function CreateWalletWizard() {
 							onNext={() => {
 								setError(null);
 								setStep(
-									basics.method === "hardware" ? "hw" : "passphrase",
+									basics.method === "hardware"
+										? "hw"
+										: basics.method === "watch_only"
+											? "watch_only"
+											: basics.method === "multisig"
+												? "multisig"
+												: "passphrase",
 								);
 							}}
 						/>
@@ -237,6 +327,22 @@ export default function CreateWalletWizard() {
 							submitting={submitting}
 							onBack={() => setStep("basics")}
 							onDeviceSelected={submitHardware}
+						/>
+					)}
+
+					{step === "watch_only" && basics.method === "watch_only" && (
+						<WatchOnlyStep
+							submitting={submitting}
+							onBack={() => setStep("basics")}
+							onSubmit={submitWatchOnly}
+						/>
+					)}
+
+					{step === "multisig" && basics.method === "multisig" && (
+						<MultisigStep
+							submitting={submitting}
+							onBack={() => setStep("basics")}
+							onSubmit={submitMultisig}
 						/>
 					)}
 
@@ -295,7 +401,11 @@ function Header({
 			? ["Basics", "Passphrase", "Backup", "Done"]
 			: method === "hardware"
 				? ["Basics", "Device", "Done", ""]
-				: ["Basics", "Recovery", "Done", ""];
+				: method === "watch_only"
+					? ["Basics", "Descriptors", "Done", ""]
+					: method === "multisig"
+						? ["Basics", "Cosigners", "Done", ""]
+						: ["Basics", "Recovery", "Done", ""];
 	return (
 		<div>
 			<div className="flex items-center justify-between">
@@ -417,7 +527,7 @@ function BasicsStep({
 				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
 					Method
 				</span>
-				<div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+				<div className="mt-2 grid grid-cols-2 gap-2">
 					<MethodCard
 						active={value.method === "generate"}
 						onClick={() => onChange({ ...value, method: "generate" })}
@@ -435,6 +545,18 @@ function BasicsStep({
 						onClick={() => onChange({ ...value, method: "hardware" })}
 						title="Hardware"
 						hint="Connect a Ledger, Trezor, BitBox, or Coldcard."
+					/>
+					<MethodCard
+						active={value.method === "watch_only"}
+						onClick={() => onChange({ ...value, method: "watch_only" })}
+						title="Watch-only"
+						hint="Import existing descriptors to monitor a wallet."
+					/>
+					<MethodCard
+						active={value.method === "multisig"}
+						onClick={() => onChange({ ...value, method: "multisig" })}
+						title="Multisig"
+						hint="M-of-N watch-only with cosigner xpubs."
 					/>
 				</div>
 			</div>
@@ -801,7 +923,11 @@ function DoneStep({
 					? "Wallet created."
 					: method === "hardware"
 						? "Hardware wallet linked."
-						: "Wallet recovered."}
+						: method === "watch_only"
+							? "Watch-only wallet imported."
+							: method === "multisig"
+								? "Multisig wallet created."
+								: "Wallet recovered."}
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
 				The wallet is unlocked and ready. Open it to view balance, addresses,
@@ -879,5 +1005,255 @@ function HardwareStep({
 				)}
 			</div>
 		</div>
+	);
+}
+
+/** Pull `[fingerprint/path]` origins out of a descriptor string. Used
+ * purely to populate the wallet metadata's `fingerprints` field for
+ * display — the BDK side parses the descriptor independently. */
+function parseFingerprints(descriptor: string): string[] {
+	const out = new Set<string>();
+	const re = /\[([0-9a-fA-F]{8})\b/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(descriptor)) !== null) {
+		out.add(m[1].toLowerCase());
+	}
+	return [...out];
+}
+
+function WatchOnlyStep({
+	submitting,
+	onBack,
+	onSubmit,
+}: {
+	submitting: boolean;
+	onBack: () => void;
+	onSubmit: (d: {
+		external: string;
+		internal: string;
+		fingerprints: string[];
+	}) => void;
+}) {
+	const [external, setExternal] = useState("");
+	const [internal, setInternal] = useState("");
+	const ready = external.trim().length > 0 && internal.trim().length > 0;
+
+	const submit = (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!ready || submitting) return;
+		const ext = external.trim();
+		const int = internal.trim();
+		const fingerprints = [
+			...new Set([...parseFingerprints(ext), ...parseFingerprints(int)]),
+		];
+		onSubmit({ external: ext, internal: int, fingerprints });
+	};
+
+	return (
+		<form className="mt-8 space-y-6" onSubmit={submit}>
+			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+				<p className="text-[12px] leading-relaxed text-muted-foreground">
+					Paste the wallet's <span className="font-medium text-foreground">external</span>{" "}
+					(receive) and <span className="font-medium text-foreground">internal</span>{" "}
+					(change) descriptors. Both should resolve to public-key-only
+					expressions — anything containing private keys is rejected at
+					import time. Typical Sparrow / Liana / Specter exports give you
+					two strings of the form{" "}
+					<span className="font-mono text-[11px] text-foreground">
+						wpkh([fp/84'/1'/0']xpub.../0/*)
+					</span>
+					.
+				</p>
+			</div>
+
+			<label className="block">
+				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					External descriptor (receive)
+				</span>
+				<textarea
+					value={external}
+					onChange={(e) => setExternal(e.target.value)}
+					autoComplete="off"
+					autoCapitalize="off"
+					spellCheck={false}
+					rows={3}
+					placeholder="wpkh([fp/84'/1'/0']xpub.../0/*)"
+					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
+				/>
+			</label>
+
+			<label className="block">
+				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					Internal descriptor (change)
+				</span>
+				<textarea
+					value={internal}
+					onChange={(e) => setInternal(e.target.value)}
+					autoComplete="off"
+					autoCapitalize="off"
+					spellCheck={false}
+					rows={3}
+					placeholder="wpkh([fp/84'/1'/0']xpub.../1/*)"
+					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
+				/>
+			</label>
+
+			<div className="flex items-center gap-3">
+				<button
+					type="button"
+					onClick={onBack}
+					disabled={submitting}
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+				>
+					← Back
+				</button>
+				<button
+					type="submit"
+					disabled={!ready || submitting}
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+				>
+					{submitting ? "Importing…" : "Import wallet"}
+				</button>
+			</div>
+		</form>
+	);
+}
+
+function MultisigStep({
+	submitting,
+	onBack,
+	onSubmit,
+}: {
+	submitting: boolean;
+	onBack: () => void;
+	onSubmit: (input: {
+		threshold: number;
+		cosigners: { key: string; fingerprint?: string }[];
+	}) => void;
+}) {
+	const [threshold, setThreshold] = useState(2);
+	const [n, setN] = useState(3);
+	const [keys, setKeys] = useState<string[]>(() => Array(15).fill(""));
+
+	const visibleKeys = keys.slice(0, n);
+	const allFilled = visibleKeys.every((k) => k.trim().length > 0);
+	const ready = threshold >= 1 && threshold <= n && allFilled;
+
+	const submit = (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!ready || submitting) return;
+		const cosigners = visibleKeys.map((raw) => {
+			const key = raw.trim();
+			const fingerprint = parseFingerprints(key)[0];
+			return { key, fingerprint };
+		});
+		onSubmit({ threshold, cosigners });
+	};
+
+	const setKeyAt = (i: number, v: string) => {
+		setKeys((prev) => {
+			const next = [...prev];
+			next[i] = v;
+			return next;
+		});
+	};
+
+	return (
+		<form className="mt-8 space-y-6" onSubmit={submit}>
+			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+				<p className="text-[12px] leading-relaxed text-muted-foreground">
+					Build an M-of-N multisig wallet from cosigner descriptor keys.
+					Paste each cosigner's public key expression — typically{" "}
+					<span className="font-mono text-[11px] text-foreground">
+						[fp/84'/1'/0']xpub...
+					</span>{" "}
+					(without the trailing{" "}
+					<span className="font-mono text-[11px] text-foreground">/0/*</span>{" "}
+					or{" "}
+					<span className="font-mono text-[11px] text-foreground">/1/*</span>).
+					Resulting addresses use{" "}
+					<span className="font-mono text-[11px] text-foreground">
+						wsh(sortedmulti(M, k1, …, kN))
+					</span>
+					— BIP67 ordering, so paste cosigners in any order.
+				</p>
+			</div>
+
+			<div className="grid grid-cols-2 gap-4">
+				<label className="block">
+					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						Threshold (M)
+					</span>
+					<input
+						type="number"
+						min={1}
+						max={n}
+						value={threshold}
+						onChange={(e) =>
+							setThreshold(Math.max(1, Math.min(n, Number(e.target.value) || 1)))
+						}
+						className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
+					/>
+				</label>
+				<label className="block">
+					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						Cosigners (N)
+					</span>
+					<input
+						type="number"
+						min={2}
+						max={15}
+						value={n}
+						onChange={(e) => {
+							const next = Math.max(2, Math.min(15, Number(e.target.value) || 2));
+							setN(next);
+							if (threshold > next) setThreshold(next);
+						}}
+						className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
+					/>
+				</label>
+			</div>
+
+			<div className="space-y-3">
+				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					Cosigner keys
+				</span>
+				{visibleKeys.map((value, i) => (
+					<div key={i}>
+						<div className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground/70">
+							Cosigner {String(i + 1).padStart(2, "0")}
+						</div>
+						<textarea
+							value={value}
+							onChange={(e) => setKeyAt(i, e.target.value)}
+							autoComplete="off"
+							autoCapitalize="off"
+							spellCheck={false}
+							rows={2}
+							placeholder="[fp/84'/1'/0']xpub..."
+							className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
+						/>
+					</div>
+				))}
+			</div>
+
+			<div className="flex items-center gap-3">
+				<button
+					type="button"
+					onClick={onBack}
+					disabled={submitting}
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+				>
+					← Back
+				</button>
+				<button
+					type="submit"
+					disabled={!ready || submitting}
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+				>
+					{submitting ? "Creating…" : `Create ${threshold}-of-${n} multisig`}
+				</button>
+			</div>
+		</form>
 	);
 }
