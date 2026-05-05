@@ -1,24 +1,38 @@
-// Singlesig wallet creation wizard (QBL-223).
+// Singlesig wallet creation wizard (QBL-223 + QBL-220).
 //
-// Two paths share the first three steps (basics → passphrase → review):
-//   • Generate: backend mints a fresh BIP39 mnemonic, persists the
-//     encrypted seed, and returns the words for one-time backup display.
-//   • Recover: user types an existing 12/24-word phrase, backend
+// Three paths share the basics step:
+//   • Generate (hot): backend mints a fresh BIP39 mnemonic, persists
+//     the encrypted seed, returns the words for one-time backup display.
+//   • Recover (hot): user types an existing 12/24-word phrase, backend
 //     re-derives keys via `cmd_local_recover_from_mnemonic`.
+//   • Hardware: user connects a Ledger / Trezor / BitBox / Coldcard,
+//     unlocks it, the wizard collects the device's xpub at the standard
+//     singlesig segwit-v0 path, and persists a watch-only descriptor
+//     via `cmd_local_create_singlesig_hw`. No on-disk seed.
 //
-// Multisig / Liana / watch-only flows ship in QBL-224 / 225 / 226.
+// Multisig / Liana / watch-only-only flows ship in QBL-224 / 225 / 226.
 
 import { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import DeviceDiscovery from "../../components/DeviceDiscovery";
 import WindowControls from "../../components/WindowControls";
 import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalWalletCreateResponse } from "../../types/events";
+import type { DeviceInfo } from "../../types/hardware";
 
-type Method = "generate" | "recover";
+type Method = "generate" | "recover" | "hardware";
 
-type Step = "basics" | "passphrase" | "mnemonic" | "done";
+type Step = "basics" | "passphrase" | "hw" | "mnemonic" | "done";
+
+/** BIP44 coin index by network — mirrors policy-core's
+ * `KeyUtils::get_primary_derivation_path`. Mainnet uses coin 0, every
+ * other supported network uses coin 1. */
+function primaryDerivationPath(network: string): string {
+	const coin = network === "bitcoin" ? "0'" : "1'";
+	return `m/84'/${coin}/0'`;
+}
 
 interface Basics {
 	name: string;
@@ -113,18 +127,55 @@ export default function CreateWalletWizard() {
 		}
 	};
 
+	const submitHardware = async (deviceInfo: DeviceInfo) => {
+		setSubmitting(true);
+		setError(null);
+		try {
+			const walletId = await invoke<string>("cmd_local_create_singlesig_hw", {
+				request: {
+					name: basics.name,
+					network: basics.network,
+					fingerprint: deviceInfo.fingerprint,
+					xpub: deviceInfo.xpub,
+					derivation_path: deviceInfo.derivation_path,
+				},
+			});
+			// HW wallets have no on-disk seed; unlock with empty passphrase
+			// just loads the BDK store + kicks off auto-sync.
+			await invoke("cmd_local_unlock_wallet", {
+				request: { wallet_id: walletId, passphrase: "" },
+			});
+			setCreatedId(walletId);
+			setStep("done");
+		} catch (err) {
+			setError(
+				typeof err === "string" ? err : "Failed to create hardware wallet",
+			);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
 	const finish = () => {
 		if (!createdId) return;
 		navigate(`/local/wallets/${createdId}`);
 	};
 
-	const STEP_INDEX: Record<Step, number> = {
-		basics: 0,
-		passphrase: 1,
-		mnemonic: 2,
-		done: 3,
-	};
-	const stepIndex = STEP_INDEX[step];
+	// Per-method step ordering for the progress indicator. Hardware
+	// skips passphrase + mnemonic and goes straight to device collection.
+	const stepIndex = (() => {
+		if (basics.method === "hardware") {
+			if (step === "basics") return 0;
+			if (step === "hw") return 1;
+			if (step === "done") return 2;
+			return 0;
+		}
+		if (step === "basics") return 0;
+		if (step === "passphrase") return 1;
+		if (step === "mnemonic") return 2;
+		if (step === "done") return 3;
+		return 0;
+	})();
 
 	return (
 		<div
@@ -173,8 +224,19 @@ export default function CreateWalletWizard() {
 							onChange={setBasics}
 							onNext={() => {
 								setError(null);
-								setStep("passphrase");
+								setStep(
+									basics.method === "hardware" ? "hw" : "passphrase",
+								);
 							}}
+						/>
+					)}
+
+					{step === "hw" && basics.method === "hardware" && (
+						<HardwareStep
+							network={basics.network}
+							submitting={submitting}
+							onBack={() => setStep("basics")}
+							onDeviceSelected={submitHardware}
 						/>
 					)}
 
@@ -231,7 +293,9 @@ function Header({
 	const labels =
 		method === "generate"
 			? ["Basics", "Passphrase", "Backup", "Done"]
-			: ["Basics", "Recovery", "Done", ""];
+			: method === "hardware"
+				? ["Basics", "Device", "Done", ""]
+				: ["Basics", "Recovery", "Done", ""];
 	return (
 		<div>
 			<div className="flex items-center justify-between">
@@ -353,18 +417,24 @@ function BasicsStep({
 				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
 					Method
 				</span>
-				<div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+				<div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
 					<MethodCard
 						active={value.method === "generate"}
 						onClick={() => onChange({ ...value, method: "generate" })}
-						title="Generate new"
-						hint="Create a fresh BIP39 mnemonic on this device."
+						title="Generate"
+						hint="Mint a fresh BIP39 mnemonic on this device."
 					/>
 					<MethodCard
 						active={value.method === "recover"}
 						onClick={() => onChange({ ...value, method: "recover" })}
 						title="Recover"
-						hint="Restore from an existing 12-word phrase."
+						hint="Restore from an existing 12 / 24-word phrase."
+					/>
+					<MethodCard
+						active={value.method === "hardware"}
+						onClick={() => onChange({ ...value, method: "hardware" })}
+						title="Hardware"
+						hint="Connect a Ledger, Trezor, BitBox, or Coldcard."
 					/>
 				</div>
 			</div>
@@ -729,7 +799,9 @@ function DoneStep({
 			<h2 className="mt-5 text-[18px] font-medium tracking-[-0.01em] text-foreground">
 				{method === "generate"
 					? "Wallet created."
-					: "Wallet recovered."}
+					: method === "hardware"
+						? "Hardware wallet linked."
+						: "Wallet recovered."}
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
 				The wallet is unlocked and ready. Open it to view balance, addresses,
@@ -754,6 +826,58 @@ function DoneStep({
 					<path d="m12 5 7 7-7 7" />
 				</svg>
 			</button>
+		</div>
+	);
+}
+
+function HardwareStep({
+	network,
+	submitting,
+	onBack,
+	onDeviceSelected,
+}: {
+	network: string;
+	submitting: boolean;
+	onBack: () => void;
+	onDeviceSelected: (info: DeviceInfo) => void;
+}) {
+	return (
+		<div className="mt-8 space-y-6">
+			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+				<p className="text-[12px] leading-relaxed text-muted-foreground">
+					Connect your hardware wallet, unlock it (PIN / passphrase on the
+					device), then click{" "}
+					<span className="font-medium text-foreground">Discover Devices</span>.
+					Once it shows as Supported, continue — the wizard reads its xpub at{" "}
+					<span className="font-mono text-[11px] text-foreground">
+						{primaryDerivationPath(network)}
+					</span>{" "}
+					and creates a watch-only wallet here. Your private keys never leave
+					the device.
+				</p>
+			</div>
+
+			<DeviceDiscovery
+				network={network}
+				derivationPath={primaryDerivationPath(network)}
+				onDeviceSelected={onDeviceSelected}
+			/>
+
+			<div className="flex items-center gap-3">
+				<button
+					type="button"
+					onClick={onBack}
+					disabled={submitting}
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+				>
+					← Back
+				</button>
+				{submitting && (
+					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						Creating wallet…
+					</span>
+				)}
+			</div>
 		</div>
 	);
 }

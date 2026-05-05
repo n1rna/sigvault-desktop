@@ -53,6 +53,15 @@ pub struct RecoverFromMnemonicRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CreateHardwareWalletRequest {
+    pub name: String,
+    pub network: String,
+    pub fingerprint: String,
+    pub xpub: String,
+    pub derivation_path: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct UnlockWalletRequest {
     pub wallet_id: String,
     pub passphrase: String,
@@ -189,6 +198,30 @@ pub async fn cmd_local_recover_from_mnemonic(
         network,
         &request.mnemonic,
         request.passphrase.as_bytes(),
+    )
+    .await
+    .map_err(map_err)
+}
+
+/// Create a singlesig wallet from a hardware device's xpub (QBL-220).
+/// The frontend collects fingerprint + xpub + derivation path via the
+/// existing cloud-mode HW commands (`cmd_discover_hardware_wallets`,
+/// `cmd_unlock_device`, `cmd_get_device_xpub`) and then hands off here.
+#[tauri::command]
+pub async fn cmd_local_create_singlesig_hw(
+    app: AppHandle,
+    app_state: State<'_, ApplicationState>,
+    request: CreateHardwareWalletRequest,
+) -> Result<WalletId, String> {
+    app_state.require_local_mode().await?;
+    let network = parse_network(&request.network)?;
+    let mgr = manager_for(&app, &app_state)?;
+    mgr.create_singlesig_hardware(
+        &request.name,
+        network,
+        &request.fingerprint,
+        &request.xpub,
+        &request.derivation_path,
     )
     .await
     .map_err(map_err)
@@ -642,6 +675,46 @@ pub async fn cmd_local_sign_psbt_software(
 
     Ok(SignPsbtResponse {
         psbt_base64: psbt.to_string(),
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SignPsbtHardwareRequest {
+    pub wallet_id: String,
+    pub psbt_base64: String,
+    /// `id` from the DiscoveredDevice the user selected — same shape as
+    /// the cloud-mode HW flow uses. The frontend collects this through
+    /// `cmd_discover_hardware_wallets` + `cmd_unlock_device`.
+    pub device_id: String,
+}
+
+/// Sign a PSBT against a connected hardware device (QBL-220). Delegates
+/// to the existing HW manager, which speaks to Ledger / Trezor / BitBox
+/// / Coldcard via async-hwi. The wallet's BDK descriptors carry the
+/// device's key origin metadata (built at create time in
+/// `manager::create_singlesig_hardware`), so the device can find the
+/// inputs it owns by matching fingerprint + derivation in the PSBT.
+#[tauri::command]
+pub async fn cmd_local_sign_psbt_hardware(
+    _app: AppHandle,
+    app_state: State<'_, ApplicationState>,
+    request: SignPsbtHardwareRequest,
+) -> Result<SignPsbtResponse, String> {
+    app_state.require_local_mode().await?;
+    let _ = WalletId::from(request.wallet_id);
+
+    let hw_manager = app_state
+        .require_hw_manager()
+        .await
+        .map_err(|e| format!("hardware manager unavailable: {e}"))?;
+
+    let signed = hw_manager
+        .sign_psbt(&request.device_id, &request.psbt_base64)
+        .await
+        .map_err(|e| format!("hw sign: {e}"))?;
+
+    Ok(SignPsbtResponse {
+        psbt_base64: signed.psbt,
     })
 }
 
