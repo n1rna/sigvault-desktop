@@ -4,7 +4,7 @@ import type { AppState } from "../types/events";
 
 type AppStateContextType = AppState & { clearActivityLog: () => void };
 
-const AppStateContext = createContext<AppStateContextType | null>(null);
+export const AppStateContext = createContext<AppStateContextType | null>(null);
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
 	const state = useAppEvents();

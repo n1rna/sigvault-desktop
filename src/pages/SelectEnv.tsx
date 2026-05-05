@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import SwitchModeButton from "../components/SwitchModeButton";
 import WindowControls from "../components/WindowControls";
 import type {
 	CommandResult,
@@ -247,6 +248,10 @@ export default function SelectEnv() {
 					>
 						↻ Refresh list
 					</button>
+
+					<div className="mt-6 flex justify-center">
+						<SwitchModeButton />
+					</div>
 				</div>
 			</main>
 		</div>

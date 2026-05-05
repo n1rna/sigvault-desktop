@@ -94,6 +94,60 @@ export interface LocalWalletSyncSummary {
 	balance_sat: number;
 }
 
+/** Mirrors `local_wallet::manager::WalletSummary`. Returned by
+ * `cmd_local_list_wallets`. `id` is a UUID v4 string. */
+export interface LocalWalletSummary {
+	id: string;
+	name: string;
+	network: string;
+	policy_type: string;
+	fingerprints: string[];
+	has_hot_keys: boolean;
+	created_at: number;
+	locked: boolean;
+}
+
+/** Mirrors `local_wallet::commands::CreateWalletResponse`. For hot creates
+ * `mnemonic_words` carries the freshly generated BIP39 phrase that the
+ * wizard shows once for backup. */
+export interface LocalWalletCreateResponse {
+	wallet_id: string;
+	mnemonic_words: string[];
+}
+
+/** Mirrors `local_wallet::commands::ReceiveAddress`. v1 always returns
+ * external keychain index 0; richer next-unused / per-index lookups land
+ * with later receive UX work. */
+export interface LocalReceiveAddress {
+	address: string;
+	keychain: string;
+	index: number;
+}
+
+/** Mirrors `local_wallet::commands::LocalBalance`. `unconfirmed_sat` is
+ * the sum of trusted_pending + untrusted_pending + immature outputs. */
+export interface LocalBalance {
+	confirmed_sat: number;
+	unconfirmed_sat: number;
+}
+
+/** Mirrors `local_wallet::commands::BuildPsbtResponse`. */
+export interface LocalBuildPsbtResponse {
+	psbt_base64: string;
+}
+
+/** Mirrors `local_wallet::commands::SignPsbtResponse`. Whether all
+ * inputs are signed enough to broadcast is determined at finalize time
+ * inside `cmd_local_broadcast_psbt`, not here. */
+export interface LocalSignPsbtResponse {
+	psbt_base64: string;
+}
+
+/** Mirrors `local_wallet::commands::BroadcastPsbtResponse`. */
+export interface LocalBroadcastPsbtResponse {
+	txid: string;
+}
+
 export type AppEvent =
 	| { type: "state_update"; data: StateUpdateEvent }
 	| { type: "command"; data: CommandEvent }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import SwitchModeButton from "../components/SwitchModeButton";
 import WindowControls from "../components/WindowControls";
 import type { EnvironmentConfig, EnvironmentsResponse } from "../types/events";
 
@@ -30,14 +31,19 @@ export function Login() {
 		try {
 			setChangingEnv(true);
 			setError(null);
-			await invoke("cmd_clear_environment");
+			// Navigate to the picker without clearing the persisted env —
+			// SelectEnv reads `selected_id` off cmd_list_environments and
+			// pre-selects the current one. Clearing here would null out
+			// `app_state.current_env` and leave the picker defaulting to
+			// the first non-coming-soon network in the manifest.
+			await invoke("cmd_navigate", { route: "SelectEnv" });
 		} catch (err) {
 			setError(
 				err instanceof Error
 					? err.message
 					: typeof err === "string"
 						? err
-						: "Failed to change environment",
+						: "Failed to open the environment picker",
 			);
 		} finally {
 			setChangingEnv(false);
@@ -238,6 +244,10 @@ export function Login() {
 						<span>no keys stored</span>
 						<span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
 						<span>end-to-end signed</span>
+					</div>
+
+					<div className="mt-6 flex justify-center">
+						<SwitchModeButton />
 					</div>
 				</div>
 			</main>
