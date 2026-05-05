@@ -17,13 +17,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import WindowControls from "../../components/WindowControls";
+import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalSettings as LocalSettingsType } from "../../types/events";
-
-const NETWORKS = [
-	{ id: "regtest", label: "Regtest", hint: "Local dev / integration" },
-	{ id: "signet", label: "Signet", hint: "Public test network" },
-	{ id: "testnet4", label: "Testnet 4", hint: "Newer public testnet" },
-];
 
 /** Mirror of `validate_electrs_url` in `src-tauri/src/local_wallet/settings.rs`.
  * Empty strings are valid here ("not configured yet"). */
@@ -91,7 +86,7 @@ export default function LocalSettings() {
 
 	const fieldErrors = settings
 		? Object.fromEntries(
-				NETWORKS.map((n) => [
+				SUPPORTED_NETWORKS.map((n) => [
 					n.id,
 					validateUrl(settings.electrs_urls[n.id] ?? ""),
 				]),
@@ -200,7 +195,7 @@ export default function LocalSettings() {
 									available in v1.
 								</p>
 								<div className="mt-4 grid grid-cols-3 gap-2">
-									{NETWORKS.map((n) => {
+									{SUPPORTED_NETWORKS.map((n) => {
 										const selected = settings.default_network === n.id;
 										return (
 											<button
@@ -245,7 +240,7 @@ export default function LocalSettings() {
 									. Leave blank if you haven't set up that network yet.
 								</p>
 								<div className="mt-4 space-y-4">
-									{NETWORKS.map((n) => {
+									{SUPPORTED_NETWORKS.map((n) => {
 										const value = settings.electrs_urls[n.id] ?? "";
 										const fieldError = fieldErrors[n.id];
 										return (
