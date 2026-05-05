@@ -20,7 +20,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use bdk_wallet::bitcoin::bip32::Xpriv;
+use bdk_wallet::bitcoin::bip32::{Fingerprint, Xpriv};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::keys::bip39::{Language, Mnemonic};
 use bdk_wallet::KeychainKind;
@@ -197,7 +197,7 @@ impl LocalWalletManager {
         name: &str,
         network: Network,
         passphrase: &[u8],
-    ) -> Result<WalletId, ManagerError> {
+    ) -> Result<(WalletId, Vec<String>), ManagerError> {
         ensure_supported_network(network)?;
 
         let keyset = KeyUtils::generate_complete_key_set(network);
@@ -208,7 +208,8 @@ impl LocalWalletManager {
         // The mnemonic is the durable secret. Persist as an encrypted
         // UTF-8 string of space-separated words; on recovery we re-derive
         // the xprv from it via Mnemonic::parse + to_seed.
-        let mnemonic_str = keyset.words.join(" ");
+        let words = keyset.words.clone();
+        let mnemonic_str = words.join(" ");
         write_seed_file(&layout, mnemonic_str.as_bytes(), passphrase)?;
 
         let descriptors = WalletDescriptors::new(
@@ -233,7 +234,7 @@ impl LocalWalletManager {
         };
         self.write_metadata(&layout, &meta)?;
 
-        Ok(id)
+        Ok((id, words))
     }
 
     /// Recover from a BIP39 mnemonic the user typed in. v1 only handles
@@ -249,17 +250,7 @@ impl LocalWalletManager {
     ) -> Result<WalletId, ManagerError> {
         ensure_supported_network(network)?;
 
-        let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_str)
-            .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
-        let seed = mnemonic.to_seed("");
-        let master_xpriv = Xpriv::new_master(network, &seed)
-            .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
-
-        let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
-        let account_path = KeyUtils::get_primary_derivation_path(network);
-        let account_xpriv = master_xpriv
-            .derive_priv(&secp, &account_path)
-            .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+        let (account_xpriv, _) = derive_account_from_mnemonic(network, mnemonic_str)?;
         let (external_descriptor, internal_descriptor, _xpub, fingerprint) =
             KeyUtils::get_account_extended_descriptor(account_xpriv);
 
@@ -382,6 +373,29 @@ impl LocalWalletManager {
     }
 }
 
+/// Parse a BIP39 mnemonic and derive the singlesig segwit-v0 account
+/// xprv (`m/84'/{coin}'/0'`) along with its fingerprint. Shared by
+/// `recover_singlesig_hot` (wallet creation) and `cmd_local_sign_psbt_*`
+/// (signing — re-derives the xprv from the just-decrypted seed rather
+/// than persisting it in memory across the unlock session).
+pub fn derive_account_from_mnemonic(
+    network: Network,
+    mnemonic_str: &str,
+) -> Result<(Xpriv, Fingerprint), ManagerError> {
+    let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_str)
+        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+    let seed = mnemonic.to_seed("");
+    let master_xpriv = Xpriv::new_master(network, &seed)
+        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+    let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
+    let account_path = KeyUtils::get_primary_derivation_path(network);
+    let account_xpriv = master_xpriv
+        .derive_priv(&secp, &account_path)
+        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+    let fingerprint = account_xpriv.fingerprint(&secp);
+    Ok((account_xpriv, fingerprint))
+}
+
 fn ensure_supported_network(network: Network) -> Result<(), ManagerError> {
     // Mainnet gating in full is QBL-232 (UI gating + central feature flag).
     // Refusing Network::Bitcoin here is the backend half of that — the
@@ -429,10 +443,11 @@ mod tests {
         assert!(summaries.is_empty());
 
         // Create singlesig hot regtest wallet.
-        let id = mgr
+        let (id, words) = mgr
             .create_singlesig_hot("My Test Wallet", Network::Regtest, b"passw0rd!")
             .await
             .expect("create");
+        assert_eq!(words.len(), 24, "policy-core generates 24 BIP39 words");
 
         // List shows it as locked.
         let summaries = mgr.list_wallets().await.expect("list 2");
@@ -483,7 +498,7 @@ mod tests {
     async fn cannot_double_unlock() {
         let tmp = TempDir::new().unwrap();
         let mgr = manager_in(&tmp);
-        let id = mgr
+        let (id, _) = mgr
             .create_singlesig_hot("dup", Network::Regtest, b"x")
             .await
             .unwrap();

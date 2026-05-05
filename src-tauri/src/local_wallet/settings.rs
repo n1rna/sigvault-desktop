@@ -30,11 +30,12 @@ pub struct LocalSettings {
 impl Default for LocalSettings {
     fn default() -> Self {
         let mut electrs_urls = BTreeMap::new();
-        // Regtest: the sigvault-hosted electrs that walletrs targets.
-        // Mirrors `regtest.sigvault.org` from the walletrs CONFIG.
+        // Regtest: the sigvault-hosted electrs, exposed via Traefik
+        // TCP+SNI on :443 so it shares the existing TLS infra (no
+        // dedicated Electrum port to firewall-allow, free LE cert).
         electrs_urls.insert(
             "regtest".to_string(),
-            "tcp://regtest.sigvault.org:50001".to_string(),
+            "ssl://ers.regtest.sigvault.org:443".to_string(),
         );
         // Testnet4 and signet ship empty: there is no single public
         // electrs server with both broad uptime and a stable URL we
@@ -191,7 +192,7 @@ mod tests {
         assert_eq!(s.default_network, "regtest");
         assert_eq!(
             s.electrs_urls.get("regtest"),
-            Some(&"tcp://regtest.sigvault.org:50001".to_string())
+            Some(&"ssl://ers.regtest.sigvault.org:443".to_string())
         );
     }
 
@@ -309,7 +310,7 @@ mod tests {
         let s = LocalSettings::default();
         assert_eq!(
             s.electrs_url_for(Network::Regtest).unwrap(),
-            "tcp://regtest.sigvault.org:50001"
+            "ssl://ers.regtest.sigvault.org:443"
         );
     }
 

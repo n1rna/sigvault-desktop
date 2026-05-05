@@ -54,6 +54,11 @@ chacha20poly1305 = "0.10"
 getrandom = "0.2"
 base64 = "0.22"
 zeroize = "1.8"
+# Direct rustls pin so we can install the `ring` CryptoProvider at
+# startup. electrum-client 0.23 (via wallet-runtime → bdk_electrum) uses
+# rustls 0.23, which panics on the first TLS handshake unless a default
+# provider is installed up front. See `lib.rs::run` for the install call.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # Standalone-wallet shared crates from walletrs. QBL-211 (policy-core),
 # QBL-212 (wallet-runtime), and QBL-213 (server refactor) are merged on

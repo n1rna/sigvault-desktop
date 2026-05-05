@@ -22,16 +22,27 @@ use tauri::Manager;
 
 use commands::*;
 use local_wallet::commands::{
-    cmd_local_create_wallet, cmd_local_delete_wallet, cmd_local_get_balance, cmd_local_get_history,
+    cmd_local_broadcast_psbt, cmd_local_build_psbt, cmd_local_create_wallet,
+    cmd_local_delete_wallet, cmd_local_get_balance, cmd_local_get_history,
     cmd_local_get_receive_address, cmd_local_get_settings, cmd_local_list_wallets,
-    cmd_local_lock_wallet, cmd_local_recover_from_mnemonic, cmd_local_set_settings, cmd_local_sync,
-    cmd_local_unlock_wallet,
+    cmd_local_lock_wallet, cmd_local_recover_from_mnemonic, cmd_local_set_settings,
+    cmd_local_sign_psbt_software, cmd_local_sync, cmd_local_unlock_wallet,
 };
 use state::ApplicationState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     info!("Starting Sigvault Desktop application");
+
+    // rustls 0.23 (pulled in transitively by electrum-client via
+    // wallet-runtime, plus reqwest, tokio-tungstenite, and friends) does
+    // not auto-select a CryptoProvider when more than one could be
+    // active in the dep graph. Without this, the first TLS handshake
+    // (e.g. cmd_local_sync against ssl://ers.regtest.sigvault.org) hits
+    // a panic deep inside spawn_blocking. Install ring up front; the
+    // .ok() swallows the "already installed" case so we don't fight
+    // any provider another lib registered first.
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
     tauri::Builder::default()
         // .plugin(tauri_plugin_deep_link::init())
@@ -96,6 +107,9 @@ pub fn run() {
             cmd_local_get_settings,
             cmd_local_set_settings,
             cmd_local_sync,
+            cmd_local_build_psbt,
+            cmd_local_sign_psbt_software,
+            cmd_local_broadcast_psbt,
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]
