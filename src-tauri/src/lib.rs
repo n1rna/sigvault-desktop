@@ -34,6 +34,16 @@ use state::ApplicationState;
 pub fn run() {
     info!("Starting Sigvault Desktop application");
 
+    // rustls 0.23 (pulled in transitively by electrum-client via
+    // wallet-runtime, plus reqwest, tokio-tungstenite, and friends) does
+    // not auto-select a CryptoProvider when more than one could be
+    // active in the dep graph. Without this, the first TLS handshake
+    // (e.g. cmd_local_sync against ssl://ers.regtest.sigvault.org) hits
+    // a panic deep inside spawn_blocking. Install ring up front; the
+    // .ok() swallows the "already installed" case so we don't fight
+    // any provider another lib registered first.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     tauri::Builder::default()
         // .plugin(tauri_plugin_deep_link::init())
         .plugin(
