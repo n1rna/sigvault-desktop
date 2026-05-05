@@ -13,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import WindowControls from "../../components/WindowControls";
+import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalWalletCreateResponse } from "../../types/events";
 
 type Method = "generate" | "recover";
@@ -24,12 +25,6 @@ interface Basics {
 	network: string;
 	method: Method;
 }
-
-const NETWORKS = [
-	{ id: "regtest", label: "Regtest", hint: "Local dev / integration" },
-	{ id: "signet", label: "Signet", hint: "Public test network" },
-	{ id: "testnet4", label: "Testnet 4", hint: "Newer public testnet" },
-];
 
 export default function CreateWalletWizard() {
 	const navigate = useNavigate();
@@ -326,7 +321,7 @@ function BasicsStep({
 					Network
 				</span>
 				<div className="mt-2 grid grid-cols-3 gap-2">
-					{NETWORKS.map((n) => {
+					{SUPPORTED_NETWORKS.map((n) => {
 						const selected = value.network === n.id;
 						return (
 							<button

@@ -73,15 +73,25 @@ impl LocalSettings {
     }
 }
 
+/// Single feature flag for mainnet support across the standalone-wallet
+/// stack. Mirror of `MAINNET_ENABLED` in `src/constants/networks.ts` —
+/// flip both in lockstep when mainnet support lands. Until then every
+/// network gate (`network_key`, `ensure_supported_network`, the
+/// settings UI's network selector, the create-wallet wizard's network
+/// picker) consults this single bool rather than hardcoding a check.
+pub const MAINNET_ENABLED: bool = false;
+
 /// Map a `bitcoin::Network` to the JSON key used in `electrs_urls`.
-/// Returns `None` for networks not supported in v1 (mainnet today, plus
-/// any future variants bitcoin's enum gains).
-fn network_key(network: Network) -> Option<&'static str> {
+/// Returns `None` for networks not supported by the current build —
+/// mainnet today (gated by `MAINNET_ENABLED`), plus any future variants
+/// bitcoin's enum may gain.
+pub fn network_key(network: Network) -> Option<&'static str> {
     match network {
         Network::Regtest => Some("regtest"),
         Network::Signet => Some("signet"),
         Network::Testnet4 => Some("testnet4"),
         Network::Testnet => Some("testnet"),
+        Network::Bitcoin if MAINNET_ENABLED => Some("bitcoin"),
         Network::Bitcoin => None,
     }
 }
