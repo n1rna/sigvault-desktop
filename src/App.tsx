@@ -26,6 +26,7 @@ import CreateWalletWizard from "./pages/local/CreateWalletWizard";
 import WalletDashboard from "./pages/local/WalletDashboard";
 import ReceiveScreen from "./pages/local/ReceiveScreen";
 import SendScreen from "./pages/local/SendScreen";
+import LocalSettings from "./pages/local/LocalSettings";
 
 function AuthenticatedLayout() {
 	return (
@@ -39,17 +40,26 @@ function AuthenticatedLayout() {
 	);
 }
 
-// Map backend route enum → frontend pathname.
-const ROUTE_PATHS: Record<string, string> = {
-	Loading: "/",
-	ModeChooser: "/mode-chooser",
-	SelectEnv: "/select-env",
-	Login: "/login",
-	MainPage: "/dashboard",
-	MachineRegistration: "/register",
-	RemoteSessions: "/sessions",
-	SessionDetails: "/session-details",
-	LocalWallets: "/local/wallets",
+// Map backend route enum → frontend routing spec.
+// `target` is the default landing path. `namespace` (when set) marks a
+// broader prefix that counts as "still satisfying this backend route" —
+// used so siblings like /local/settings don't snap back to /local/wallets
+// when the backend is asserting "you should be in local mode".
+interface RouteSpec {
+	target: string;
+	namespace?: string;
+}
+
+const ROUTE_PATHS: Record<string, RouteSpec> = {
+	Loading: { target: "/" },
+	ModeChooser: { target: "/mode-chooser" },
+	SelectEnv: { target: "/select-env" },
+	Login: { target: "/login" },
+	MainPage: { target: "/dashboard" },
+	MachineRegistration: { target: "/register" },
+	RemoteSessions: { target: "/sessions" },
+	SessionDetails: { target: "/session-details" },
+	LocalWallets: { target: "/local/wallets", namespace: "/local/" },
 };
 
 function AppRouter() {
@@ -67,13 +77,16 @@ function AppRouter() {
 	}, [listenerReady]);
 
 	// Navigate based on backend-controlled route. Idempotent: if the user
-	// has already drilled into a child route (e.g. /local/wallets/new),
-	// this stays put rather than snapping back to the parent.
+	// has already drilled into a child route (/local/wallets/new) or a
+	// sibling within the route's namespace (/local/settings), this stays
+	// put rather than snapping back to the default target.
 	useEffect(() => {
-		const target = ROUTE_PATHS[route];
-		if (!target) return;
+		const spec = ROUTE_PATHS[route];
+		if (!spec) return;
+		const { target, namespace } = spec;
 		if (location.pathname === target) return;
 		if (target !== "/" && location.pathname.startsWith(`${target}/`)) return;
+		if (namespace && location.pathname.startsWith(namespace)) return;
 		navigate(target);
 	}, [route, navigate, authenticated, location.pathname]);
 
@@ -91,6 +104,7 @@ function AppRouter() {
 				element={<ReceiveScreen />}
 			/>
 			<Route path="/local/wallets/:walletId/send" element={<SendScreen />} />
+			<Route path="/local/settings" element={<LocalSettings />} />
 			<Route element={<AuthenticatedLayout />}>
 				<Route path="/dashboard" element={<Dashboard />} />
 				<Route path="/register" element={<MachineRegistration />} />

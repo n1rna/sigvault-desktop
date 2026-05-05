@@ -397,15 +397,15 @@ pub fn derive_account_from_mnemonic(
 }
 
 fn ensure_supported_network(network: Network) -> Result<(), ManagerError> {
-    // Mainnet gating in full is QBL-232 (UI gating + central feature flag).
-    // Refusing Network::Bitcoin here is the backend half of that — the
-    // remaining variants (Testnet/Testnet4/Signet/Regtest) are all the
-    // non-mainnet networks bitcoin 0.32 currently exposes.
-    match network {
-        Network::Bitcoin => Err(ManagerError::UnsupportedNetwork(
-            "mainnet is gated off in the v1 standalone wallet".to_string(),
-        )),
-        Network::Testnet | Network::Testnet4 | Network::Signet | Network::Regtest => Ok(()),
+    // Single source of truth: settings::network_key returns Some for
+    // any network the build accepts (which itself consults
+    // settings::MAINNET_ENABLED — flip that flag to enable mainnet).
+    if super::settings::network_key(network).is_some() {
+        Ok(())
+    } else {
+        Err(ManagerError::UnsupportedNetwork(format!(
+            "{network} is not enabled in this build"
+        )))
     }
 }
 
