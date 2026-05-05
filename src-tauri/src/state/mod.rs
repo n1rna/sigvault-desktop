@@ -171,6 +171,22 @@ impl ApplicationState {
             "Hardware wallet manager not initialized (no environment selected)".to_string()
         })
     }
+
+    /// Ensure the HW manager is initialized for local-mode flows. Cloud
+    /// mode binds the manager to the selected environment's network via
+    /// `set_environment`; local mode has no env, so we initialize with
+    /// a sensible default (regtest) the first time this is called and
+    /// leave subsequent calls as no-ops. Discovery + xpub collection
+    /// are network-agnostic; signing-time flows in QBL-220 chunk 2 will
+    /// re-bind to the wallet's network as needed.
+    pub async fn ensure_hw_manager_for_local(&self) {
+        let mut guard = self.hw_manager.write().await;
+        if guard.is_none() {
+            *guard = Some(Arc::new(HardwareWalletManager::new(
+                bitcoin::Network::Regtest,
+            )));
+        }
+    }
 }
 
 impl Default for ApplicationState {

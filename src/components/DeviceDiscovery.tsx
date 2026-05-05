@@ -12,7 +12,14 @@ import DeviceList from "./DeviceList";
 
 interface DeviceDiscoveryProps {
 	network?: string;
-	onDeviceSelected: (deviceInfo: DeviceInfo) => void;
+	/** Fired once the user has discovered + unlocked + extracted info from
+	 * a device. The second argument is the `DiscoveredDevice` itself, so
+	 * callers that need the runtime `id` (e.g. for `cmd_sign_psbt`) don't
+	 * have to re-discover. */
+	onDeviceSelected: (
+		deviceInfo: DeviceInfo,
+		device: DiscoveredDevice,
+	) => void;
 	derivationPath?: string;
 	walletConfig?: WalletConfig;
 }
@@ -115,7 +122,7 @@ export default function DeviceDiscovery({
 			);
 
 			if (result.success && result.data) {
-				onDeviceSelected(result.data);
+				onDeviceSelected(result.data, selectedDevice);
 			} else {
 				setError(result.message || "Failed to extract device information");
 			}

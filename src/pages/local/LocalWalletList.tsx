@@ -83,12 +83,25 @@ export default function LocalWalletList() {
 		loadWallets();
 	}, [loadWallets]);
 
-	const openWallet = (wallet: LocalWalletSummary) => {
+	const openWallet = async (wallet: LocalWalletSummary) => {
 		if (wallet.locked && wallet.has_hot_keys) {
+			// Hot wallets need the passphrase to decrypt seed.enc.
 			setModal({ kind: "unlock", wallet });
-		} else {
-			navigate(`/local/wallets/${wallet.id}`);
+			return;
 		}
+		if (wallet.locked) {
+			// HW / watch-only wallets have no on-disk seed; unlock just
+			// loads the BDK store + kicks off auto-sync. Empty passphrase.
+			try {
+				await invoke("cmd_local_unlock_wallet", {
+					request: { wallet_id: wallet.id, passphrase: "" },
+				});
+			} catch (err) {
+				setError(typeof err === "string" ? err : "Failed to open wallet");
+				return;
+			}
+		}
+		navigate(`/local/wallets/${wallet.id}`);
 	};
 
 	const lockWallet = async (wallet: LocalWalletSummary) => {
