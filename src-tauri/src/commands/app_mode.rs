@@ -45,6 +45,11 @@ pub async fn cmd_set_app_mode(
 
     match mode {
         AppMode::Local => {
+            // Local mode never goes through set_environment, so the HW
+            // manager isn't lazily initialized by the cloud path. Ensure
+            // it exists so cmd_discover_hardware_wallets et al work for
+            // standalone-wallet creation (QBL-220).
+            app_state.ensure_hw_manager_for_local().await;
             update_state(
                 &window,
                 StateUpdateEvent::builder()

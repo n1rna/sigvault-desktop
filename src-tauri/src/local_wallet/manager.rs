@@ -37,6 +37,7 @@ use super::state::{SharedLocalWalletState, UnlockedHandle};
 use super::storage::{read_seed_file, write_seed_file, SeedStoreError, WalletDirLayout, WalletId};
 
 const POLICY_TYPE_SINGLESIG: &str = "singlesig";
+const POLICY_TYPE_SINGLESIG_HW: &str = "singlesig_hardware";
 
 /// What's persisted in `metadata.json` for a local wallet. Everything
 /// here is recoverable from disk without a passphrase — names, public
@@ -283,6 +284,63 @@ impl LocalWalletManager {
         Ok(id)
     }
 
+    /// Create a singlesig segwit-v0 wallet from a hardware device's
+    /// xpub. Watch-only as far as on-disk material goes — there is no
+    /// `seed.enc` because the device holds the private keys. Sign-time
+    /// flows (QBL-219 → QBL-229) re-route through the HW manager
+    /// instead of `cmd_local_sign_psbt_software`.
+    ///
+    /// `derivation_path` is the BIP32 path that produced `xpub` on the
+    /// device (typically `m/84'/coin'/0'`). It's embedded in the
+    /// descriptor's key origin metadata so PSBTs can be analysed for
+    /// what the device needs to sign.
+    pub async fn create_singlesig_hardware(
+        &self,
+        name: &str,
+        network: Network,
+        fingerprint: &str,
+        xpub: &str,
+        derivation_path: &str,
+    ) -> Result<WalletId, ManagerError> {
+        ensure_supported_network(network)?;
+
+        // Strip the leading "m/" / "m" if present — origin syntax in
+        // descriptors is `[fingerprint/path]xpub` with no `m` prefix.
+        let path = derivation_path
+            .strip_prefix("m/")
+            .or_else(|| derivation_path.strip_prefix("m"))
+            .unwrap_or(derivation_path);
+
+        let external_descriptor = format!("wpkh([{fingerprint}/{path}]{xpub}/0/*)");
+        let internal_descriptor = format!("wpkh([{fingerprint}/{path}]{xpub}/1/*)");
+
+        let id = WalletId::new();
+        let layout = self.layout(&id);
+        layout.ensure_dir()?;
+
+        let descriptors =
+            WalletDescriptors::new(external_descriptor.clone(), internal_descriptor.clone());
+
+        let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
+        let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
+            .map_err(|e| ManagerError::Runtime(e.to_string()))?;
+
+        let meta = LocalWalletMetadata {
+            id: id.clone(),
+            name: name.to_string(),
+            network: network.to_string(),
+            policy_type: POLICY_TYPE_SINGLESIG_HW.to_string(),
+            external_descriptor,
+            internal_descriptor,
+            fingerprints: vec![fingerprint.to_string()],
+            has_hot_keys: false,
+            created_at: now_unix_seconds(),
+        };
+        self.write_metadata(&layout, &meta)?;
+
+        Ok(id)
+    }
+
     /// Decrypt the wallet's `seed.enc`, reload its BDK state from
     /// `bdk_store`, and put the resulting handle into the in-memory
     /// unlocked map. Idempotent on success only when the wallet was not
@@ -300,8 +358,17 @@ impl LocalWalletManager {
         let network = parse_network(&meta.network)?;
 
         let layout = self.layout(id);
-        let seed_bytes = read_seed_file(&layout, passphrase)?
-            .ok_or_else(|| ManagerError::NotFound(format!("seed.enc for {id}")))?;
+        // Hot wallets: decrypt seed.enc with the passphrase so the
+        // bytes are available in memory for signing. HW / watch-only
+        // wallets have no on-disk seed — we still load the BDK store
+        // so balance / address peeking works, and signing routes
+        // through the HW manager instead of an in-memory mnemonic.
+        let seed_bytes = if meta.has_hot_keys {
+            read_seed_file(&layout, passphrase)?
+                .ok_or_else(|| ManagerError::NotFound(format!("seed.enc for {id}")))?
+        } else {
+            Vec::new()
+        };
 
         let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
         let wallet = wr_load_wallet(&mut persister, network)

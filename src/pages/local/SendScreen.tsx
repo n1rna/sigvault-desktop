@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate, useParams } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import DeviceDiscovery from "../../components/DeviceDiscovery";
 import WindowControls from "../../components/WindowControls";
 import type {
 	LocalBalance,
@@ -23,6 +24,7 @@ import type {
 	LocalSignPsbtResponse,
 	LocalWalletSummary,
 } from "../../types/events";
+import type { DeviceInfo, DiscoveredDevice } from "../../types/hardware";
 
 type Step = "compose" | "confirm" | "done";
 
@@ -163,6 +165,41 @@ export default function SendScreen() {
 		}
 	};
 
+	const signAndBroadcastHardware = async (deviceId: string) => {
+		if (!walletId || !psbtBase64) return;
+		setError(null);
+		setBusy(true);
+		try {
+			const signed = await invoke<LocalSignPsbtResponse>(
+				"cmd_local_sign_psbt_hardware",
+				{
+					request: {
+						wallet_id: walletId,
+						psbt_base64: psbtBase64,
+						device_id: deviceId,
+					},
+				},
+			);
+			const broadcast = await invoke<LocalBroadcastPsbtResponse>(
+				"cmd_local_broadcast_psbt",
+				{
+					request: {
+						wallet_id: walletId,
+						psbt_base64: signed.psbt_base64,
+					},
+				},
+			);
+			setTxid(broadcast.txid);
+			setStep("done");
+		} catch (err) {
+			setError(
+				typeof err === "string" ? err : "Hardware sign or broadcast failed",
+			);
+		} finally {
+			setBusy(false);
+		}
+	};
+
 	const copyTxid = async () => {
 		if (!txid) return;
 		try {
@@ -268,7 +305,7 @@ export default function SendScreen() {
 						/>
 					)}
 
-					{step === "confirm" && (
+					{step === "confirm" && wallet?.has_hot_keys !== false && (
 						<ConfirmStep
 							recipient={recipient}
 							sat={sat ?? 0}
@@ -283,6 +320,24 @@ export default function SendScreen() {
 								setError(null);
 							}}
 							onSubmit={signAndBroadcast}
+						/>
+					)}
+
+					{step === "confirm" && wallet?.has_hot_keys === false && (
+						<HardwareConfirmStep
+							recipient={recipient}
+							sat={sat ?? 0}
+							feeRate={feeRate}
+							network={wallet?.network ?? "regtest"}
+							busy={busy}
+							onBack={() => {
+								setStep("compose");
+								setPsbtBase64(null);
+								setError(null);
+							}}
+							onDeviceSelected={(_info, device) =>
+								signAndBroadcastHardware(device.id)
+							}
 						/>
 					)}
 
@@ -672,6 +727,88 @@ function DoneStep({
 					<path d="m12 5 7 7-7 7" />
 				</svg>
 			</button>
+		</div>
+	);
+}
+
+function primaryDerivationPath(network: string): string {
+	const coin = network === "bitcoin" ? "0'" : "1'";
+	return `m/84'/${coin}/0'`;
+}
+
+function HardwareConfirmStep({
+	recipient,
+	sat,
+	feeRate,
+	network,
+	busy,
+	onBack,
+	onDeviceSelected,
+}: {
+	recipient: string;
+	sat: number;
+	feeRate: string;
+	network: string;
+	busy: boolean;
+	onBack: () => void;
+	onDeviceSelected: (info: DeviceInfo, device: DiscoveredDevice) => void;
+}) {
+	return (
+		<div className="space-y-6">
+			<div className="rounded-md border border-border bg-card px-4 py-4">
+				<div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					Review
+				</div>
+				<dl className="mt-3 space-y-2 text-[12px]">
+					<SummaryRow label="To">
+						<span className="break-all font-mono text-foreground">
+							{recipient}
+						</span>
+					</SummaryRow>
+					<SummaryRow label="Amount">
+						<span className="font-mono text-foreground">
+							{formatBtc(sat)} BTC
+						</span>
+						<span className="ml-2 font-mono text-muted-foreground/80">
+							{sat.toLocaleString()} sat
+						</span>
+					</SummaryRow>
+					<SummaryRow label="Fee rate">
+						<span className="font-mono text-foreground">{feeRate} sat/vB</span>
+					</SummaryRow>
+				</dl>
+			</div>
+
+			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+				<p className="text-[12px] leading-relaxed text-muted-foreground">
+					Connect and unlock your hardware wallet, then click{" "}
+					<span className="font-medium text-foreground">Discover Devices</span>.
+					You'll review and approve the transaction on the device itself —
+					the private keys never leave it.
+				</p>
+			</div>
+
+			<DeviceDiscovery
+				network={network}
+				derivationPath={primaryDerivationPath(network)}
+				onDeviceSelected={onDeviceSelected}
+			/>
+
+			<div className="flex items-center gap-3">
+				<button
+					type="button"
+					onClick={onBack}
+					disabled={busy}
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+				>
+					← Back
+				</button>
+				{busy && (
+					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						Signing & broadcasting…
+					</span>
+				)}
+			</div>
 		</div>
 	);
 }
