@@ -62,6 +62,36 @@ pub struct CreateHardwareWalletRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CreateWatchOnlyWalletRequest {
+    pub name: String,
+    pub network: String,
+    pub external_descriptor: String,
+    pub internal_descriptor: String,
+    /// Caller-best-effort: any fingerprints the frontend parsed out of
+    /// the descriptor's key origins. Purely informational, surfaced in
+    /// the wallet list metadata column.
+    #[serde(default)]
+    pub fingerprints: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MultisigCosignerInput {
+    /// Descriptor key expression up through the xpub: `[fp/path]xpub` if
+    /// origin info is known, bare `xpub` otherwise.
+    pub key: String,
+    #[serde(default)]
+    pub fingerprint: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateMultisigWalletRequest {
+    pub name: String,
+    pub network: String,
+    pub threshold: u32,
+    pub cosigners: Vec<MultisigCosignerInput>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct UnlockWalletRequest {
     pub wallet_id: String,
     pub passphrase: String,
@@ -222,6 +252,57 @@ pub async fn cmd_local_create_singlesig_hw(
         &request.fingerprint,
         &request.xpub,
         &request.derivation_path,
+    )
+    .await
+    .map_err(map_err)
+}
+
+/// Create an M-of-N multisig watch-only wallet from cosigner key
+/// expressions (QBL-224). The wallet sees balance + history across all
+/// addresses derived from the sortedmulti descriptor. Signing requires
+/// at least M cosigners to sign in turn (HW via
+/// `cmd_local_sign_psbt_hardware`, or hot/external via PSBT export).
+#[tauri::command]
+pub async fn cmd_local_create_multisig(
+    app: AppHandle,
+    app_state: State<'_, ApplicationState>,
+    request: CreateMultisigWalletRequest,
+) -> Result<WalletId, String> {
+    app_state.require_local_mode().await?;
+    let network = parse_network(&request.network)?;
+    let mgr = manager_for(&app, &app_state)?;
+    let cosigners = request
+        .cosigners
+        .into_iter()
+        .map(|c| super::manager::MultisigCosigner {
+            key: c.key,
+            fingerprint: c.fingerprint,
+        })
+        .collect();
+    mgr.create_multisig(&request.name, network, request.threshold, cosigners)
+        .await
+        .map_err(map_err)
+}
+
+/// Create a watch-only wallet from descriptor strings the user pasted
+/// (QBL-226). Useful for monitoring an external wallet without holding
+/// the keys — e.g. an existing Sparrow or Liana setup imported here so
+/// you can see balance and history. Cannot sign.
+#[tauri::command]
+pub async fn cmd_local_create_watch_only(
+    app: AppHandle,
+    app_state: State<'_, ApplicationState>,
+    request: CreateWatchOnlyWalletRequest,
+) -> Result<WalletId, String> {
+    app_state.require_local_mode().await?;
+    let network = parse_network(&request.network)?;
+    let mgr = manager_for(&app, &app_state)?;
+    mgr.create_watch_only(
+        &request.name,
+        network,
+        &request.external_descriptor,
+        &request.internal_descriptor,
+        request.fingerprints,
     )
     .await
     .map_err(map_err)

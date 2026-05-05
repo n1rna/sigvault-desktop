@@ -38,6 +38,19 @@ use super::storage::{read_seed_file, write_seed_file, SeedStoreError, WalletDirL
 
 const POLICY_TYPE_SINGLESIG: &str = "singlesig";
 const POLICY_TYPE_SINGLESIG_HW: &str = "singlesig_hardware";
+const POLICY_TYPE_WATCH_ONLY: &str = "watch_only";
+const POLICY_TYPE_MULTISIG: &str = "multisig";
+
+/// A cosigner contribution to a multisig wallet (QBL-224). `key` is the
+/// descriptor key expression up through the xpub — `[fp/path]xpub` for
+/// HW-collected or origin-tagged paste inputs, or bare `xpub` for paste
+/// inputs without origin info. The descriptor builder appends `/0/*` or
+/// `/1/*` for the external / internal keychains.
+#[derive(Debug, Clone)]
+pub struct MultisigCosigner {
+    pub key: String,
+    pub fingerprint: Option<String>,
+}
 
 /// What's persisted in `metadata.json` for a local wallet. Everything
 /// here is recoverable from disk without a passphrase — names, public
@@ -333,6 +346,142 @@ impl LocalWalletManager {
             external_descriptor,
             internal_descriptor,
             fingerprints: vec![fingerprint.to_string()],
+            has_hot_keys: false,
+            created_at: now_unix_seconds(),
+        };
+        self.write_metadata(&layout, &meta)?;
+
+        Ok(id)
+    }
+
+    /// Create an M-of-N multisig watch-only wallet from a list of
+    /// cosigner descriptor keys (QBL-224). The wallet is watch-only on
+    /// disk — no `seed.enc` — because the private keys live with each
+    /// individual cosigner (HW or external software). Signing happens
+    /// per-cosigner via `cmd_local_sign_psbt_hardware` (HW) or by
+    /// exporting the PSBT to wherever the hot key lives.
+    ///
+    /// Builds `wsh(sortedmulti(M, k1/0/*, k2/0/*, ...))` for receive
+    /// and `wsh(sortedmulti(M, k1/1/*, k2/1/*, ...))` for change. Uses
+    /// `sortedmulti` (BIP67) so cosigner order doesn't matter — the
+    /// resulting addresses are deterministic for any permutation.
+    pub async fn create_multisig(
+        &self,
+        name: &str,
+        network: Network,
+        threshold: u32,
+        cosigners: Vec<MultisigCosigner>,
+    ) -> Result<WalletId, ManagerError> {
+        ensure_supported_network(network)?;
+
+        let n = cosigners.len();
+        if n < 2 {
+            return Err(ManagerError::Runtime(
+                "multisig wallets need at least 2 cosigners".to_string(),
+            ));
+        }
+        if n > 15 {
+            return Err(ManagerError::Runtime(format!(
+                "multisig of more than 15 cosigners is not supported (got {n})"
+            )));
+        }
+        if threshold < 1 || threshold as usize > n {
+            return Err(ManagerError::Runtime(format!(
+                "threshold {threshold} out of range for {n} cosigners"
+            )));
+        }
+
+        let keys_external = cosigners
+            .iter()
+            .map(|c| format!("{}/0/*", c.key.trim()))
+            .collect::<Vec<_>>()
+            .join(",");
+        let keys_internal = cosigners
+            .iter()
+            .map(|c| format!("{}/1/*", c.key.trim()))
+            .collect::<Vec<_>>()
+            .join(",");
+        let external_descriptor =
+            format!("wsh(sortedmulti({threshold},{keys_external}))");
+        let internal_descriptor =
+            format!("wsh(sortedmulti({threshold},{keys_internal}))");
+
+        let id = WalletId::new();
+        let layout = self.layout(&id);
+        layout.ensure_dir()?;
+
+        let descriptors = WalletDescriptors::new(
+            external_descriptor.clone(),
+            internal_descriptor.clone(),
+        );
+
+        let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
+        let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
+            .map_err(|e| ManagerError::Runtime(e.to_string()))?;
+
+        let fingerprints = cosigners
+            .iter()
+            .filter_map(|c| c.fingerprint.clone())
+            .collect();
+
+        let meta = LocalWalletMetadata {
+            id: id.clone(),
+            name: name.to_string(),
+            network: network.to_string(),
+            policy_type: POLICY_TYPE_MULTISIG.to_string(),
+            external_descriptor,
+            internal_descriptor,
+            fingerprints,
+            has_hot_keys: false,
+            created_at: now_unix_seconds(),
+        };
+        self.write_metadata(&layout, &meta)?;
+
+        Ok(id)
+    }
+
+    /// Create a watch-only wallet from descriptor strings the user
+    /// provided directly (QBL-226). The caller has to hand us both the
+    /// external (receive) and internal (change) descriptors — we don't
+    /// try to auto-derive one from the other because that's a guess
+    /// (e.g. a wpkh /0/* receive doesn't always pair with /1/*; mixed
+    /// descriptors and Liana flavours don't follow the convention).
+    /// BDK rejects descriptors that contain private keys, which double-
+    /// guards us against a hot wallet sneaking in through this path.
+    /// `fingerprints` is whatever origin info the caller could parse out
+    /// of the descriptors — purely informational, surfaced in the wallet
+    /// list metadata column.
+    pub async fn create_watch_only(
+        &self,
+        name: &str,
+        network: Network,
+        external_descriptor: &str,
+        internal_descriptor: &str,
+        fingerprints: Vec<String>,
+    ) -> Result<WalletId, ManagerError> {
+        ensure_supported_network(network)?;
+
+        let id = WalletId::new();
+        let layout = self.layout(&id);
+        layout.ensure_dir()?;
+
+        let descriptors = WalletDescriptors::new(
+            external_descriptor.to_string(),
+            internal_descriptor.to_string(),
+        );
+
+        let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
+        let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
+            .map_err(|e| ManagerError::Runtime(e.to_string()))?;
+
+        let meta = LocalWalletMetadata {
+            id: id.clone(),
+            name: name.to_string(),
+            network: network.to_string(),
+            policy_type: POLICY_TYPE_WATCH_ONLY.to_string(),
+            external_descriptor: external_descriptor.to_string(),
+            internal_descriptor: internal_descriptor.to_string(),
+            fingerprints,
             has_hot_keys: false,
             created_at: now_unix_seconds(),
         };
