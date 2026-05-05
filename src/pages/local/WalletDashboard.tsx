@@ -166,8 +166,11 @@ export default function WalletDashboard() {
 			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
 
 			{/* ── Header bar ── */}
+			{/* pt-10 keeps content below the WindowControls overlay
+			    (fixed top-0 h-8 z-50) so the right-side buttons don't sit
+			    under its drag region and steal clicks. */}
 			<header
-				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 py-4 backdrop-blur-sm"
+				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 pb-4 pt-10 backdrop-blur-sm"
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<div className="flex items-center gap-3">

@@ -78,7 +78,7 @@ export default function ReceiveScreen() {
 			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
 
 			<header
-				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 py-4 backdrop-blur-sm"
+				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 pb-4 pt-10 backdrop-blur-sm"
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<div className="flex items-center gap-3">
