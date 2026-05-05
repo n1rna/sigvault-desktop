@@ -124,6 +124,15 @@ export interface LocalReceiveAddress {
 	index: number;
 }
 
+/** Mirrors `local_wallet::settings::LocalSettings`. `electrs_urls` keys
+ * are network strings (`regtest`, `testnet4`, `signet`); empty values
+ * mean the user has not configured that network yet. Mainnet is gated
+ * off in v1 and not present in the map. */
+export interface LocalSettings {
+	default_network: string;
+	electrs_urls: Record<string, string>;
+}
+
 /** Mirrors `local_wallet::commands::LocalBalance`. `unconfirmed_sat` is
  * the sum of trusted_pending + untrusted_pending + immature outputs. */
 export interface LocalBalance {
