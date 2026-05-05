@@ -145,13 +145,6 @@ export default function SendScreen() {
 					},
 				},
 			);
-			if (!signed.fully_signed) {
-				setError(
-					"Some inputs were not signed. Multisig cosigners not supported in this v1 send flow.",
-				);
-				setBusy(false);
-				return;
-			}
 			const broadcast = await invoke<LocalBroadcastPsbtResponse>(
 				"cmd_local_broadcast_psbt",
 				{
