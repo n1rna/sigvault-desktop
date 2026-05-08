@@ -22,7 +22,8 @@ use wallet_runtime::{
 };
 
 use super::manager::{
-    derive_account_from_mnemonic, LocalWalletManager, ManagerError, WalletSummary,
+    derive_account_from_mnemonic, LianaKeyInput, LianaRecoveryPath, LianaSpendingPath,
+    LocalWalletManager, ManagerError, WalletSummary,
 };
 use super::settings::{LocalSettings, SettingsStore};
 use super::storage::{read_seed_file, WalletDirLayout, WalletId};
@@ -36,9 +37,11 @@ use crate::state::ApplicationState;
 pub struct CreateWalletRequest {
     pub name: String,
     pub network: String,
-    /// `singlesig_hot` is the only fully-implemented variant in QBL-216.
-    /// `multisig`, `liana`, `watch_only` return `UnsupportedPolicy`
-    /// until QBL-224 / QBL-225 / QBL-226 ship the corresponding flows.
+    /// Only `singlesig_hot` flows through this generic command. Multisig,
+    /// Liana, and watch-only have dedicated commands
+    /// (`cmd_local_create_multisig`, `cmd_local_create_liana`,
+    /// `cmd_local_create_watch_only`) — they don't share enough request
+    /// shape with hot singlesig to fit one struct.
     pub policy_type: String,
     /// Passphrase used to encrypt the seed material. Required for hot
     /// wallets, ignored for watch-only / hardware-only.
@@ -97,6 +100,33 @@ pub struct CreateMultisigWalletRequest {
     pub network: String,
     pub threshold: u32,
     pub cosigners: Vec<MultisigCosignerInput>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LianaKeyInputDto {
+    pub fingerprint: String,
+    pub xpub: String,
+    pub derivation_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LianaSpendingPathDto {
+    pub keys: Vec<LianaKeyInputDto>,
+    pub threshold: u32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LianaRecoveryPathDto {
+    pub timelock_blocks: u16,
+    pub path: LianaSpendingPathDto,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateLianaWalletRequest {
+    pub name: String,
+    pub network: String,
+    pub primary: LianaSpendingPathDto,
+    pub recoveries: Vec<LianaRecoveryPathDto>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -215,8 +245,8 @@ pub async fn cmd_local_create_wallet(
             })
         }
         "multisig" | "liana" | "watch_only" => Err(format!(
-            "policy type '{}' not yet supported in v1 (lands in a later milestone ticket)",
-            request.policy_type
+            "policy type '{}' uses a dedicated command — call cmd_local_create_{} instead",
+            request.policy_type, request.policy_type
         )),
         other => Err(format!("unknown policy_type '{other}'")),
     }
@@ -288,6 +318,51 @@ pub async fn cmd_local_create_multisig(
         })
         .collect();
     mgr.create_multisig(&request.name, network, request.threshold, cosigners)
+        .await
+        .map_err(map_err)
+}
+
+/// Create a Liana timelocked-policy wallet (QBL-225). Primary path is
+/// spendable immediately; each recovery path becomes spendable after its
+/// block-count timelock elapses. v1 collects all keys from hardware
+/// devices or pasted xpubs (no hot keys for the primary path — see
+/// QBL-235 for the related "unspendable primary" affordance).
+#[tauri::command]
+pub async fn cmd_local_create_liana(
+    app: AppHandle,
+    app_state: State<'_, ApplicationState>,
+    request: CreateLianaWalletRequest,
+) -> Result<WalletId, String> {
+    app_state.require_local_mode().await?;
+    let network = parse_network(&request.network)?;
+    let mgr = manager_for(&app, &app_state)?;
+
+    fn map_path(dto: LianaSpendingPathDto) -> LianaSpendingPath {
+        LianaSpendingPath {
+            keys: dto
+                .keys
+                .into_iter()
+                .map(|k| LianaKeyInput {
+                    fingerprint: k.fingerprint,
+                    xpub: k.xpub,
+                    derivation_path: k.derivation_path,
+                })
+                .collect(),
+            threshold: dto.threshold,
+        }
+    }
+
+    let primary = map_path(request.primary);
+    let recoveries: Vec<LianaRecoveryPath> = request
+        .recoveries
+        .into_iter()
+        .map(|r| LianaRecoveryPath {
+            timelock_blocks: r.timelock_blocks,
+            path: map_path(r.path),
+        })
+        .collect();
+
+    mgr.create_liana(&request.name, network, primary, recoveries)
         .await
         .map_err(map_err)
 }
