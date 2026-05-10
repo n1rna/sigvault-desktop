@@ -3546,7 +3546,7 @@ dependencies = [
 [[package]]
 name = "liana"
 version = "12.0.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#a07dd8a1616fa7e9ee2e4734db8d9c58f87445f7"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fpolicy-core-unspendable-primary#2d4b05294cbf5975907289c73c069de37f2705b8"
 dependencies = [
  "bdk_coin_select",
  "bip39",
@@ -4763,7 +4763,7 @@ dependencies = [
 [[package]]
 name = "policy-core"
 version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#a07dd8a1616fa7e9ee2e4734db8d9c58f87445f7"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fpolicy-core-unspendable-primary#2d4b05294cbf5975907289c73c069de37f2705b8"
 dependencies = [
  "bdk_wallet",
  "hex",
@@ -7993,7 +7993,7 @@ dependencies = [
 [[package]]
 name = "wallet-runtime"
 version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#a07dd8a1616fa7e9ee2e4734db8d9c58f87445f7"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fpolicy-core-unspendable-primary#2d4b05294cbf5975907289c73c069de37f2705b8"
 dependencies = [
  "bdk_electrum",
  "bdk_file_store",

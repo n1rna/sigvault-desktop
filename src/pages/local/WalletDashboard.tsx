@@ -257,6 +257,31 @@ export default function WalletDashboard() {
 
 					<BalanceCard balance={balance} />
 
+					{wallet?.recovery_only && (
+						<div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/[0.05] px-3.5 py-3 text-[12px] text-foreground">
+							<svg
+								className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<path d="M12 8v4" />
+								<path d="M12 16h.01" />
+								<circle cx="12" cy="12" r="10" />
+							</svg>
+							<div className="leading-snug">
+								<div className="font-medium">Recovery-only wallet.</div>
+								<div className="mt-0.5 text-muted-foreground">
+									The primary path is unspendable. Funds can only be moved
+									via the recovery key after the timelock elapses.
+								</div>
+							</div>
+						</div>
+					)}
+
 					<div
 						className={
 							wallet?.policy_type === "watch_only"
