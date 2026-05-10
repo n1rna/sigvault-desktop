@@ -25,10 +25,10 @@ use local_wallet::commands::{
     cmd_local_broadcast_psbt, cmd_local_build_psbt, cmd_local_create_multisig,
     cmd_local_create_singlesig_hw, cmd_local_create_wallet, cmd_local_create_watch_only,
     cmd_local_delete_wallet, cmd_local_get_balance, cmd_local_get_history,
-    cmd_local_get_receive_address, cmd_local_get_settings, cmd_local_list_wallets,
-    cmd_local_lock_wallet, cmd_local_recover_from_mnemonic, cmd_local_set_settings,
-    cmd_local_sign_psbt_hardware, cmd_local_sign_psbt_software, cmd_local_sync,
-    cmd_local_unlock_wallet,
+    cmd_local_get_receive_address, cmd_local_get_settings, cmd_local_get_wallet_details,
+    cmd_local_list_spending_paths, cmd_local_list_wallets, cmd_local_lock_wallet,
+    cmd_local_recover_from_mnemonic, cmd_local_set_settings, cmd_local_sign_psbt_hardware,
+    cmd_local_sign_psbt_software, cmd_local_sync, cmd_local_unlock_wallet,
 };
 use state::ApplicationState;
 
@@ -69,6 +69,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(ApplicationState::new())
         .invoke_handler(tauri::generate_handler![
             cmd_initialize_app,
@@ -112,6 +114,8 @@ pub fn run() {
             cmd_local_get_settings,
             cmd_local_set_settings,
             cmd_local_sync,
+            cmd_local_get_wallet_details,
+            cmd_local_list_spending_paths,
             cmd_local_build_psbt,
             cmd_local_sign_psbt_software,
             cmd_local_sign_psbt_hardware,
