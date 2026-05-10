@@ -628,7 +628,7 @@ version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
 dependencies = [
- "bitcoin_hashes 0.13.1",
+ "bitcoin_hashes 0.14.1",
  "serde",
  "unicode-normalization",
 ]
@@ -3546,6 +3546,20 @@ dependencies = [
 [[package]]
 name = "liana"
 version = "12.0.0"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path#d7f9888481e780dbc79af50f6b6e2dc1326d3613"
+dependencies = [
+ "bdk_coin_select",
+ "bip39",
+ "getrandom 0.2.17",
+ "log",
+ "miniscript",
+ "rdrand",
+ "serde",
+]
+
+[[package]]
+name = "liana"
+version = "12.0.0"
 source = "git+https://github.com/n1rna/walletrs.git?branch=main#c2b5c4bd96db04dc9d0b07ad15b4c7a9b8ee5f42"
 dependencies = [
  "bdk_coin_select",
@@ -4763,11 +4777,26 @@ dependencies = [
 [[package]]
 name = "policy-core"
 version = "0.1.0"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path#d7f9888481e780dbc79af50f6b6e2dc1326d3613"
+dependencies = [
+ "bdk_wallet",
+ "hex",
+ "liana 12.0.0 (git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path)",
+ "log",
+ "miniscript",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "policy-core"
+version = "0.1.0"
 source = "git+https://github.com/n1rna/walletrs.git?branch=main#c2b5c4bd96db04dc9d0b07ad15b4c7a9b8ee5f42"
 dependencies = [
  "bdk_wallet",
  "hex",
- "liana",
+ "liana 12.0.0 (git+https://github.com/n1rna/walletrs.git?branch=main)",
  "log",
  "miniscript",
  "serde",
@@ -5522,6 +5551,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rfd"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a15ad77d9e70a92437d8f74c35d99b4e4691128df018833e99f90bcd36152672"
+dependencies = [
+ "block2",
+ "dispatch2",
+ "glib-sys",
+ "gobject-sys",
+ "gtk-sys",
+ "js-sys",
+ "log",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-foundation",
+ "raw-window-handle",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5944,7 +5997,7 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "bitcoin_hashes 0.13.1",
+ "bitcoin_hashes 0.14.1",
  "rand 0.8.5",
  "secp256k1-sys",
  "serde",
@@ -6345,7 +6398,7 @@ dependencies = [
  "oauth2",
  "once_cell",
  "open",
- "policy-core",
+ "policy-core 0.1.0 (git+https://github.com/n1rna/walletrs.git?branch=main)",
  "rand 0.10.1",
  "reqwest 0.12.28",
  "rustls 0.23.38",
@@ -6355,6 +6408,8 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-process",
@@ -6951,6 +7006,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-dialog"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65981abb771e74e571a38196c3baa11c459379164791eba0e67abc1a5fac9884"
+dependencies = [
+ "log",
+ "raw-window-handle",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "tauri-plugin-fs",
+ "thiserror 2.0.18",
+ "url",
+]
+
+[[package]]
+name = "tauri-plugin-fs"
+version = "2.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7ecc274121aca0c036a2b42d1cbe83d368d348f54e0bb8a735c2b1548e8f371"
+dependencies = [
+ "anyhow",
+ "dunce",
+ "glob",
+ "log",
+ "objc2-foundation",
+ "percent-encoding",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "tauri",
+ "tauri-plugin",
+ "tauri-utils",
+ "thiserror 2.0.18",
+ "toml 1.1.2+spec-1.1.0",
+ "url",
+]
+
+[[package]]
 name = "tauri-plugin-log"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7417,6 +7514,21 @@ dependencies = [
  "toml_parser",
  "toml_writer",
  "winnow 0.7.15",
+]
+
+[[package]]
+name = "toml"
+version = "1.1.2+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81f3d15e84cbcd896376e6730314d59fb5a87f31e4b038454184435cd57defee"
+dependencies = [
+ "indexmap 2.14.0",
+ "serde_core",
+ "serde_spanned 1.1.1",
+ "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 1.0.1",
 ]
 
 [[package]]
@@ -7910,16 +8022,16 @@ dependencies = [
 [[package]]
 name = "wallet-runtime"
 version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#c2b5c4bd96db04dc9d0b07ad15b4c7a9b8ee5f42"
+source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path#d7f9888481e780dbc79af50f6b6e2dc1326d3613"
 dependencies = [
  "bdk_electrum",
  "bdk_file_store",
  "bdk_wallet",
  "hex",
- "liana",
+ "liana 12.0.0 (git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path)",
  "log",
  "miniscript",
- "policy-core",
+ "policy-core 0.1.0 (git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path)",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
