@@ -1,6 +1,5 @@
-// Singlesig wallet creation wizard (QBL-223 + QBL-220).
-//
-// Three paths share the basics step:
+// Wallet creation wizard. One screen, several methods sharing the basics
+// step:
 //   • Generate (hot): backend mints a fresh BIP39 mnemonic, persists
 //     the encrypted seed, returns the words for one-time backup display.
 //   • Recover (hot): user types an existing 12/24-word phrase, backend
@@ -9,8 +8,11 @@
 //     unlocks it, the wizard collects the device's xpub at the standard
 //     singlesig segwit-v0 path, and persists a watch-only descriptor
 //     via `cmd_local_create_singlesig_hw`. No on-disk seed.
-//
-// Multisig / Liana / watch-only-only flows ship in QBL-224 / 225 / 226.
+//   • Watch-only: paste descriptors directly (QBL-226).
+//   • Multisig: M-of-N from pasted cosigner xpubs (QBL-224).
+//   • Liana: timelocked-policy with primary + recovery paths, all
+//     pasted xpubs (QBL-225). Hot primary keys are out of scope for v1
+//     — see QBL-235 for the related "unspendable primary" affordance.
 
 import { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -27,7 +29,8 @@ type Method =
 	| "recover"
 	| "hardware"
 	| "watch_only"
-	| "multisig";
+	| "multisig"
+	| "liana";
 
 type Step =
 	| "basics"
@@ -35,6 +38,7 @@ type Step =
 	| "hw"
 	| "watch_only"
 	| "multisig"
+	| "liana"
 	| "mnemonic"
 	| "done";
 
@@ -201,6 +205,41 @@ export default function CreateWalletWizard() {
 		}
 	};
 
+	const submitLiana = async (input: {
+		primary: { fingerprint: string; xpub: string; derivation_path: string };
+		recoveries: {
+			timelock_blocks: number;
+			path: {
+				keys: { fingerprint: string; xpub: string; derivation_path: string }[];
+				threshold: number;
+			};
+		}[];
+	}) => {
+		setSubmitting(true);
+		setError(null);
+		try {
+			const walletId = await invoke<string>("cmd_local_create_liana", {
+				request: {
+					name: basics.name,
+					network: basics.network,
+					primary: { keys: [input.primary], threshold: 1 },
+					recoveries: input.recoveries,
+				},
+			});
+			await invoke("cmd_local_unlock_wallet", {
+				request: { wallet_id: walletId, passphrase: "" },
+			});
+			setCreatedId(walletId);
+			setStep("done");
+		} catch (err) {
+			setError(
+				typeof err === "string" ? err : "Failed to create Liana wallet",
+			);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
 	const submitHardware = async (deviceInfo: DeviceInfo) => {
 		setSubmitting(true);
 		setError(null);
@@ -253,6 +292,12 @@ export default function CreateWalletWizard() {
 		if (basics.method === "multisig") {
 			if (step === "basics") return 0;
 			if (step === "multisig") return 1;
+			if (step === "done") return 2;
+			return 0;
+		}
+		if (basics.method === "liana") {
+			if (step === "basics") return 0;
+			if (step === "liana") return 1;
 			if (step === "done") return 2;
 			return 0;
 		}
@@ -317,7 +362,9 @@ export default function CreateWalletWizard() {
 											? "watch_only"
 											: basics.method === "multisig"
 												? "multisig"
-												: "passphrase",
+												: basics.method === "liana"
+													? "liana"
+													: "passphrase",
 								);
 							}}
 						/>
@@ -345,6 +392,14 @@ export default function CreateWalletWizard() {
 							submitting={submitting}
 							onBack={() => setStep("basics")}
 							onSubmit={submitMultisig}
+						/>
+					)}
+
+					{step === "liana" && basics.method === "liana" && (
+						<LianaStep
+							submitting={submitting}
+							onBack={() => setStep("basics")}
+							onSubmit={submitLiana}
 						/>
 					)}
 
@@ -407,7 +462,9 @@ function Header({
 					? ["Basics", "Descriptors", "Done", ""]
 					: method === "multisig"
 						? ["Basics", "Cosigners", "Done", ""]
-						: ["Basics", "Recovery", "Done", ""];
+						: method === "liana"
+							? ["Basics", "Paths", "Done", ""]
+							: ["Basics", "Recovery", "Done", ""];
 	return (
 		<div>
 			<div className="flex items-center justify-between">
@@ -559,6 +616,12 @@ function BasicsStep({
 						onClick={() => onChange({ ...value, method: "multisig" })}
 						title="Multisig"
 						hint="M-of-N watch-only with cosigner xpubs."
+					/>
+					<MethodCard
+						active={value.method === "liana"}
+						onClick={() => onChange({ ...value, method: "liana" })}
+						title="Liana"
+						hint="Primary path + timelocked recovery."
 					/>
 				</div>
 			</div>
@@ -929,7 +992,9 @@ function DoneStep({
 							? "Watch-only wallet imported."
 							: method === "multisig"
 								? "Multisig wallet created."
-								: "Wallet recovered."}
+								: method === "liana"
+									? "Liana wallet created."
+									: "Wallet recovered."}
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
 				The wallet is unlocked and ready. Open it to view balance, addresses,
@@ -1276,6 +1341,209 @@ function MultisigStep({
 					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{submitting ? "Creating…" : `Create ${threshold}-of-${n} multisig`}
+				</button>
+			</div>
+		</form>
+	);
+}
+
+/** Parse a descriptor key expression of the form `[fp/path]xpub...`
+ * (with or without a trailing `/<0;1>/*`, `/0/*`, or `/1/*`) into the
+ * components the backend wants. Returns null on malformed input. */
+function parseDescriptorKey(
+	raw: string,
+): { fingerprint: string; xpub: string; derivation_path: string } | null {
+	const trimmed = raw.trim();
+	const m = trimmed.match(/^\[([0-9a-fA-F]{8})\/(.+?)\](.+)$/);
+	if (!m) return null;
+	const [, fp, path, rest] = m;
+	const xpub = rest
+		.replace(/\/<0;1>\/\*$/, "")
+		.replace(/\/[01]\/\*$/, "")
+		.trim();
+	if (!xpub) return null;
+	return {
+		fingerprint: fp.toLowerCase(),
+		xpub,
+		derivation_path: `m/${path}`,
+	};
+}
+
+/** Fixed timelock presets in blocks. ~144 blocks/day on Bitcoin. */
+const TIMELOCK_PRESETS: { label: string; blocks: number }[] = [
+	{ label: "1 day", blocks: 144 },
+	{ label: "1 week", blocks: 1008 },
+	{ label: "1 month", blocks: 4320 },
+	{ label: "6 months", blocks: 25920 },
+	{ label: "1 year", blocks: 52560 },
+];
+
+function LianaStep({
+	submitting,
+	onBack,
+	onSubmit,
+}: {
+	submitting: boolean;
+	onBack: () => void;
+	onSubmit: (input: {
+		primary: { fingerprint: string; xpub: string; derivation_path: string };
+		recoveries: {
+			timelock_blocks: number;
+			path: {
+				keys: { fingerprint: string; xpub: string; derivation_path: string }[];
+				threshold: number;
+			};
+		}[];
+	}) => void;
+}) {
+	const [primaryRaw, setPrimaryRaw] = useState("");
+	const [recoveryRaw, setRecoveryRaw] = useState("");
+	const [timelockBlocks, setTimelockBlocks] = useState(4320);
+
+	const primaryParsed = useMemo(
+		() => parseDescriptorKey(primaryRaw),
+		[primaryRaw],
+	);
+	const recoveryParsed = useMemo(
+		() => parseDescriptorKey(recoveryRaw),
+		[recoveryRaw],
+	);
+	const ready =
+		primaryParsed !== null && recoveryParsed !== null && timelockBlocks > 0;
+
+	const submit = (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!ready || submitting) return;
+		onSubmit({
+			primary: primaryParsed!,
+			recoveries: [
+				{
+					timelock_blocks: timelockBlocks,
+					path: { keys: [recoveryParsed!], threshold: 1 },
+				},
+			],
+		});
+	};
+
+	return (
+		<form className="mt-8 space-y-6" onSubmit={submit}>
+			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+				<p className="text-[12px] leading-relaxed text-muted-foreground">
+					Build a Liana timelocked-recovery wallet. The{" "}
+					<span className="font-medium text-foreground">primary</span> key can
+					spend immediately. The{" "}
+					<span className="font-medium text-foreground">recovery</span> key
+					unlocks after the timelock elapses (counted from the last on-chain
+					activity for the wallet). Paste each key as a descriptor key
+					expression —{" "}
+					<span className="font-mono text-[11px] text-foreground">
+						[fp/48'/1'/0'/2']xpub...
+					</span>{" "}
+					— typically collected from a hardware wallet beforehand. v1
+					supports one key per path; multi-key paths and hot primaries are
+					follow-ups.
+				</p>
+			</div>
+
+			<label className="block">
+				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					Primary key
+				</span>
+				<textarea
+					value={primaryRaw}
+					onChange={(e) => setPrimaryRaw(e.target.value)}
+					autoComplete="off"
+					autoCapitalize="off"
+					spellCheck={false}
+					rows={2}
+					placeholder="[fp/48'/1'/0'/2']xpub..."
+					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
+				/>
+				{primaryRaw.trim().length > 0 && primaryParsed === null && (
+					<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
+						Expected [fingerprint/path]xpub...
+					</span>
+				)}
+			</label>
+
+			<div>
+				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					Recovery timelock
+				</span>
+				<div className="mt-2 flex flex-wrap items-center gap-2">
+					{TIMELOCK_PRESETS.map((preset) => {
+						const active = timelockBlocks === preset.blocks;
+						return (
+							<button
+								key={preset.blocks}
+								type="button"
+								onClick={() => setTimelockBlocks(preset.blocks)}
+								className={`rounded-md border px-3 py-1.5 text-[11px] transition-colors ${
+									active
+										? "border-primary bg-primary/[0.08] text-foreground"
+										: "border-border bg-card text-muted-foreground hover:text-foreground"
+								}`}
+							>
+								{preset.label}
+							</button>
+						);
+					})}
+				</div>
+				<div className="mt-3 flex items-center gap-2">
+					<input
+						type="number"
+						min={1}
+						max={65535}
+						value={timelockBlocks}
+						onChange={(e) =>
+							setTimelockBlocks(
+								Math.max(1, Math.min(65535, Number(e.target.value) || 1)),
+							)
+						}
+						className="w-32 rounded-md border border-border bg-background px-3 py-2 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
+					/>
+					<span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+						blocks ≈ {(timelockBlocks / 144).toFixed(1)} days
+					</span>
+				</div>
+			</div>
+
+			<label className="block">
+				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					Recovery key
+				</span>
+				<textarea
+					value={recoveryRaw}
+					onChange={(e) => setRecoveryRaw(e.target.value)}
+					autoComplete="off"
+					autoCapitalize="off"
+					spellCheck={false}
+					rows={2}
+					placeholder="[fp/48'/1'/0'/2']xpub..."
+					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
+				/>
+				{recoveryRaw.trim().length > 0 && recoveryParsed === null && (
+					<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
+						Expected [fingerprint/path]xpub...
+					</span>
+				)}
+			</label>
+
+			<div className="flex items-center gap-3">
+				<button
+					type="button"
+					onClick={onBack}
+					disabled={submitting}
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+				>
+					← Back
+				</button>
+				<button
+					type="submit"
+					disabled={!ready || submitting}
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+				>
+					{submitting ? "Creating…" : "Create Liana wallet"}
 				</button>
 			</div>
 		</form>

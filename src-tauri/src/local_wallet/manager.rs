@@ -8,13 +8,14 @@
 //! AppHandle for the data dir and passes a `LocalWalletManager` already
 //! configured for that dir.
 //!
-//! Scope for QBL-216:
-//! - singlesig hot wallets (segwit v0) end-to-end
-//! - list / unlock / lock / delete
-//! - `recover_from_mnemonic` shares the create code path
+//! Wallet-creation surface (one method per flavour):
+//! - `create_singlesig_hot` — hot mnemonic + passphrase (QBL-216)
+//! - `create_singlesig_hardware` — HW xpub (QBL-220)
+//! - `create_multisig` — N HW or pasted-xpub cosigners (QBL-224)
+//! - `create_watch_only` — descriptor paste / xpub import (QBL-226)
+//! - `create_liana` — Liana timelocked-policy, HW + pasted xpub (QBL-225)
 //!
-//! Multisig (QBL-224), Liana (QBL-225), and watch-only (QBL-226) flows
-//! land later. Sync / PSBT / HW signing are wired in QBL-218–QBL-220.
+//! Sync / PSBT / HW signing are wired in QBL-218–QBL-220.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,8 +24,12 @@ use std::str::FromStr;
 use bdk_wallet::bitcoin::bip32::{Fingerprint, Xpriv};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::keys::bip39::{Language, Mnemonic};
+use bdk_wallet::miniscript::descriptor::DescriptorPublicKey;
 use bdk_wallet::KeychainKind;
-use policy_core::KeyUtils;
+use policy_core::{
+    build_descriptor, KeyUtils, PolicyPath as CorePolicyPath, RecoveryPath as CoreRecoveryPath,
+    WalletShape,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use wallet_runtime::{
@@ -41,6 +46,7 @@ const POLICY_TYPE_SINGLESIG_HW: &str = "singlesig_hardware";
 const POLICY_TYPE_WATCH_ONLY: &str = "watch_only";
 const POLICY_TYPE_MULTISIG: &str = "multisig";
 const POLICY_TYPE_DESCRIPTOR: &str = "descriptor";
+const POLICY_TYPE_LIANA: &str = "liana";
 
 /// A cosigner contribution to a multisig wallet (QBL-224). `key` is the
 /// descriptor key expression up through the xpub — `[fp/path]xpub` for
@@ -51,6 +57,34 @@ const POLICY_TYPE_DESCRIPTOR: &str = "descriptor";
 pub struct MultisigCosigner {
     pub key: String,
     pub fingerprint: Option<String>,
+}
+
+/// One key contribution to a Liana spending path (QBL-225). `xpub` is the
+/// public key at `derivation_path`; `fingerprint` is the master key
+/// fingerprint. Same shape as the inputs we collect for HW singlesig +
+/// multisig — the wizard reuses the existing `cmd_get_device_xpub` flow,
+/// then hands the result here.
+#[derive(Debug, Clone)]
+pub struct LianaKeyInput {
+    pub fingerprint: String,
+    pub xpub: String,
+    pub derivation_path: String,
+}
+
+/// One spending path inside a Liana wallet. `threshold == 1` and
+/// `keys.len() == 1` is the singlesig case; larger thresholds are
+/// M-of-N inside the path.
+#[derive(Debug, Clone)]
+pub struct LianaSpendingPath {
+    pub keys: Vec<LianaKeyInput>,
+    pub threshold: u32,
+}
+
+/// One recovery branch with its block-count timelock.
+#[derive(Debug, Clone)]
+pub struct LianaRecoveryPath {
+    pub timelock_blocks: u16,
+    pub path: LianaSpendingPath,
 }
 
 /// What's persisted in `metadata.json` for a local wallet. Everything
@@ -499,6 +533,105 @@ impl LocalWalletManager {
         Ok(id)
     }
 
+    /// Create a Liana timelocked-policy wallet (QBL-225). Always taproot
+    /// — policy-core rejects SegwitV0 for timelocked policies — with one
+    /// primary spending path that's spendable immediately and one or more
+    /// recovery paths that unlock after their respective block-count
+    /// timelocks. v1 collects all keys from hardware devices or pasted
+    /// xpubs; hot keys for the primary path are deferred to a follow-up
+    /// (see QBL-235 for the related "unspendable primary" affordance).
+    ///
+    /// Descriptor construction goes through `policy_core::build_descriptor`
+    /// against a `WalletShape::TimelockedPolicy`, which produces the
+    /// canonical Liana descriptor pair. BDK persists from the receive +
+    /// change descriptor strings the same way as the other wallet shapes;
+    /// at sign time, miniscript's `finalize_mut` selects the right path
+    /// based on which keys signed.
+    pub async fn create_liana(
+        &self,
+        name: &str,
+        network: Network,
+        primary: LianaSpendingPath,
+        recoveries: Vec<LianaRecoveryPath>,
+    ) -> Result<WalletId, ManagerError> {
+        ensure_supported_network(network)?;
+
+        validate_liana_path(&primary, "primary")?;
+        if recoveries.is_empty() {
+            return Err(ManagerError::Runtime(
+                "Liana wallets require at least one recovery path".to_string(),
+            ));
+        }
+        for (idx, rec) in recoveries.iter().enumerate() {
+            if rec.timelock_blocks == 0 {
+                return Err(ManagerError::Runtime(format!(
+                    "recovery path {idx} timelock must be greater than zero"
+                )));
+            }
+            validate_liana_path(&rec.path, &format!("recovery {idx}"))?;
+        }
+
+        let primary_path = build_core_policy_path(&primary)?;
+        let recovery_paths: Vec<CoreRecoveryPath> = recoveries
+            .iter()
+            .enumerate()
+            .map(|(idx, rec)| {
+                Ok(CoreRecoveryPath {
+                    id: format!("recovery_{idx}"),
+                    timelock: rec.timelock_blocks,
+                    path: build_core_policy_path(&rec.path)?,
+                })
+            })
+            .collect::<Result<Vec<_>, ManagerError>>()?;
+
+        let shape = WalletShape::TimelockedPolicy {
+            primary_id: "primary".to_string(),
+            primary: primary_path,
+            recoveries: recovery_paths,
+        };
+        let pair = build_descriptor(&shape)
+            .map_err(|e| ManagerError::Runtime(format!("liana descriptor: {e}")))?;
+
+        let id = WalletId::new();
+        let layout = self.layout(&id);
+        layout.ensure_dir()?;
+
+        let descriptors = WalletDescriptors::new(pair.external.clone(), pair.internal.clone());
+        let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
+        let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
+            .map_err(|e| ManagerError::Runtime(e.to_string()))?;
+
+        let mut fingerprints: Vec<String> = Vec::new();
+        let mut push_fp = |fp: &str| {
+            if !fp.is_empty() && !fingerprints.iter().any(|seen| seen == fp) {
+                fingerprints.push(fp.to_string());
+            }
+        };
+        for k in &primary.keys {
+            push_fp(&k.fingerprint);
+        }
+        for rec in &recoveries {
+            for k in &rec.path.keys {
+                push_fp(&k.fingerprint);
+            }
+        }
+
+        let meta = LocalWalletMetadata {
+            id: id.clone(),
+            name: name.to_string(),
+            network: network.to_string(),
+            policy_type: POLICY_TYPE_LIANA.to_string(),
+            external_descriptor: pair.external,
+            internal_descriptor: pair.internal,
+            fingerprints,
+            has_hot_keys: false,
+            created_at: now_unix_seconds(),
+        };
+        self.write_metadata(&layout, &meta)?;
+
+        Ok(id)
+    }
+
     /// Decrypt the wallet's `seed.enc`, reload its BDK state from
     /// `bdk_store`, and put the resulting handle into the in-memory
     /// unlocked map. Idempotent on success only when the wallet was not
@@ -644,6 +777,54 @@ fn now_unix_seconds() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+fn validate_liana_path(path: &LianaSpendingPath, label: &str) -> Result<(), ManagerError> {
+    if path.keys.is_empty() {
+        return Err(ManagerError::Runtime(format!(
+            "{label} path requires at least one key"
+        )));
+    }
+    if path.threshold == 0 || path.threshold as usize > path.keys.len() {
+        return Err(ManagerError::Runtime(format!(
+            "{label} path threshold {} is out of range for {} keys",
+            path.threshold,
+            path.keys.len()
+        )));
+    }
+    Ok(())
+}
+
+fn build_core_policy_path(path: &LianaSpendingPath) -> Result<CorePolicyPath, ManagerError> {
+    let keys: Vec<DescriptorPublicKey> = path
+        .keys
+        .iter()
+        .map(key_input_to_descriptor_public_key)
+        .collect::<Result<Vec<_>, _>>()?;
+    if keys.len() == 1 && path.threshold == 1 {
+        Ok(CorePolicyPath::Single(keys.into_iter().next().unwrap()))
+    } else {
+        Ok(CorePolicyPath::Multi {
+            threshold: path.threshold as usize,
+            keys,
+        })
+    }
+}
+
+/// Format an HW-collected (or pasted) xpub into the canonical
+/// `[fp/origin]xpub/<0;1>/*` shape that Liana / miniscript expects, then
+/// parse it as a `DescriptorPublicKey`. Mirrors how the cloud-mode flow
+/// builds Liana descriptors via walletrs.
+fn key_input_to_descriptor_public_key(
+    k: &LianaKeyInput,
+) -> Result<DescriptorPublicKey, ManagerError> {
+    let formatted = KeyUtils::format_key_for_liana(&k.fingerprint, &k.derivation_path, &k.xpub);
+    DescriptorPublicKey::from_str(&formatted).map_err(|e| {
+        ManagerError::Runtime(format!(
+            "invalid xpub for fingerprint {}: {}",
+            k.fingerprint, e
+        ))
+    })
 }
 
 #[cfg(test)]
