@@ -172,6 +172,7 @@ export default function CreateWalletWizard() {
 		external: string;
 		internal: string;
 		fingerprints: string[];
+		spendable: boolean;
 	}) => {
 		setSubmitting(true);
 		setError(null);
@@ -183,6 +184,7 @@ export default function CreateWalletWizard() {
 					external_descriptor: descriptors.external,
 					internal_descriptor: descriptors.internal,
 					fingerprints: descriptors.fingerprints,
+					spendable: descriptors.spendable,
 				},
 			});
 			await invoke("cmd_local_unlock_wallet", {
@@ -1032,10 +1034,12 @@ function WatchOnlyStep({
 		external: string;
 		internal: string;
 		fingerprints: string[];
+		spendable: boolean;
 	}) => void;
 }) {
 	const [external, setExternal] = useState("");
 	const [internal, setInternal] = useState("");
+	const [spendable, setSpendable] = useState(false);
 	const ready = external.trim().length > 0 && internal.trim().length > 0;
 
 	const submit = (e: React.FormEvent) => {
@@ -1046,7 +1050,7 @@ function WatchOnlyStep({
 		const fingerprints = [
 			...new Set([...parseFingerprints(ext), ...parseFingerprints(int)]),
 		];
-		onSubmit({ external: ext, internal: int, fingerprints });
+		onSubmit({ external: ext, internal: int, fingerprints, spendable });
 	};
 
 	return (
@@ -1096,6 +1100,26 @@ function WatchOnlyStep({
 					placeholder="wpkh([fp/84'/1'/0']xpub.../1/*)"
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
 				/>
+			</label>
+
+			<label className="flex items-start gap-3 rounded-md border border-border bg-card/40 px-4 py-3 cursor-pointer">
+				<input
+					type="checkbox"
+					checked={spendable}
+					onChange={(e) => setSpendable(e.target.checked)}
+					className="mt-[2px] h-4 w-4 cursor-pointer accent-primary"
+				/>
+				<div className="flex-1">
+					<div className="text-[13px] font-medium text-foreground">
+						Enable spending with hardware wallet
+					</div>
+					<div className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+						Adds a Send button. Signing happens via a connected hardware
+						device (Ledger, BitBox, Jade, Coldcard, etc.) or by exporting
+						the PSBT to an air-gapped signer. Leave off for a pure read-only
+						wallet.
+					</div>
+				</div>
 			</label>
 
 			<div className="flex items-center gap-3">

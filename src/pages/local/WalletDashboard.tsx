@@ -257,7 +257,13 @@ export default function WalletDashboard() {
 
 					<BalanceCard balance={balance} />
 
-					<div className="grid grid-cols-2 gap-3">
+					<div
+						className={
+							wallet?.policy_type === "watch_only"
+								? "grid grid-cols-1"
+								: "grid grid-cols-2 gap-3"
+						}
+					>
 						<button
 							type="button"
 							onClick={() => navigate(`/local/wallets/${walletId}/receive`)}
@@ -277,25 +283,27 @@ export default function WalletDashboard() {
 							</svg>
 							Receive
 						</button>
-						<button
-							type="button"
-							onClick={() => navigate(`/local/wallets/${walletId}/send`)}
-							className="flex h-12 items-center justify-center gap-2 rounded-md border border-border bg-card font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04]"
-						>
-							<svg
-								className="h-4 w-4"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
+						{wallet?.policy_type !== "watch_only" && (
+							<button
+								type="button"
+								onClick={() => navigate(`/local/wallets/${walletId}/send`)}
+								className="flex h-12 items-center justify-center gap-2 rounded-md border border-border bg-card font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04]"
 							>
-								<path d="M5 12h14" />
-								<path d="m12 5 7 7-7 7" />
-							</svg>
-							Send
-						</button>
+								<svg
+									className="h-4 w-4"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="M5 12h14" />
+									<path d="m12 5 7 7-7 7" />
+								</svg>
+								Send
+							</button>
+						)}
 					</div>
 
 					<HistoryList

@@ -1,11 +1,12 @@
-// Send wizard (QBL-229).
+// Send wizard (QBL-229 + QBL-234).
 //
-// Three-step flow on top of the QBL-219 PSBT pipeline:
+// Steps on top of the QBL-219 PSBT pipeline:
 //   1. Compose — recipient address, amount, fee rate
-//   2. Confirm — review summary, type passphrase, sign + broadcast
-//   3. Done — show resulting txid with copy
+//   2. Path — pick spending path (skipped for single-path descriptors)
+//   3. Confirm — review summary, type passphrase / pick HW, sign + broadcast
+//   4. Done — show resulting txid with copy
 //
-// The sign and broadcast calls fire back-to-back from step 2 — once a
+// The sign and broadcast calls fire back-to-back from step 3 — once a
 // PSBT is fully signed there's no reason to make the user wait between
 // signing and broadcasting. If broadcast fails after a successful sign
 // the wizard surfaces the error and lets the user retry from the same
@@ -17,6 +18,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import DeviceDiscovery from "../../components/DeviceDiscovery";
 import WindowControls from "../../components/WindowControls";
+import AnimatedQrModal from "../../components/AnimatedQrModal";
+import QrScanModal from "../../components/QrScanModal";
+import { savePsbtToFile, loadPsbtFromFile } from "../../lib/psbtFile";
 import type {
 	LocalBalance,
 	LocalBroadcastPsbtResponse,
@@ -24,9 +28,34 @@ import type {
 	LocalSignPsbtResponse,
 	LocalWalletSummary,
 } from "../../types/events";
-import type { DeviceInfo, DiscoveredDevice } from "../../types/hardware";
+import type {
+	DeviceInfo,
+	DiscoveredDevice,
+	WalletConfig,
+} from "../../types/hardware";
 
-type Step = "compose" | "confirm" | "done";
+type Step = "compose" | "path" | "confirm" | "done";
+
+type SpendingPath = {
+	id: string;
+	label: string;
+	description: string | null;
+	threshold: number;
+	fingerprints: string[];
+	timelock_blocks: number | null;
+	policy_path: Record<string, number[]> | null;
+};
+
+type WalletDetails = {
+	id: string;
+	name: string;
+	network: string;
+	policy_type: string;
+	external_descriptor: string;
+	internal_descriptor: string;
+	fingerprints: string[];
+	has_hot_keys: boolean;
+};
 
 const SAT_PER_BTC = 100_000_000;
 
@@ -58,8 +87,21 @@ export default function SendScreen() {
 	const [amountBtc, setAmountBtc] = useState("");
 	const [feeRate, setFeeRate] = useState("2");
 
-	// Built PSBT (after compose)
+	// Built PSBT (after compose / path selection)
 	const [psbtBase64, setPsbtBase64] = useState<string | null>(null);
+
+	// Spending paths (loaded on mount). For multi-branch descriptors
+	// (Liana primary vs recovery, taproot multi-leaf) we show a Path
+	// step; single-path wallets skip straight from compose to confirm.
+	const [paths, setPaths] = useState<SpendingPath[] | null>(null);
+	const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
+
+	// Wallet detail (incl. descriptor) — loaded on mount, used to build
+	// a `WalletConfig` for on-device policy registration during HW
+	// discovery / unlock. Without this, BitBox / Jade would prompt the
+	// user to register the policy fresh on every sign instead of just
+	// the first time, and Ledger HMAC handling wouldn't be wired.
+	const [details, setDetails] = useState<WalletDetails | null>(null);
 
 	// Confirm step state
 	const [passphrase, setPassphrase] = useState("");
@@ -69,6 +111,12 @@ export default function SendScreen() {
 	// Done step state
 	const [txid, setTxid] = useState<string | null>(null);
 	const [copiedTxid, setCopiedTxid] = useState(false);
+
+	// QR modal visibility (sign-elsewhere flow). Show-QR exposes the
+	// composed PSBT as animated QR; scan-QR opens the camera and
+	// reassembles a signed PSBT for broadcast.
+	const [showQr, setShowQr] = useState(false);
+	const [scanQr, setScanQr] = useState(false);
 
 	const onDrag = useCallback((e: React.MouseEvent) => {
 		if (e.buttons === 1 && e.detail === 1) {
@@ -85,42 +133,87 @@ export default function SendScreen() {
 		if (!walletId) return;
 		(async () => {
 			try {
-				const [wallets, bal] = await Promise.all([
+				const [wallets, bal, sp, dt] = await Promise.all([
 					invoke<LocalWalletSummary[]>("cmd_local_list_wallets"),
 					invoke<LocalBalance>("cmd_local_get_balance", { walletId }),
+					invoke<SpendingPath[]>("cmd_local_list_spending_paths", {
+						walletId,
+					}),
+					invoke<WalletDetails>("cmd_local_get_wallet_details", {
+						walletId,
+					}),
 				]);
 				setWallet(wallets.find((w) => w.id === walletId) ?? null);
 				setBalance(bal);
+				setPaths(sp);
+				setDetails(dt);
+				if (sp.length === 1) setSelectedPathId(sp[0].id);
 			} catch {
 				// non-fatal: wizard still usable, just shows fewer hints
 			}
 		})();
 	}, [walletId]);
 
-	const buildPsbt = async () => {
-		if (!walletId) return;
+	// Build a WalletConfig for HW discovery/unlock so policy registration
+	// (BitBox, Jade) and HMAC capture (Ledger) happen on the right
+	// device the first time the user signs. Returned for both singlesig
+	// HW and multisig/Liana descriptors — the descriptor is what the
+	// device hashes for HMAC / policy-id derivation.
+	const walletConfig: WalletConfig | undefined = details
+		? {
+				name: details.name,
+				descriptor: details.external_descriptor,
+			}
+		: undefined;
+
+	const validateCompose = (): { sat: number; feeRate: number } | null => {
 		setError(null);
 		const sat = btcToSat(amountBtc);
 		if (!sat) {
 			setError("Enter a valid amount in BTC.");
-			return;
+			return null;
 		}
 		const fr = Number(feeRate);
 		if (!Number.isFinite(fr) || fr <= 0) {
 			setError("Fee rate must be a positive number.");
-			return;
+			return null;
 		}
 		if (!recipient.trim()) {
 			setError("Recipient address is required.");
-			return;
+			return null;
 		}
+		return { sat, feeRate: fr };
+	};
+
+	// Compose → next: skip path step for single-path wallets, stop at
+	// path picker otherwise. PSBT itself is built lazily once a path is
+	// known so we don't waste a TxBuilder run that needs to be redone.
+	const advanceFromCompose = async () => {
+		const v = validateCompose();
+		if (!v) return;
+		if (!paths || paths.length <= 1) {
+			await buildPsbtAndAdvance(paths?.[0]?.policy_path ?? null);
+		} else {
+			setStep("path");
+		}
+	};
+
+	const buildPsbtAndAdvance = async (
+		policyPath: Record<string, number[]> | null,
+	) => {
+		if (!walletId) return;
+		const v = validateCompose();
+		if (!v) return;
 		setBusy(true);
 		try {
 			const resp = await invoke<LocalBuildPsbtResponse>("cmd_local_build_psbt", {
 				request: {
 					wallet_id: walletId,
-					recipients: [{ address: recipient.trim(), amount_sat: sat }],
-					fee_rate_sat_vb: fr,
+					recipients: [
+						{ address: recipient.trim(), amount_sat: v.sat },
+					],
+					fee_rate_sat_vb: v.feeRate,
+					policy_path: policyPath,
 				},
 			});
 			setPsbtBase64(resp.psbt_base64);
@@ -163,6 +256,76 @@ export default function SendScreen() {
 		} finally {
 			setBusy(false);
 		}
+	};
+
+	// Export the in-memory PSBT to a `.psbt` file (binary BIP-174 format)
+	// for round-tripping to an air-gapped signer (Coldcard, SeedSigner,
+	// Krux, Passport, or any USB HW the user prefers to use elsewhere).
+	const exportPsbtToFile = async () => {
+		if (!psbtBase64) return;
+		setError(null);
+		try {
+			await savePsbtToFile(
+				psbtBase64,
+				`sigvault-${walletId?.slice(0, 8) ?? "wallet"}.psbt`,
+			);
+		} catch (err) {
+			setError(typeof err === "string" ? err : "Failed to save PSBT");
+		}
+	};
+
+	// Open a `.psbt` file the user got back from an external signer and
+	// broadcast it. The file is expected to contain a fully-signed PSBT;
+	// `cmd_local_broadcast_psbt` finalizes via miniscript and pushes to
+	// electrs. If finalisation fails (still missing sigs), the error
+	// surfaces and the user can re-export to collect more signatures.
+	const importAndBroadcast = async () => {
+		if (!walletId) return;
+		setError(null);
+		setBusy(true);
+		try {
+			const signed = await loadPsbtFromFile();
+			if (!signed) {
+				setBusy(false);
+				return;
+			}
+			await broadcastSignedPsbt(signed);
+		} catch (err) {
+			setError(
+				typeof err === "string" ? err : "Import or broadcast failed",
+			);
+			setBusy(false);
+		}
+	};
+
+	// Shared broadcast tail for any signed PSBT that came in (file
+	// import or QR scan). Caller is responsible for `setBusy(true)`
+	// before invoking; `setBusy(false)` happens in finally.
+	const broadcastSignedPsbt = async (signedPsbtBase64: string) => {
+		if (!walletId) return;
+		try {
+			const broadcast = await invoke<LocalBroadcastPsbtResponse>(
+				"cmd_local_broadcast_psbt",
+				{
+					request: {
+						wallet_id: walletId,
+						psbt_base64: signedPsbtBase64,
+					},
+				},
+			);
+			setTxid(broadcast.txid);
+			setStep("done");
+		} catch (err) {
+			setError(typeof err === "string" ? err : "Broadcast failed");
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const onScannedSignedPsbt = (signedPsbtBase64: string) => {
+		setScanQr(false);
+		setBusy(true);
+		void broadcastSignedPsbt(signedPsbtBase64);
 	};
 
 	const signAndBroadcastHardware = async (deviceId: string) => {
@@ -211,11 +374,10 @@ export default function SendScreen() {
 		}
 	};
 
-	const STEP_INDEX: Record<Step, number> = {
-		compose: 0,
-		confirm: 1,
-		done: 2,
-	};
+	const showPathStep = (paths?.length ?? 0) > 1;
+	const STEP_INDEX: Record<Step, number> = showPathStep
+		? { compose: 0, path: 1, confirm: 2, done: 3 }
+		: { compose: 0, path: 0, confirm: 1, done: 2 };
 	const stepIndex = STEP_INDEX[step];
 
 	const sat = btcToSat(amountBtc);
@@ -269,7 +431,7 @@ export default function SendScreen() {
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<div className="w-full max-w-[520px] space-y-8">
-					<StepIndicator stepIndex={stepIndex} />
+					<StepIndicator stepIndex={stepIndex} showPathStep={showPathStep} />
 
 					{error && (
 						<div className="flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
@@ -301,7 +463,30 @@ export default function SendScreen() {
 							balance={balance}
 							sat={sat}
 							busy={busy}
-							onSubmit={buildPsbt}
+							onSubmit={advanceFromCompose}
+						/>
+					)}
+
+					{step === "path" && paths && (
+						<PathStep
+							paths={paths}
+							selectedId={selectedPathId}
+							onSelect={setSelectedPathId}
+							busy={busy}
+							onBack={() => {
+								setStep("compose");
+								setError(null);
+							}}
+							onSubmit={() => {
+								const chosen = paths.find(
+									(p) => p.id === selectedPathId,
+								);
+								if (!chosen) {
+									setError("Pick a spending path to continue.");
+									return;
+								}
+								void buildPsbtAndAdvance(chosen.policy_path);
+							}}
 						/>
 					)}
 
@@ -314,7 +499,7 @@ export default function SendScreen() {
 							onChangePassphrase={setPassphrase}
 							busy={busy}
 							onBack={() => {
-								setStep("compose");
+								setStep(showPathStep ? "path" : "compose");
 								setPsbtBase64(null);
 								setPassphrase("");
 								setError(null);
@@ -331,13 +516,18 @@ export default function SendScreen() {
 							network={wallet?.network ?? "regtest"}
 							busy={busy}
 							onBack={() => {
-								setStep("compose");
+								setStep(showPathStep ? "path" : "compose");
 								setPsbtBase64(null);
 								setError(null);
 							}}
 							onDeviceSelected={(_info, device) =>
 								signAndBroadcastHardware(device.id)
 							}
+							onExportPsbt={exportPsbtToFile}
+							onImportSignedPsbt={importAndBroadcast}
+							onShowQr={() => setShowQr(true)}
+							onScanQr={() => setScanQr(true)}
+							walletConfig={walletConfig}
 						/>
 					)}
 
@@ -351,12 +541,34 @@ export default function SendScreen() {
 					)}
 				</div>
 			</div>
+
+			{showQr && psbtBase64 && (
+				<AnimatedQrModal
+					psbtBase64={psbtBase64}
+					onClose={() => setShowQr(false)}
+				/>
+			)}
+
+			{scanQr && (
+				<QrScanModal
+					onClose={() => setScanQr(false)}
+					onComplete={onScannedSignedPsbt}
+				/>
+			)}
 		</div>
 	);
 }
 
-function StepIndicator({ stepIndex }: { stepIndex: number }) {
-	const labels = ["Compose", "Confirm", "Done"];
+function StepIndicator({
+	stepIndex,
+	showPathStep,
+}: {
+	stepIndex: number;
+	showPathStep: boolean;
+}) {
+	const labels = showPathStep
+		? ["Compose", "Path", "Confirm", "Done"]
+		: ["Compose", "Confirm", "Done"];
 	return (
 		<div>
 			<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
@@ -533,6 +745,103 @@ function ComposeStep({
 				)}
 			</button>
 		</form>
+	);
+}
+
+function PathStep({
+	paths,
+	selectedId,
+	onSelect,
+	busy,
+	onBack,
+	onSubmit,
+}: {
+	paths: SpendingPath[];
+	selectedId: string | null;
+	onSelect: (id: string) => void;
+	busy: boolean;
+	onBack: () => void;
+	onSubmit: () => void;
+}) {
+	return (
+		<div className="space-y-5">
+			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+				<p className="text-[12px] leading-relaxed text-muted-foreground">
+					This wallet has{" "}
+					<span className="font-medium text-foreground">
+						{paths.length} spending paths
+					</span>
+					. Each path imposes its own conditions (signer set, timelock).
+					Pick the one you want to satisfy with this transaction — the
+					PSBT will be built so the chosen path's signers can finalize it.
+				</p>
+			</div>
+
+			<div className="space-y-2">
+				{paths.map((p) => {
+					const active = p.id === selectedId;
+					return (
+						<button
+							key={p.id}
+							type="button"
+							onClick={() => onSelect(p.id)}
+							className={`block w-full rounded-md border px-4 py-3 text-left transition-colors ${
+								active
+									? "border-primary bg-primary/[0.06]"
+									: "border-border bg-card/40 hover:border-primary/50"
+							}`}
+						>
+							<div className="flex items-baseline justify-between gap-3">
+								<span className="text-[13px] font-medium text-foreground">
+									{p.label}
+								</span>
+								<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+									{p.fingerprints.length === 0
+										? "—"
+										: `${p.threshold}-of-${p.fingerprints.length}`}
+								</span>
+							</div>
+							{p.description && (
+								<p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
+									{p.description}
+								</p>
+							)}
+							{p.fingerprints.length > 0 && (
+								<div className="mt-2 flex flex-wrap gap-1.5">
+									{p.fingerprints.map((fp) => (
+										<span
+											key={fp}
+											className="rounded-sm border border-border bg-background px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground"
+										>
+											{fp}
+										</span>
+									))}
+								</div>
+							)}
+						</button>
+					);
+				})}
+			</div>
+
+			<div className="flex items-center gap-3">
+				<button
+					type="button"
+					onClick={onBack}
+					disabled={busy}
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+				>
+					← Back
+				</button>
+				<button
+					type="button"
+					onClick={onSubmit}
+					disabled={!selectedId || busy}
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+				>
+					{busy ? "Building…" : "Build transaction"}
+				</button>
+			</div>
+		</div>
 	);
 }
 
@@ -744,6 +1053,11 @@ function HardwareConfirmStep({
 	busy,
 	onBack,
 	onDeviceSelected,
+	onExportPsbt,
+	onImportSignedPsbt,
+	onShowQr,
+	onScanQr,
+	walletConfig,
 }: {
 	recipient: string;
 	sat: number;
@@ -752,7 +1066,15 @@ function HardwareConfirmStep({
 	busy: boolean;
 	onBack: () => void;
 	onDeviceSelected: (info: DeviceInfo, device: DiscoveredDevice) => void;
+	onExportPsbt: () => void | Promise<void>;
+	onImportSignedPsbt: () => void | Promise<void>;
+	onShowQr: () => void;
+	onScanQr: () => void;
+	walletConfig?: WalletConfig;
 }) {
+	const [signMode, setSignMode] = useState<"connected" | "external">(
+		"connected",
+	);
 	return (
 		<div className="space-y-6">
 			<div className="rounded-md border border-border bg-card px-4 py-4">
@@ -779,20 +1101,113 @@ function HardwareConfirmStep({
 				</dl>
 			</div>
 
-			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
-				<p className="text-[12px] leading-relaxed text-muted-foreground">
-					Connect and unlock your hardware wallet, then click{" "}
-					<span className="font-medium text-foreground">Discover Devices</span>.
-					You'll review and approve the transaction on the device itself —
-					the private keys never leave it.
-				</p>
+			<div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-card/40 p-1">
+				<button
+					type="button"
+					onClick={() => setSignMode("connected")}
+					className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+						signMode === "connected"
+							? "bg-primary text-primary-foreground"
+							: "text-muted-foreground hover:text-foreground"
+					}`}
+				>
+					Connected device
+				</button>
+				<button
+					type="button"
+					onClick={() => setSignMode("external")}
+					className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+						signMode === "external"
+							? "bg-primary text-primary-foreground"
+							: "text-muted-foreground hover:text-foreground"
+					}`}
+				>
+					Sign elsewhere
+				</button>
 			</div>
 
-			<DeviceDiscovery
-				network={network}
-				derivationPath={primaryDerivationPath(network)}
-				onDeviceSelected={onDeviceSelected}
-			/>
+			{signMode === "connected" && (
+				<>
+					<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+						<p className="text-[12px] leading-relaxed text-muted-foreground">
+							Connect and unlock your hardware wallet, then click{" "}
+							<span className="font-medium text-foreground">
+								Discover Devices
+							</span>
+							. You'll review and approve the transaction on the device
+							itself — the private keys never leave it.
+						</p>
+					</div>
+
+					<DeviceDiscovery
+						network={network}
+						derivationPath={primaryDerivationPath(network)}
+						onDeviceSelected={onDeviceSelected}
+						walletConfig={walletConfig}
+					/>
+				</>
+			)}
+
+			{signMode === "external" && (
+				<div className="space-y-4">
+					<div className="rounded-md border border-border bg-card/40 px-4 py-3">
+						<p className="text-[12px] leading-relaxed text-muted-foreground">
+							Send the unsigned PSBT to a signer on another machine
+							(Coldcard, SeedSigner, Sparrow, Foundation Passport,
+							Specter, Keystone, an air-gapped laptop, ...). When it
+							hands you back a signed PSBT, import or scan it to broadcast.
+						</p>
+					</div>
+
+					<div>
+						<div className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+							Send PSBT to signer
+						</div>
+						<div className="mt-2 grid grid-cols-2 gap-3">
+							<button
+								type="button"
+								onClick={() => void onExportPsbt()}
+								disabled={busy}
+								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
+							>
+								Save .psbt
+							</button>
+							<button
+								type="button"
+								onClick={onShowQr}
+								disabled={busy}
+								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
+							>
+								Show QR
+							</button>
+						</div>
+					</div>
+
+					<div>
+						<div className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+							Receive signed PSBT
+						</div>
+						<div className="mt-2 grid grid-cols-2 gap-3">
+							<button
+								type="button"
+								onClick={() => void onImportSignedPsbt()}
+								disabled={busy}
+								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
+							>
+								Import .psbt
+							</button>
+							<button
+								type="button"
+								onClick={onScanQr}
+								disabled={busy}
+								className="flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground transition-all hover:shadow-md disabled:opacity-50"
+							>
+								Scan QR
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 
 			<div className="flex items-center gap-3">
 				<button
@@ -805,7 +1220,9 @@ function HardwareConfirmStep({
 				</button>
 				{busy && (
 					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Signing & broadcasting…
+						{signMode === "connected"
+							? "Signing & broadcasting…"
+							: "Working…"}
 					</span>
 				)}
 			</div>

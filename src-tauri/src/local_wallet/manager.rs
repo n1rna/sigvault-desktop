@@ -40,6 +40,7 @@ const POLICY_TYPE_SINGLESIG: &str = "singlesig";
 const POLICY_TYPE_SINGLESIG_HW: &str = "singlesig_hardware";
 const POLICY_TYPE_WATCH_ONLY: &str = "watch_only";
 const POLICY_TYPE_MULTISIG: &str = "multisig";
+const POLICY_TYPE_DESCRIPTOR: &str = "descriptor";
 
 /// A cosigner contribution to a multisig wallet (QBL-224). `key` is the
 /// descriptor key expression up through the xpub — `[fp/path]xpub` for
@@ -401,19 +402,15 @@ impl LocalWalletManager {
             .map(|c| format!("{}/1/*", c.key.trim()))
             .collect::<Vec<_>>()
             .join(",");
-        let external_descriptor =
-            format!("wsh(sortedmulti({threshold},{keys_external}))");
-        let internal_descriptor =
-            format!("wsh(sortedmulti({threshold},{keys_internal}))");
+        let external_descriptor = format!("wsh(sortedmulti({threshold},{keys_external}))");
+        let internal_descriptor = format!("wsh(sortedmulti({threshold},{keys_internal}))");
 
         let id = WalletId::new();
         let layout = self.layout(&id);
         layout.ensure_dir()?;
 
-        let descriptors = WalletDescriptors::new(
-            external_descriptor.clone(),
-            internal_descriptor.clone(),
-        );
+        let descriptors =
+            WalletDescriptors::new(external_descriptor.clone(), internal_descriptor.clone());
 
         let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
         let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
@@ -440,17 +437,22 @@ impl LocalWalletManager {
         Ok(id)
     }
 
-    /// Create a watch-only wallet from descriptor strings the user
-    /// provided directly (QBL-226). The caller has to hand us both the
-    /// external (receive) and internal (change) descriptors — we don't
-    /// try to auto-derive one from the other because that's a guess
-    /// (e.g. a wpkh /0/* receive doesn't always pair with /1/*; mixed
-    /// descriptors and Liana flavours don't follow the convention).
-    /// BDK rejects descriptors that contain private keys, which double-
-    /// guards us against a hot wallet sneaking in through this path.
-    /// `fingerprints` is whatever origin info the caller could parse out
-    /// of the descriptors — purely informational, surfaced in the wallet
-    /// list metadata column.
+    /// Create a watch-only or descriptor-spendable wallet from descriptor
+    /// strings the user provided directly. Watch-only (QBL-226) cannot
+    /// sign; descriptor-spendable (QBL-234) is identical on disk but
+    /// flagged as eligible for the Send flow — signing happens via HW
+    /// or external PSBT export, depending on which devices match the
+    /// descriptor's fingerprints at sign time.
+    ///
+    /// The caller has to hand us both the external (receive) and
+    /// internal (change) descriptors — we don't try to auto-derive one
+    /// from the other because that's a guess (e.g. a wpkh /0/* receive
+    /// doesn't always pair with /1/*; mixed descriptors and Liana
+    /// flavours don't follow the convention). BDK rejects descriptors
+    /// that contain private keys, which double-guards us against a hot
+    /// wallet sneaking in through this path. `fingerprints` is whatever
+    /// origin info the caller could parse out of the descriptors —
+    /// purely informational, surfaced in the wallet list metadata column.
     pub async fn create_watch_only(
         &self,
         name: &str,
@@ -458,6 +460,7 @@ impl LocalWalletManager {
         external_descriptor: &str,
         internal_descriptor: &str,
         fingerprints: Vec<String>,
+        spendable: bool,
     ) -> Result<WalletId, ManagerError> {
         ensure_supported_network(network)?;
 
@@ -474,11 +477,17 @@ impl LocalWalletManager {
         let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
             .map_err(|e| ManagerError::Runtime(e.to_string()))?;
 
+        let policy_type = if spendable {
+            POLICY_TYPE_DESCRIPTOR
+        } else {
+            POLICY_TYPE_WATCH_ONLY
+        };
+
         let meta = LocalWalletMetadata {
             id: id.clone(),
             name: name.to_string(),
             network: network.to_string(),
-            policy_type: POLICY_TYPE_WATCH_ONLY.to_string(),
+            policy_type: policy_type.to_string(),
             external_descriptor: external_descriptor.to_string(),
             internal_descriptor: internal_descriptor.to_string(),
             fingerprints,
