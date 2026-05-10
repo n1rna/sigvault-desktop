@@ -3546,21 +3546,7 @@ dependencies = [
 [[package]]
 name = "liana"
 version = "12.0.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path#d7f9888481e780dbc79af50f6b6e2dc1326d3613"
-dependencies = [
- "bdk_coin_select",
- "bip39",
- "getrandom 0.2.17",
- "log",
- "miniscript",
- "rdrand",
- "serde",
-]
-
-[[package]]
-name = "liana"
-version = "12.0.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#c2b5c4bd96db04dc9d0b07ad15b4c7a9b8ee5f42"
+source = "git+https://github.com/n1rna/walletrs.git?branch=main#a07dd8a1616fa7e9ee2e4734db8d9c58f87445f7"
 dependencies = [
  "bdk_coin_select",
  "bip39",
@@ -4777,26 +4763,11 @@ dependencies = [
 [[package]]
 name = "policy-core"
 version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path#d7f9888481e780dbc79af50f6b6e2dc1326d3613"
+source = "git+https://github.com/n1rna/walletrs.git?branch=main#a07dd8a1616fa7e9ee2e4734db8d9c58f87445f7"
 dependencies = [
  "bdk_wallet",
  "hex",
- "liana 12.0.0 (git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path)",
- "log",
- "miniscript",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "policy-core"
-version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#c2b5c4bd96db04dc9d0b07ad15b4c7a9b8ee5f42"
-dependencies = [
- "bdk_wallet",
- "hex",
- "liana 12.0.0 (git+https://github.com/n1rna/walletrs.git?branch=main)",
+ "liana",
  "log",
  "miniscript",
  "serde",
@@ -6398,7 +6369,7 @@ dependencies = [
  "oauth2",
  "once_cell",
  "open",
- "policy-core 0.1.0 (git+https://github.com/n1rna/walletrs.git?branch=main)",
+ "policy-core",
  "rand 0.10.1",
  "reqwest 0.12.28",
  "rustls 0.23.38",
@@ -8022,16 +7993,16 @@ dependencies = [
 [[package]]
 name = "wallet-runtime"
 version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path#d7f9888481e780dbc79af50f6b6e2dc1326d3613"
+source = "git+https://github.com/n1rna/walletrs.git?branch=main#a07dd8a1616fa7e9ee2e4734db8d9c58f87445f7"
 dependencies = [
  "bdk_electrum",
  "bdk_file_store",
  "bdk_wallet",
  "hex",
- "liana 12.0.0 (git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path)",
+ "liana",
  "log",
  "miniscript",
- "policy-core 0.1.0 (git+https://github.com/n1rna/walletrs.git?branch=feat%2Fwallet-runtime-spending-path)",
+ "policy-core",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
