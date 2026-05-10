@@ -66,12 +66,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # QBL-212 (wallet-runtime), and QBL-213 (server refactor) are merged on
 # walletrs `main`. Pin to a tag when one is cut; until then `main` is
 # the stable reference.
-#
-# QBL-234 needs `wallet_runtime::spending_path` which is in flight at
-# walletrs PR #10 (branch `feat/wallet-runtime-spending-path`). Flip
-# this back to `branch = "main"` once that PR merges.
 policy-core = { git = "https://github.com/n1rna/walletrs.git", branch = "main" }
-wallet-runtime = { git = "https://github.com/n1rna/walletrs.git", branch = "feat/wallet-runtime-spending-path" }
+wallet-runtime = { git = "https://github.com/n1rna/walletrs.git", branch = "main" }
 # `file_store` feature wires up `WalletPersister for bdk_file_store::Store`,
 # which `LocalBdkPersister` delegates to. wallet-runtime doesn't enable it
 # (it's persister-agnostic by design), so we opt in here.
