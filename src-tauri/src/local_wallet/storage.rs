@@ -237,34 +237,57 @@ pub fn decrypt_seed(env: &EncryptedSeed, passphrase: &[u8]) -> Result<Vec<u8>, S
         .map_err(|_| SeedStoreError::AuthFailed)
 }
 
-/// Convenience: encrypt and write `seed.enc` for the given wallet layout.
-/// Does NOT touch any other sidecar file.
+/// The plaintext payload `seed.enc` decrypts to. Always JSON-encoded
+/// before being handed to `encrypt_seed` so we can add fields later
+/// (or in this case: bundle the BIP39 passphrase alongside the
+/// mnemonic) without changing the on-disk envelope format.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SeedPayload {
+    pub mnemonic: String,
+    /// Optional BIP39 passphrase used to derive the seed from the
+    /// mnemonic. Cryptographically equivalent to a 25th word; the
+    /// resulting wallet is different from the same mnemonic with an
+    /// empty passphrase. Stored encrypted so signing later doesn't
+    /// have to re-prompt the user.
+    #[serde(default)]
+    pub bip39_passphrase: String,
+}
+
+/// Encrypt and write a `SeedPayload` to `seed.enc`. JSON-serializes the
+/// payload first so future fields can be added without breaking the
+/// on-disk envelope shape.
 pub fn write_seed_file(
     layout: &WalletDirLayout,
-    seed: &[u8],
+    payload: &SeedPayload,
     passphrase: &[u8],
 ) -> Result<(), SeedStoreError> {
     layout.ensure_dir()?;
-    let env = encrypt_seed(seed, passphrase)?;
+    let plaintext = serde_json::to_vec(payload)?;
+    let env = encrypt_seed(&plaintext, passphrase)?;
     let json = serde_json::to_vec_pretty(&env)?;
     fs::write(layout.seed_path(), json)?;
     Ok(())
 }
 
-/// Convenience: read `seed.enc` and decrypt. Returns `Ok(None)` when the
-/// file is absent (watch-only / hardware-only wallets), `Err(AuthFailed)`
-/// on wrong passphrase, propagated `Io` / `Serde` errors otherwise.
+/// Read + decrypt `seed.enc`, then parse the plaintext as a JSON
+/// `SeedPayload`. Returns `Ok(None)` when the file is absent
+/// (watch-only / hardware-only wallets), `Err(AuthFailed)` on wrong
+/// passphrase, `Err(Malformed)` if the plaintext isn't a valid
+/// payload.
 pub fn read_seed_file(
     layout: &WalletDirLayout,
     passphrase: &[u8],
-) -> Result<Option<Vec<u8>>, SeedStoreError> {
+) -> Result<Option<SeedPayload>, SeedStoreError> {
     let path = layout.seed_path();
     if !path.exists() {
         return Ok(None);
     }
     let bytes = fs::read(path)?;
     let env: EncryptedSeed = serde_json::from_slice(&bytes)?;
-    decrypt_seed(&env, passphrase).map(Some)
+    let plaintext = decrypt_seed(&env, passphrase)?;
+    let payload: SeedPayload = serde_json::from_slice(&plaintext)
+        .map_err(|e| SeedStoreError::Malformed(format!("seed payload: {e}")))?;
+    Ok(Some(payload))
 }
 
 #[cfg(test)]
@@ -312,12 +335,33 @@ mod tests {
         let id = WalletId::new();
         let layout = WalletDirLayout::for_wallet(tmp.path().to_path_buf(), &id);
 
-        write_seed_file(&layout, SEED, b"unlock").expect("write");
+        let payload = SeedPayload {
+            mnemonic: String::from_utf8(SEED.to_vec()).unwrap(),
+            bip39_passphrase: String::new(),
+        };
+        write_seed_file(&layout, &payload, b"unlock").expect("write");
         assert!(layout.seed_path().exists());
         assert!(!layout.metadata_path().exists(), "only seed file written");
 
         let loaded = read_seed_file(&layout, b"unlock").expect("read");
-        assert_eq!(loaded.as_deref(), Some(SEED));
+        let loaded = loaded.expect("payload");
+        assert_eq!(loaded.mnemonic.as_bytes(), SEED);
+        assert_eq!(loaded.bip39_passphrase, "");
+    }
+
+    #[test]
+    fn seed_payload_round_trips_bip39_passphrase() {
+        let tmp = TempDir::new().expect("tempdir");
+        let id = WalletId::new();
+        let layout = WalletDirLayout::for_wallet(tmp.path().to_path_buf(), &id);
+
+        let payload = SeedPayload {
+            mnemonic: String::from_utf8(SEED.to_vec()).unwrap(),
+            bip39_passphrase: "my-25th-word".to_string(),
+        };
+        write_seed_file(&layout, &payload, b"unlock").expect("write");
+        let loaded = read_seed_file(&layout, b"unlock").expect("read").unwrap();
+        assert_eq!(loaded.bip39_passphrase, "my-25th-word");
     }
 
     #[test]
@@ -344,7 +388,11 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let id = WalletId::new();
         let layout = WalletDirLayout::for_wallet(tmp.path().to_path_buf(), &id);
-        write_seed_file(&layout, SEED, b"x").expect("write");
+        let payload = SeedPayload {
+            mnemonic: String::from_utf8(SEED.to_vec()).unwrap(),
+            bip39_passphrase: String::new(),
+        };
+        write_seed_file(&layout, &payload, b"x").expect("write");
         assert!(layout.root().exists());
 
         layout.delete().expect("delete");

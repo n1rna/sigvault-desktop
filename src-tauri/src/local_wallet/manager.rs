@@ -21,7 +21,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use bdk_wallet::bitcoin::bip32::{Fingerprint, Xpriv};
+use bdk_wallet::bitcoin::bip32::Xpriv;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::keys::bip39::{Language, Mnemonic};
 use bdk_wallet::miniscript::descriptor::DescriptorPublicKey;
@@ -39,7 +39,9 @@ use zeroize::Zeroizing;
 
 use super::persister::{LocalBdkPersister, LocalPersisterError};
 use super::state::{SharedLocalWalletState, UnlockedHandle};
-use super::storage::{read_seed_file, write_seed_file, SeedStoreError, WalletDirLayout, WalletId};
+use super::storage::{
+    read_seed_file, write_seed_file, SeedPayload, SeedStoreError, WalletDirLayout, WalletId,
+};
 
 const POLICY_TYPE_SINGLESIG: &str = "singlesig";
 const POLICY_TYPE_SINGLESIG_HW: &str = "singlesig_hardware";
@@ -285,12 +287,16 @@ impl LocalWalletManager {
         let layout = self.layout(&id);
         layout.ensure_dir()?;
 
-        // The mnemonic is the durable secret. Persist as an encrypted
-        // UTF-8 string of space-separated words; on recovery we re-derive
-        // the xprv from it via Mnemonic::parse + to_seed.
+        // The mnemonic is the durable secret. Persist as a SeedPayload
+        // — the create flow never asks the user for a BIP39 passphrase,
+        // so it's always empty here; recovery is where users opt in.
         let words = keyset.words.clone();
         let mnemonic_str = words.join(" ");
-        write_seed_file(&layout, mnemonic_str.as_bytes(), passphrase)?;
+        let payload = SeedPayload {
+            mnemonic: mnemonic_str.clone(),
+            bip39_passphrase: String::new(),
+        };
+        write_seed_file(&layout, &payload, passphrase)?;
 
         let descriptors = WalletDescriptors::new(
             keyset.external_descriptor.clone(),
@@ -319,20 +325,27 @@ impl LocalWalletManager {
         Ok((id, words))
     }
 
-    /// Recover from a BIP39 mnemonic the user typed in. v1 only handles
-    /// the singlesig segwit-v0 case (mirrors `create_singlesig_hot`); a
-    /// later ticket will accept a descriptor for multisig / Liana hot
-    /// cosigner recovery.
+    /// Recover a singlesig segwit-v0 wallet from a BIP39 mnemonic the
+    /// user typed in. `bip39_passphrase` is the optional 25th-word
+    /// passphrase — empty for the common case of a wallet that was
+    /// created without one. Multisig / Liana cosigner recovery goes
+    /// through `recover_descriptor_hot_cosigner` instead.
     pub async fn recover_singlesig_hot(
         &self,
         name: &str,
         network: Network,
         mnemonic_str: &str,
-        passphrase: &[u8],
+        bip39_passphrase: &str,
+        encrypt_passphrase: &[u8],
     ) -> Result<WalletId, ManagerError> {
         ensure_supported_network(network)?;
 
-        let (account_xpriv, _) = derive_account_from_mnemonic(network, mnemonic_str)?;
+        let account_xpriv = derive_account_at_path(
+            network,
+            mnemonic_str,
+            bip39_passphrase,
+            &KeyUtils::get_primary_derivation_path(network).to_string(),
+        )?;
         let (external_descriptor, internal_descriptor, _xpub, fingerprint) =
             KeyUtils::get_account_extended_descriptor(account_xpriv);
 
@@ -340,7 +353,11 @@ impl LocalWalletManager {
         let layout = self.layout(&id);
         layout.ensure_dir()?;
 
-        write_seed_file(&layout, mnemonic_str.as_bytes(), passphrase)?;
+        let payload = SeedPayload {
+            mnemonic: mnemonic_str.to_string(),
+            bip39_passphrase: bip39_passphrase.to_string(),
+        };
+        write_seed_file(&layout, &payload, encrypt_passphrase)?;
 
         let descriptors =
             WalletDescriptors::new(external_descriptor.clone(), internal_descriptor.clone());
@@ -428,7 +445,11 @@ impl LocalWalletManager {
         let layout = self.layout(&id);
         layout.ensure_dir()?;
 
-        write_seed_file(&layout, mnemonic_str.as_bytes(), encrypt_passphrase)?;
+        let payload = SeedPayload {
+            mnemonic: mnemonic_str.to_string(),
+            bip39_passphrase: bip39_passphrase.to_string(),
+        };
+        write_seed_file(&layout, &payload, encrypt_passphrase)?;
 
         let descriptors = WalletDescriptors::new(
             external_descriptor.to_string(),
@@ -815,8 +836,15 @@ impl LocalWalletManager {
         // so balance / address peeking works, and signing routes
         // through the HW manager instead of an in-memory mnemonic.
         let seed_bytes = if meta.has_hot_keys {
-            read_seed_file(&layout, passphrase)?
-                .ok_or_else(|| ManagerError::NotFound(format!("seed.enc for {id}")))?
+            let payload = read_seed_file(&layout, passphrase)?
+                .ok_or_else(|| ManagerError::NotFound(format!("seed.enc for {id}")))?;
+            // The unlocked handle holds this for Zeroize-on-drop
+            // hygiene; the actual signing path re-reads the encrypted
+            // file with the user's passphrase, so storing just the
+            // mnemonic string here (vs the full payload) keeps the
+            // in-memory footprint minimal and avoids leaking the BIP39
+            // passphrase into more places than necessary.
+            payload.mnemonic.into_bytes()
         } else {
             Vec::new()
         };
@@ -889,29 +917,6 @@ impl LocalWalletManager {
         let handle = handle_arc.lock().await;
         Ok(wallet_runtime::peek_address(&handle.wallet, kind, index).to_string())
     }
-}
-
-/// Parse a BIP39 mnemonic and derive the singlesig segwit-v0 account
-/// xprv (`m/84'/{coin}'/0'`) along with its account-level fingerprint.
-/// Shared by `recover_singlesig_hot` and `cmd_local_sign_psbt_*` for
-/// wallets that don't carry an explicit derivation path in metadata.
-///
-/// The returned fingerprint is the *account* xpub's fingerprint, NOT
-/// the master xpub's — callers building descriptor key-origin blocks
-/// should use `derive_master_xpriv` + `Xpriv::fingerprint` on the
-/// master instead.
-pub fn derive_account_from_mnemonic(
-    network: Network,
-    mnemonic_str: &str,
-) -> Result<(Xpriv, Fingerprint), ManagerError> {
-    let master_xpriv = derive_master_xpriv(network, mnemonic_str, "")?;
-    let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
-    let account_path = KeyUtils::get_primary_derivation_path(network);
-    let account_xpriv = master_xpriv
-        .derive_priv(&secp, &account_path)
-        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
-    let fingerprint = account_xpriv.fingerprint(&secp);
-    Ok((account_xpriv, fingerprint))
 }
 
 /// Parse a BIP39 mnemonic + optional passphrase and derive the master
@@ -1227,7 +1232,7 @@ mod tests {
         // but recover should accept any valid BIP39 length.
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let id = mgr
-            .recover_singlesig_hot("recovered", Network::Regtest, mnemonic, b"hunter2")
+            .recover_singlesig_hot("recovered", Network::Regtest, mnemonic, "", b"hunter2")
             .await
             .expect("recover");
         mgr.unlock_wallet(&id, b"hunter2")

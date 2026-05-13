@@ -17,6 +17,8 @@ import { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { validateMnemonic } from "@scure/bip39";
+import { wordlist as bip39Wordlist } from "@scure/bip39/wordlists/english.js";
 import WindowControls from "../../components/WindowControls";
 
 type Method = "singlesig" | "cosigner" | "descriptor_only";
@@ -39,6 +41,7 @@ export default function RecoveryFlow() {
 	const [externalDescriptor, setExternalDescriptor] = useState("");
 	const [internalDescriptor, setInternalDescriptor] = useState("");
 	const [policyType, setPolicyType] = useState<"multisig" | "liana">("multisig");
+	const [bip39Passphrase, setBip39Passphrase] = useState("");
 	const [passphrase, setPassphrase] = useState("");
 	const [confirmPassphrase, setConfirmPassphrase] = useState("");
 	const [submitting, setSubmitting] = useState(false);
@@ -69,13 +72,25 @@ export default function RecoveryFlow() {
 		() => words.slice(0, recoveryLength).every((w) => w.trim().length > 0),
 		[words, recoveryLength],
 	);
+	// Live BIP39 checksum check: `validateMnemonic` returns true only
+	// when every word is in the English wordlist AND the last word
+	// encodes a valid checksum over the first N-1. Surfaces typos at
+	// the input step instead of failing at submit time on the backend.
+	const mnemonicValid = useMemo(() => {
+		if (!allWordsFilled) return false;
+		try {
+			return validateMnemonic(mnemonic, bip39Wordlist);
+		} catch {
+			return false;
+		}
+	}, [mnemonic, allWordsFilled]);
 	const passphraseOk = passphrase.length >= 8 && passphrase === confirmPassphrase;
 	const nameOk = name.trim().length > 0;
 
 	const detailsReady =
 		nameOk &&
 		passphraseOk &&
-		allWordsFilled &&
+		mnemonicValid &&
 		(method === "singlesig" ||
 			(externalDescriptor.trim().length > 0 &&
 				internalDescriptor.trim().length > 0));
@@ -92,6 +107,7 @@ export default function RecoveryFlow() {
 						network,
 						mnemonic,
 						passphrase,
+						bip39_passphrase: bip39Passphrase,
 					},
 				});
 			} else {
@@ -100,7 +116,7 @@ export default function RecoveryFlow() {
 						name: name.trim(),
 						network,
 						mnemonic,
-						bip39_passphrase: "",
+						bip39_passphrase: bip39Passphrase,
 						encrypt_passphrase: passphrase,
 						external_descriptor: externalDescriptor.trim(),
 						internal_descriptor: internalDescriptor.trim(),
@@ -216,12 +232,16 @@ export default function RecoveryFlow() {
 									return copy;
 								});
 							}}
+							mnemonicValid={mnemonicValid}
+							allWordsFilled={allWordsFilled}
 							externalDescriptor={externalDescriptor}
 							onChangeExternalDescriptor={setExternalDescriptor}
 							internalDescriptor={internalDescriptor}
 							onChangeInternalDescriptor={setInternalDescriptor}
 							policyType={policyType}
 							onChangePolicyType={setPolicyType}
+							bip39Passphrase={bip39Passphrase}
+							onChangeBip39Passphrase={setBip39Passphrase}
 							passphrase={passphrase}
 							onChangePassphrase={setPassphrase}
 							confirmPassphrase={confirmPassphrase}
@@ -359,12 +379,16 @@ function DetailsStep({
 	onChangeRecoveryLength,
 	words,
 	onChangeWord,
+	mnemonicValid,
+	allWordsFilled,
 	externalDescriptor,
 	onChangeExternalDescriptor,
 	internalDescriptor,
 	onChangeInternalDescriptor,
 	policyType,
 	onChangePolicyType,
+	bip39Passphrase,
+	onChangeBip39Passphrase,
 	passphrase,
 	onChangePassphrase,
 	confirmPassphrase,
@@ -383,12 +407,16 @@ function DetailsStep({
 	onChangeRecoveryLength: (n: RecoveryLength) => void;
 	words: string[];
 	onChangeWord: (i: number, v: string) => void;
+	mnemonicValid: boolean;
+	allWordsFilled: boolean;
 	externalDescriptor: string;
 	onChangeExternalDescriptor: (v: string) => void;
 	internalDescriptor: string;
 	onChangeInternalDescriptor: (v: string) => void;
 	policyType: "multisig" | "liana";
 	onChangePolicyType: (p: "multisig" | "liana") => void;
+	bip39Passphrase: string;
+	onChangeBip39Passphrase: (v: string) => void;
 	passphrase: string;
 	onChangePassphrase: (v: string) => void;
 	confirmPassphrase: string;
@@ -446,47 +474,41 @@ function DetailsStep({
 					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
 						Recovery phrase
 					</span>
-					<div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
-						{RECOVERY_LENGTHS.map((n) => (
-							<button
-								key={n}
-								type="button"
-								onClick={() => onChangeRecoveryLength(n)}
-								className={`rounded-sm px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
-									recoveryLength === n
-										? "bg-primary/[0.10] text-foreground"
-										: "text-muted-foreground hover:text-foreground"
-								}`}
-							>
-								{n}
-							</button>
-						))}
+					<div className="flex items-center gap-2">
+						<ChecksumStatus
+							allFilled={allWordsFilled}
+							valid={mnemonicValid}
+						/>
+						<div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
+							{RECOVERY_LENGTHS.map((n) => (
+								<button
+									key={n}
+									type="button"
+									onClick={() => onChangeRecoveryLength(n)}
+									className={`rounded-sm px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+										recoveryLength === n
+											? "bg-primary/[0.10] text-foreground"
+											: "text-muted-foreground hover:text-foreground"
+									}`}
+								>
+									{n}
+								</button>
+							))}
+						</div>
 					</div>
 				</div>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-					Enter your existing BIP39 phrase, lowercase, in order.
+					Enter your existing BIP39 phrase, lowercase, in order. Use Tab or
+					↓/↑ to pick from the autocomplete suggestions.
 				</p>
 				<div className="mt-3 grid grid-cols-3 gap-2">
 					{words.slice(0, recoveryLength).map((w, i) => (
-						<div
+						<WordInput
 							key={i}
-							className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5"
-						>
-							<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
-								{String(i + 1).padStart(2, "0")}
-							</span>
-							<input
-								type="text"
-								value={w}
-								onChange={(e) =>
-									onChangeWord(i, e.target.value.toLowerCase())
-								}
-								autoComplete="off"
-								autoCapitalize="off"
-								spellCheck={false}
-								className="flex-1 bg-transparent font-mono text-[12px] text-foreground outline-none"
-							/>
-						</div>
+							index={i}
+							value={w}
+							onChange={(v) => onChangeWord(i, v)}
+						/>
 					))}
 				</div>
 			</div>
@@ -555,6 +577,26 @@ function DetailsStep({
 
 			<label className="block">
 				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					BIP39 passphrase (optional)
+				</span>
+				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+					The "25th word" some users layer on top of their seed phrase.
+					Leave empty unless you actively used one when the wallet was
+					created — the cryptographic seed differs between empty and
+					non-empty values, so a wrong guess produces a different wallet.
+				</p>
+				<input
+					type="password"
+					value={bip39Passphrase}
+					onChange={(e) => onChangeBip39Passphrase(e.target.value)}
+					autoComplete="off"
+					spellCheck={false}
+					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 font-mono text-[12px] text-foreground outline-none transition-colors focus:border-primary"
+				/>
+			</label>
+
+			<label className="block">
+				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
 					Wallet-encryption passphrase
 				</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
@@ -605,6 +647,140 @@ function DetailsStep({
 				</button>
 			</div>
 		</form>
+	);
+}
+
+function ChecksumStatus({
+	allFilled,
+	valid,
+}: {
+	allFilled: boolean;
+	valid: boolean;
+}) {
+	if (!allFilled) {
+		return (
+			<span className="rounded-sm border border-border bg-card px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+				Incomplete
+			</span>
+		);
+	}
+	return valid ? (
+		<span className="rounded-sm border border-emerald-500/40 bg-emerald-500/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400">
+			Valid checksum
+		</span>
+	) : (
+		<span className="rounded-sm border border-destructive/40 bg-destructive/[0.06] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-destructive">
+			Bad checksum
+		</span>
+	);
+}
+
+// Per-word input with prefix-match autocomplete against the BIP39
+// English wordlist. We bound the suggestion list to 5 entries and only
+// show it while the input is focused and the typed prefix is at least
+// 2 characters — keeps the UI calm during fast typing while still
+// catching typos as the user moves between cells.
+function WordInput({
+	index,
+	value,
+	onChange,
+}: {
+	index: number;
+	value: string;
+	onChange: (v: string) => void;
+}) {
+	const [focused, setFocused] = useState(false);
+	const [highlight, setHighlight] = useState(0);
+	const suggestions = useMemo(() => {
+		const prefix = value.trim().toLowerCase();
+		if (prefix.length < 2) return [];
+		// `bip39Wordlist` is alphabetically sorted; a binary-search
+		// scan would be tighter but at 2048 entries the linear filter
+		// is imperceptible and keeps the code easy to read.
+		const matches: string[] = [];
+		for (const w of bip39Wordlist) {
+			if (w.startsWith(prefix)) {
+				matches.push(w);
+				if (matches.length >= 5) break;
+			}
+		}
+		return matches;
+	}, [value]);
+
+	const showSuggestions =
+		focused && suggestions.length > 0 && !suggestions.includes(value);
+
+	const accept = (word: string) => {
+		onChange(word);
+		setFocused(false);
+	};
+
+	return (
+		<div className="relative">
+			<div
+				className={`flex items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 ${
+					value && !bip39Wordlist.includes(value)
+						? "border-destructive/50"
+						: "border-border"
+				}`}
+			>
+				<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
+					{String(index + 1).padStart(2, "0")}
+				</span>
+				<input
+					type="text"
+					value={value}
+					onChange={(e) => {
+						onChange(e.target.value.toLowerCase());
+						setHighlight(0);
+					}}
+					onFocus={() => setFocused(true)}
+					onBlur={() =>
+						// Delay so an onMouseDown on a suggestion has a chance
+						// to fire before we hide the list.
+						setTimeout(() => setFocused(false), 100)
+					}
+					onKeyDown={(e) => {
+						if (!showSuggestions) return;
+						if (e.key === "ArrowDown") {
+							e.preventDefault();
+							setHighlight((h) => Math.min(h + 1, suggestions.length - 1));
+						} else if (e.key === "ArrowUp") {
+							e.preventDefault();
+							setHighlight((h) => Math.max(h - 1, 0));
+						} else if (e.key === "Enter" || e.key === "Tab") {
+							e.preventDefault();
+							accept(suggestions[highlight] ?? suggestions[0]);
+						}
+					}}
+					autoComplete="off"
+					autoCapitalize="off"
+					spellCheck={false}
+					className="flex-1 bg-transparent font-mono text-[12px] text-foreground outline-none"
+				/>
+			</div>
+			{showSuggestions && (
+				<div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-md border border-border bg-card shadow-lg">
+					{suggestions.map((s, i) => (
+						<button
+							key={s}
+							type="button"
+							onMouseDown={(e) => {
+								e.preventDefault();
+								accept(s);
+							}}
+							className={`flex w-full items-center px-2.5 py-1 font-mono text-[11px] ${
+								i === highlight
+									? "bg-primary/[0.10] text-foreground"
+									: "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+							}`}
+						>
+							{s}
+						</button>
+					))}
+				</div>
+			)}
+		</div>
 	);
 }
 

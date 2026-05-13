@@ -22,9 +22,14 @@ use wallet_runtime::{
 };
 
 use super::manager::{
-    derive_account_at_path, derive_account_from_mnemonic, derive_master_xpriv, LianaKeyInput,
-    LianaRecoveryPath, LianaSpendingPath, LocalWalletManager, ManagerError, WalletSummary,
+    derive_account_at_path, derive_master_xpriv, LianaKeyInput, LianaRecoveryPath,
+    LianaSpendingPath, LocalWalletManager, ManagerError, WalletSummary,
 };
+use policy_core::KeyUtils;
+
+fn wallet_runtime_default_account_path(network: Network) -> String {
+    KeyUtils::get_primary_derivation_path(network).to_string()
+}
 use super::settings::{LocalSettings, SettingsStore};
 use super::storage::{read_seed_file, WalletDirLayout, WalletId};
 use super::sync::{run_sync, ClosureSink, ProgressSink, SyncProgress, SyncSummary};
@@ -53,7 +58,16 @@ pub struct RecoverFromMnemonicRequest {
     pub name: String,
     pub network: String,
     pub mnemonic: String,
+    /// Wallet-encryption passphrase used to encrypt `seed.enc` on
+    /// disk. Separate from `bip39_passphrase` below.
     pub passphrase: String,
+    /// Optional BIP39 "25th word" passphrase. Empty string when the
+    /// wallet was created without one (the common case). The
+    /// cryptographic seed differs between empty and non-empty values
+    /// so this MUST match what the original wallet used, otherwise
+    /// the recovered descriptor won't match the original wallet.
+    #[serde(default)]
+    pub bip39_passphrase: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,6 +292,7 @@ pub async fn cmd_local_recover_from_mnemonic(
         &request.name,
         network,
         &request.mnemonic,
+        &request.bip39_passphrase,
         request.passphrase.as_bytes(),
     )
     .await
@@ -1012,35 +1027,42 @@ pub async fn cmd_local_sign_psbt_software(
         .app_data_dir()
         .map_err(|e| format!("app data dir: {e}"))?;
     let layout = WalletDirLayout::for_wallet(app_data_dir.join("local"), &id);
-    let mnemonic_bytes = read_seed_file(&layout, request.passphrase.as_bytes())
+    let payload = read_seed_file(&layout, request.passphrase.as_bytes())
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "wallet has no on-device seed (watch-only or HW-only)".to_string())?;
-    let mnemonic_str =
-        std::str::from_utf8(&mnemonic_bytes).map_err(|e| format!("seed not utf-8: {}", e))?;
+    let mnemonic_str = payload.mnemonic.as_str();
+    let bip39_passphrase = payload.bip39_passphrase.as_str();
 
-    // Wallets created via QBL-216's `recover_singlesig_hot` (and the
-    // original hot-creation flow) leave `derivation_path = None` —
-    // those still derive at the network's default singlesig path.
-    // QBL-230 cosigner-recovered wallets persist the path their
-    // descriptor's origin block specified (e.g. `48'/1'/0'/2'` for a
-    // BIP48 multisig slot); we derive at exactly that path so the
-    // produced xprv matches the slot. The fingerprint passed to
-    // `analyze_for_signing` differs by case too: the singlesig path
-    // returns the account-xpub fingerprint (which doesn't appear in
-    // origin blocks but works via the spk-match codepath); the
-    // cosigner case returns the master fingerprint, which DOES appear
-    // in `bip32_derivation` / `tap_key_origins` and lets the analysis
-    // pick the right derivations + SignerKind.
+    // Wallets created via the hot-creation flow leave
+    // `derivation_path = None` — those still derive at the network's
+    // default singlesig path. QBL-230 cosigner-recovered wallets
+    // persist the path their descriptor's origin block specified
+    // (e.g. `48'/1'/0'/2'` for a BIP48 multisig slot); we derive at
+    // exactly that path so the produced xprv matches the slot. The
+    // fingerprint passed to `analyze_for_signing` differs by case
+    // too: the singlesig path returns the account-xpub fingerprint
+    // (which doesn't appear in origin blocks but works via the
+    // spk-match codepath); the cosigner case returns the master
+    // fingerprint, which DOES appear in `bip32_derivation` /
+    // `tap_key_origins` and lets the analysis pick the right
+    // derivations + SignerKind. The BIP39 passphrase (if any) flows
+    // through derive_master_xpriv / derive_account_at_path so the
+    // 25th-word case Just Works™.
     let (account_xpriv, fingerprint) = if let Some(path) = meta.derivation_path.as_deref() {
-        let account = derive_account_at_path(network, mnemonic_str, "", path)
+        let account = derive_account_at_path(network, mnemonic_str, bip39_passphrase, path)
             .map_err(|e| e.to_string())?;
-        let master = derive_master_xpriv(network, mnemonic_str, "")
+        let master = derive_master_xpriv(network, mnemonic_str, bip39_passphrase)
             .map_err(|e| e.to_string())?;
         let secp = Secp256k1::new();
         let fp = master.fingerprint(&secp);
         (account, fp)
     } else {
-        derive_account_from_mnemonic(network, mnemonic_str).map_err(|e| e.to_string())?
+        let path = wallet_runtime_default_account_path(network);
+        let account = derive_account_at_path(network, mnemonic_str, bip39_passphrase, &path)
+            .map_err(|e| e.to_string())?;
+        let secp = Secp256k1::new();
+        let fp = account.fingerprint(&secp);
+        (account, fp)
     };
 
     let mut psbt =
