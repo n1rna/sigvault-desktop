@@ -83,3 +83,36 @@ libusb1-sys = { version = "0.7", features = ["vendored"] }
 env_logger = "0.11"
 electrum-client = "0.21"
 tempfile = "3"
+
+# Treat warnings as errors so CI catches drift early. Specific lints
+# we deliberately tolerate are listed below — the goal is to flag NEW
+# patterns we want to discourage, not to rewrite long-standing code.
+#
+# Matches walletrs's lint baseline (crates/server/Cargo.toml) so
+# wallet-runtime / policy-core code that drops into this crate doesn't
+# trigger a different set of opinions.
+[lints.rust]
+warnings = { level = "deny", priority = -1 }
+# Several types in `window/types.rs` and `api/types.rs` are
+# placeholder / forward-looking and only consumed in later flows.
+# `dead_code = warn` would fire here; allow until the consumers land.
+dead_code = "allow"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+# `cmd_submit_transaction_signature` + `recover_descriptor_hot_cosigner`
+# both bundle many narrow params by design (Tauri command shape +
+# wizard-step contracts). Refactoring to a struct would touch every
+# call site and the JS bindings.
+too_many_arguments = "allow"
+# `tonic::Status`-shaped errors (mirroring walletrs server's pattern)
+# are intentionally wide; the Box-wrap workaround adds nothing.
+result_large_err = "allow"
+# Stylistic — keep explicit field names where they help readability.
+redundant_field_names = "allow"
+# Stylistic — nested `if` blocks sometimes read better than chained `&&`.
+collapsible_if = "allow"
+# `SessionMessageType::{WorkflowMessage,SystemMessage,Authentication
+# Message}` is the wire shape we serialize; renaming would break the
+# protocol contract with cloud peers.
+enum_variant_names = "allow"

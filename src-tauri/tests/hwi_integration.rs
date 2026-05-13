@@ -17,7 +17,6 @@
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Fingerprint};
 use bitcoin::Network;
-use hex;
 use sigvault_desktop_lib::hwi::{
     DeviceState, DiscoveredDevice, HardwareWalletManager, UnsupportedReason, WalletConfig,
 };
@@ -156,7 +155,7 @@ fn diagnose_psbt_for_bitbox(psbt_b64: &str, device_fingerprint: &str) {
             }
 
             found = true;
-            let is_internal = input.tap_internal_key.map_or(false, |ik| &ik == xonly);
+            let is_internal = input.tap_internal_key.is_some_and(|ik| &ik == xonly);
             let leaves = leaf_hashes.len();
 
             if is_internal && leaves == 0 {
@@ -236,7 +235,7 @@ fn diagnose_psbt_for_bitbox(psbt_b64: &str, device_fingerprint: &str) {
                 continue;
             }
             found = true;
-            let is_internal = output.tap_internal_key.map_or(false, |ik| &ik == xonly);
+            let is_internal = output.tap_internal_key.is_some_and(|ik| &ik == xonly);
             let leaves = leaf_hashes.len();
 
             if is_internal && leaves == 0 {

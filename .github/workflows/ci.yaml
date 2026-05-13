@@ -19,7 +19,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
+  # `-D warnings` lives in `src-tauri/Cargo.toml`'s `[lints]` block now
+  # (matches the walletrs convention) — that's authoritative for both
+  # CI and local runs.
 
 jobs:
   rust:
