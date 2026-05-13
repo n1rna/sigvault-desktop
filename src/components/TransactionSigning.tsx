@@ -1,13 +1,9 @@
-import { useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useMemo, useState } from "react";
 import type { CommandResult } from "../types/events";
 import type { DiscoveredDevice, WalletConfig } from "../types/hardware";
-import { isDeviceSupported, getDeviceFingerprint } from "../types/hardware";
-import type {
-	TransactionSigningData,
-	SignedPsbtResult,
-	SignatureSlot,
-} from "../types/transaction";
+import { getDeviceFingerprint, isDeviceSupported } from "../types/hardware";
+import type { SignatureSlot, SignedPsbtResult, TransactionSigningData } from "../types/transaction";
 import DeviceList from "./DeviceList";
 
 interface TransactionSigningProps {
@@ -28,13 +24,10 @@ export default function TransactionSigning({
 }: TransactionSigningProps) {
 	const [discovering, setDiscovering] = useState(false);
 	const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
-	const [selectedDevice, setSelectedDevice] =
-		useState<DiscoveredDevice | null>(null);
+	const [selectedDevice, setSelectedDevice] = useState<DiscoveredDevice | null>(null);
 	const [signing, setSigning] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
-	const [unlockingDeviceId, setUnlockingDeviceId] = useState<string | null>(
-		null,
-	);
+	const [unlockingDeviceId, setUnlockingDeviceId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [psbtExpanded, setPsbtExpanded] = useState(false);
 
@@ -44,18 +37,18 @@ export default function TransactionSigning({
 			descriptor: transactionData.transaction.multipath_descriptor,
 			ledger_hmacs: transactionData.transaction.ledger_hmacs,
 		};
-	}, [transactionData.transaction.wallet_name, transactionData.transaction.multipath_descriptor, transactionData.transaction.ledger_hmacs]);
+	}, [
+		transactionData.transaction.wallet_name,
+		transactionData.transaction.multipath_descriptor,
+		transactionData.transaction.ledger_hmacs,
+	]);
 
 	const signingFingerprints = useMemo(() => {
-		return new Set(
-			transactionData.signature_slots.map((slot) => slot.fingerprint),
-		);
+		return new Set(transactionData.signature_slots.map((slot) => slot.fingerprint));
 	}, [transactionData.signature_slots]);
 
 	const getMatchingSlot = (fingerprint: string): SignatureSlot | undefined => {
-		return transactionData.signature_slots.find(
-			(slot) => slot.fingerprint === fingerprint,
-		);
+		return transactionData.signature_slots.find((slot) => slot.fingerprint === fingerprint);
 	};
 
 	const canSign = (device: DiscoveredDevice): boolean => {
@@ -109,16 +102,14 @@ export default function TransactionSigning({
 		setError(null);
 
 		try {
-			const result = await invoke<CommandResult<DiscoveredDevice>>(
-				"cmd_unlock_device",
-				{ deviceId: device.id, walletConfig },
-			);
+			const result = await invoke<CommandResult<DiscoveredDevice>>("cmd_unlock_device", {
+				deviceId: device.id,
+				walletConfig,
+			});
 
 			if (result.success && result.data) {
 				setDevices((prevDevices) =>
-					prevDevices.map((d) =>
-						d.id === device.id ? result.data! : d,
-					),
+					prevDevices.map((d) => (d.id === device.id ? result.data! : d)),
 				);
 
 				if (canSign(result.data)) {
@@ -150,15 +141,12 @@ export default function TransactionSigning({
 		setError(null);
 
 		try {
-			const signResult = await invoke<CommandResult<SignedPsbtResult>>(
-				"cmd_sign_psbt",
-				{
-					deviceId: selectedDevice.id,
-					fingerprint,
-					psbt: transactionData.transaction.psbt,
-					walletConfig,
-				},
-			);
+			const signResult = await invoke<CommandResult<SignedPsbtResult>>("cmd_sign_psbt", {
+				deviceId: selectedDevice.id,
+				fingerprint,
+				psbt: transactionData.transaction.psbt,
+				walletConfig,
+			});
 
 			if (!signResult.success || !signResult.data) {
 				setError(signResult.message || "Failed to sign transaction");
@@ -171,9 +159,8 @@ export default function TransactionSigning({
 
 			let ledgerHmacs: Record<string, string> = {};
 			try {
-				const hmacsResult = await invoke<CommandResult<Record<string, string>>>(
-					"cmd_get_ledger_hmacs",
-				);
+				const hmacsResult =
+					await invoke<CommandResult<Record<string, string>>>("cmd_get_ledger_hmacs");
 				if (hmacsResult.success && hmacsResult.data) {
 					ledgerHmacs = hmacsResult.data;
 				}
@@ -181,17 +168,14 @@ export default function TransactionSigning({
 				// Non-critical: HMACs won't be persisted this time
 			}
 
-			const submitResult = await invoke<CommandResult>(
-				"cmd_submit_transaction_signature",
-				{
-					sessionId: sessionId,
-					signedPsbt: signResult.data.psbt,
-					txid: transactionData.transaction.txid,
-					deviceFingerprint: fingerprint,
-					deviceDerivationPath: matchingSlot.derivation_path,
-					ledgerHmacs: Object.keys(ledgerHmacs).length > 0 ? ledgerHmacs : undefined,
-				},
-			);
+			const submitResult = await invoke<CommandResult>("cmd_submit_transaction_signature", {
+				sessionId: sessionId,
+				signedPsbt: signResult.data.psbt,
+				txid: transactionData.transaction.txid,
+				deviceFingerprint: fingerprint,
+				deviceDerivationPath: matchingSlot.derivation_path,
+				ledgerHmacs: Object.keys(ledgerHmacs).length > 0 ? ledgerHmacs : undefined,
+			});
 
 			if (submitResult.success) {
 				onSignatureSubmitted();
@@ -220,8 +204,7 @@ export default function TransactionSigning({
 				<div className="flex items-start justify-between gap-4 border-b border-border/60 px-6 py-5">
 					<div>
 						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-5 bg-primary/60" />
-							§ 01 — Transaction
+							<span className="h-px w-5 bg-primary/60" />§ 01 — Transaction
 						</div>
 						<h2 className="mt-2.5 text-[20px] font-medium tracking-tight text-foreground">
 							Review and approve
@@ -234,7 +217,15 @@ export default function TransactionSigning({
 					</div>
 
 					<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/[0.08] text-primary">
-						<svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="h-5 w-5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.8"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
 							<polyline points="14 2 14 8 20 8" />
 							<path d="M9 13h6" />
@@ -275,9 +266,7 @@ export default function TransactionSigning({
 							</button>
 						</div>
 						<code className="mt-2 block max-h-[180px] overflow-y-auto break-all rounded-md border border-border/70 bg-background p-3 font-mono text-[11px] leading-relaxed tabular-nums text-muted-foreground">
-							{psbtExpanded
-								? transactionData.transaction.psbt
-								: truncatedPsbt}
+							{psbtExpanded ? transactionData.transaction.psbt : truncatedPsbt}
 						</code>
 					</div>
 				</div>
@@ -286,14 +275,11 @@ export default function TransactionSigning({
 				<div className="border-t border-border/60 px-6 pt-5 pb-6">
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-5 bg-accent/60" />
-							§ Required signatures
+							<span className="h-px w-5 bg-accent/60" />§ Required signatures
 						</div>
 						<span className="font-mono text-[10px] uppercase tracking-[0.16em] tabular-nums text-muted-foreground">
 							{transactionData.signature_slots.length}{" "}
-							{transactionData.signature_slots.length === 1
-								? "signer"
-								: "signers"}
+							{transactionData.signature_slots.length === 1 ? "signer" : "signers"}
 						</span>
 					</div>
 
@@ -324,7 +310,15 @@ export default function TransactionSigning({
 			{/* ══════════════ Error ══════════════ */}
 			{error && (
 				<div className="flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
-					<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<svg
+						className="mt-0.5 h-3.5 w-3.5 shrink-0"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
 						<circle cx="12" cy="12" r="10" />
 						<line x1="12" y1="8" x2="12" y2="12" />
 						<line x1="12" y1="16" x2="12.01" y2="16" />
@@ -338,8 +332,7 @@ export default function TransactionSigning({
 				<div className="flex items-start justify-between gap-4 border-b border-border/60 px-6 py-5">
 					<div>
 						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-5 bg-primary/60" />
-							§ 02 — Hardware wallet
+							<span className="h-px w-5 bg-primary/60" />§ 02 — Hardware wallet
 						</div>
 						<h2 className="mt-2.5 text-[20px] font-medium tracking-tight text-foreground">
 							Sign with device
@@ -357,14 +350,29 @@ export default function TransactionSigning({
 					>
 						{discovering ? (
 							<>
-								<svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+								<svg
+									className="h-3.5 w-3.5 animate-spin"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+								>
 									<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 								</svg>
 								scanning
 							</>
 						) : devices.length === 0 ? (
 							<>
-								<svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+								<svg
+									className="h-3.5 w-3.5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.8"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
 									<circle cx="11" cy="11" r="8" />
 									<path d="m21 21-4.3-4.3" />
 								</svg>
@@ -372,7 +380,15 @@ export default function TransactionSigning({
 							</>
 						) : (
 							<>
-								<svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+								<svg
+									className="h-3.5 w-3.5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
 									<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
 									<path d="M3 3v5h5" />
 									<path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
@@ -388,7 +404,15 @@ export default function TransactionSigning({
 					{devices.length === 0 && !discovering && (
 						<div className="flex flex-col items-center justify-center py-10 text-center">
 							<div className="flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-border bg-background">
-								<svg className="h-6 w-6 text-muted-foreground/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+								<svg
+									className="h-6 w-6 text-muted-foreground/50"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.5"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
 									<rect x="2" y="6" width="20" height="12" rx="2" />
 									<circle cx="8" cy="12" r="1.5" />
 									<path d="M12 12h6" />
@@ -408,7 +432,15 @@ export default function TransactionSigning({
 						<>
 							{!hasMatchingDevice && (
 								<div className="mb-4 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
-									<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+									<svg
+										className="mt-0.5 h-3.5 w-3.5 shrink-0"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									>
 										<circle cx="12" cy="12" r="10" />
 										<line x1="12" y1="8" x2="12" y2="12" />
 										<line x1="12" y1="16" x2="12.01" y2="16" />
@@ -416,9 +448,7 @@ export default function TransactionSigning({
 									<span className="leading-snug">
 										No authorized signers found. Expected:{" "}
 										<span className="font-mono tabular-nums">
-											{transactionData.signature_slots
-												.map((s) => s.fingerprint)
-												.join(", ")}
+											{transactionData.signature_slots.map((s) => s.fingerprint).join(", ")}
 										</span>
 									</span>
 								</div>
@@ -449,14 +479,28 @@ export default function TransactionSigning({
 							>
 								{signing ? (
 									<>
-										<svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+										<svg
+											className="h-4 w-4 animate-spin"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2.5"
+											strokeLinecap="round"
+										>
 											<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 										</svg>
 										Awaiting device approval…
 									</>
 								) : submitting ? (
 									<>
-										<svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+										<svg
+											className="h-4 w-4 animate-spin"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2.5"
+											strokeLinecap="round"
+										>
 											<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 										</svg>
 										Submitting signature…
@@ -464,7 +508,15 @@ export default function TransactionSigning({
 								) : (
 									<>
 										Sign transaction
-										<svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<svg
+											className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2"
+											strokeLinecap="round"
+											strokeLinejoin="round"
+										>
 											<path d="M5 12h14" />
 											<path d="m12 5 7 7-7 7" />
 										</svg>

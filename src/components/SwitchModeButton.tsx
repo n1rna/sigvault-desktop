@@ -6,8 +6,8 @@
 // the source. Renders nothing when no mode is set (i.e. the user is
 // already on the mode chooser).
 
-import { useContext } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useContext } from "react";
 import { AppStateContext } from "../contexts/AppStateContext";
 
 interface Props {

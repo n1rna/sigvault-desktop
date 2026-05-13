@@ -1,13 +1,9 @@
-import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type {
-	DiscoveredDevice,
-	DeviceInfo,
-	WalletConfig,
-} from "../types/hardware";
-import { isDeviceSupported, getDeviceFingerprint } from "../types/hardware";
-import type { CommandResult } from "../types/events";
+import { useState } from "react";
 import { useAppState } from "../contexts/AppStateContext";
+import type { CommandResult } from "../types/events";
+import type { DeviceInfo, DiscoveredDevice, WalletConfig } from "../types/hardware";
+import { getDeviceFingerprint, isDeviceSupported } from "../types/hardware";
 import DeviceList from "./DeviceList";
 
 interface DeviceDiscoveryProps {
@@ -16,10 +12,7 @@ interface DeviceDiscoveryProps {
 	 * a device. The second argument is the `DiscoveredDevice` itself, so
 	 * callers that need the runtime `id` (e.g. for `cmd_sign_psbt`) don't
 	 * have to re-discover. */
-	onDeviceSelected: (
-		deviceInfo: DeviceInfo,
-		device: DiscoveredDevice,
-	) => void;
+	onDeviceSelected: (deviceInfo: DeviceInfo, device: DiscoveredDevice) => void;
 	derivationPath?: string;
 	walletConfig?: WalletConfig;
 }
@@ -32,12 +25,9 @@ export default function DeviceDiscovery({
 	const { clearActivityLog } = useAppState();
 	const [discovering, setDiscovering] = useState(false);
 	const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
-	const [selectedDevice, setSelectedDevice] =
-		useState<DiscoveredDevice | null>(null);
+	const [selectedDevice, setSelectedDevice] = useState<DiscoveredDevice | null>(null);
 	const [extracting, setExtracting] = useState(false);
-	const [unlockingDeviceId, setUnlockingDeviceId] = useState<string | null>(
-		null,
-	);
+	const [unlockingDeviceId, setUnlockingDeviceId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	const handleDiscover = async () => {
@@ -53,10 +43,7 @@ export default function DeviceDiscovery({
 
 			if (result.success && result.data) {
 				setDevices(result.data);
-				if (
-					selectedDevice &&
-					!result.data.find((d) => d.id === selectedDevice.id)
-				) {
+				if (selectedDevice && !result.data.find((d) => d.id === selectedDevice.id)) {
 					setSelectedDevice(null);
 				}
 			} else {
@@ -81,16 +68,14 @@ export default function DeviceDiscovery({
 		setError(null);
 
 		try {
-			const result = await invoke<CommandResult<DiscoveredDevice>>(
-				"cmd_unlock_device",
-				{ deviceId: device.id, walletConfig },
-			);
+			const result = await invoke<CommandResult<DiscoveredDevice>>("cmd_unlock_device", {
+				deviceId: device.id,
+				walletConfig,
+			});
 
 			if (result.success && result.data) {
 				setDevices((prevDevices) =>
-					prevDevices.map((d) =>
-						d.id === device.id ? result.data! : d,
-					),
+					prevDevices.map((d) => (d.id === device.id ? result.data! : d)),
 				);
 
 				if (isDeviceSupported(result.data)) {
@@ -116,10 +101,10 @@ export default function DeviceDiscovery({
 		setError(null);
 
 		try {
-			const result = await invoke<CommandResult<DeviceInfo>>(
-				"cmd_get_device_xpub",
-				{ fingerprint, derivationPath },
-			);
+			const result = await invoke<CommandResult<DeviceInfo>>("cmd_get_device_xpub", {
+				fingerprint,
+				derivationPath,
+			});
 
 			if (result.success && result.data) {
 				onDeviceSelected(result.data, selectedDevice);
@@ -133,8 +118,7 @@ export default function DeviceDiscovery({
 		}
 	};
 
-	const canExtract =
-		selectedDevice && isDeviceSupported(selectedDevice) && !extracting;
+	const canExtract = selectedDevice && isDeviceSupported(selectedDevice) && !extracting;
 
 	return (
 		<div className="flex flex-col gap-6 rounded-lg border border-border bg-card p-6">
@@ -155,12 +139,20 @@ export default function DeviceDiscovery({
 				>
 					{discovering ? (
 						<span className="flex items-center gap-2">
-							<svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+							<svg
+								className="h-3.5 w-3.5 animate-spin"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+							>
 								<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 							</svg>
 							Scanning…
 						</span>
-					) : "Discover Devices"}
+					) : (
+						"Discover Devices"
+					)}
 				</button>
 			</div>
 
@@ -189,9 +181,7 @@ export default function DeviceDiscovery({
 								disabled={extracting}
 								className="rounded-md bg-primary px-6 py-3 text-[0.9375rem] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
-								{extracting
-									? "Extracting Device Info…"
-									: "Continue with Selected Device"}
+								{extracting ? "Extracting Device Info…" : "Continue with Selected Device"}
 							</button>
 						</div>
 					)}

@@ -13,12 +13,12 @@
 //   3. Descriptor only — for read-only / HW-spend imports. Routes to
 //      the existing watch-only flow in the create wizard.
 
-import { useCallback, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { useNavigate } from "react-router-dom";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { validateMnemonic } from "@scure/bip39";
 import { wordlist as bip39Wordlist } from "@scure/bip39/wordlists/english.js";
+import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import WindowControls from "../../components/WindowControls";
 
 type Method = "singlesig" | "cosigner" | "descriptor_only";
@@ -92,8 +92,7 @@ export default function RecoveryFlow() {
 		passphraseOk &&
 		mnemonicValid &&
 		(method === "singlesig" ||
-			(externalDescriptor.trim().length > 0 &&
-				internalDescriptor.trim().length > 0));
+			(externalDescriptor.trim().length > 0 && internalDescriptor.trim().length > 0));
 
 	const submit = async () => {
 		setSubmitting(true);
@@ -131,11 +130,7 @@ export default function RecoveryFlow() {
 			setStep("done");
 		} catch (err) {
 			setError(
-				typeof err === "string"
-					? err
-					: err instanceof Error
-						? err.message
-						: "Recovery failed",
+				typeof err === "string" ? err : err instanceof Error ? err.message : "Recovery failed",
 			);
 		} finally {
 			setSubmitting(false);
@@ -178,9 +173,7 @@ export default function RecoveryFlow() {
 						</svg>
 					</button>
 					<div className="flex flex-col leading-none">
-						<span className="text-[14px] font-medium text-foreground">
-							Recover wallet
-						</span>
+						<span className="text-[14px] font-medium text-foreground">Recover wallet</span>
 						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
 							Restore from a backup
 						</span>
@@ -256,9 +249,7 @@ export default function RecoveryFlow() {
 					{step === "done" && createdId && (
 						<DoneStep
 							walletId={createdId}
-							onFinish={() =>
-								navigate(`/local/wallets/${createdId}`)
-							}
+							onFinish={() => navigate(`/local/wallets/${createdId}`)}
 						/>
 					)}
 				</div>
@@ -282,18 +273,12 @@ function StepIndicator({ stepIndex }: { stepIndex: number }) {
 						<div key={label} className="flex flex-1 items-center gap-2">
 							<div
 								className={`h-1 flex-1 rounded-full transition-colors ${
-									done
-										? "bg-primary"
-										: active
-											? "bg-primary/60"
-											: "bg-border"
+									done ? "bg-primary" : active ? "bg-primary/60" : "bg-border"
 								}`}
 							/>
 							<span
 								className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
-									active || done
-										? "text-foreground"
-										: "text-muted-foreground/70"
+									active || done ? "text-foreground" : "text-muted-foreground/70"
 								}`}
 							>
 								{label}
@@ -348,12 +333,8 @@ function MethodStep({
 									: "border-border bg-card/40 hover:border-primary/50"
 							}`}
 						>
-							<div className="text-[13px] font-medium text-foreground">
-								{opt.title}
-							</div>
-							<p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
-								{opt.hint}
-							</p>
+							<div className="text-[13px] font-medium text-foreground">{opt.title}</div>
+							<p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">{opt.hint}</p>
 						</button>
 					);
 				})}
@@ -475,10 +456,7 @@ function DetailsStep({
 						Recovery phrase
 					</span>
 					<div className="flex items-center gap-2">
-						<ChecksumStatus
-							allFilled={allWordsFilled}
-							valid={mnemonicValid}
-						/>
+						<ChecksumStatus allFilled={allWordsFilled} valid={mnemonicValid} />
 						<div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
 							{RECOVERY_LENGTHS.map((n) => (
 								<button
@@ -498,17 +476,12 @@ function DetailsStep({
 					</div>
 				</div>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-					Enter your existing BIP39 phrase, lowercase, in order. Use Tab or
-					↓/↑ to pick from the autocomplete suggestions.
+					Enter your existing BIP39 phrase, lowercase, in order. Use Tab or ↓/↑ to pick from the
+					autocomplete suggestions.
 				</p>
 				<div className="mt-3 grid grid-cols-3 gap-2">
 					{words.slice(0, recoveryLength).map((w, i) => (
-						<WordInput
-							key={i}
-							index={i}
-							value={w}
-							onChange={(v) => onChangeWord(i, v)}
-						/>
+						<WordInput key={i} index={i} value={w} onChange={(v) => onChangeWord(i, v)} />
 					))}
 				</div>
 			</div>
@@ -580,10 +553,9 @@ function DetailsStep({
 					BIP39 passphrase (optional)
 				</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-					The "25th word" some users layer on top of their seed phrase.
-					Leave empty unless you actively used one when the wallet was
-					created — the cryptographic seed differs between empty and
-					non-empty values, so a wrong guess produces a different wallet.
+					The "25th word" some users layer on top of their seed phrase. Leave empty unless you
+					actively used one when the wallet was created — the cryptographic seed differs between
+					empty and non-empty values, so a wrong guess produces a different wallet.
 				</p>
 				<input
 					type="password"
@@ -600,8 +572,7 @@ function DetailsStep({
 					Wallet-encryption passphrase
 				</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-					Encrypts the seed on disk. You'll need this to unlock the wallet.
-					At least 8 characters.
+					Encrypts the seed on disk. You'll need this to unlock the wallet. At least 8 characters.
 				</p>
 				<input
 					type="password"
@@ -621,12 +592,11 @@ function DetailsStep({
 					onChange={(e) => onChangeConfirm(e.target.value)}
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
 				/>
-				{confirmPassphrase.length > 0 &&
-					confirmPassphrase !== passphrase && (
-						<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
-							Passphrases don't match
-						</span>
-					)}
+				{confirmPassphrase.length > 0 && confirmPassphrase !== passphrase && (
+					<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
+						Passphrases don't match
+					</span>
+				)}
 			</label>
 
 			<div className="flex items-center gap-3">
@@ -650,13 +620,7 @@ function DetailsStep({
 	);
 }
 
-function ChecksumStatus({
-	allFilled,
-	valid,
-}: {
-	allFilled: boolean;
-	valid: boolean;
-}) {
+function ChecksumStatus({ allFilled, valid }: { allFilled: boolean; valid: boolean }) {
 	if (!allFilled) {
 		return (
 			<span className="rounded-sm border border-border bg-card px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
@@ -707,8 +671,7 @@ function WordInput({
 		return matches;
 	}, [value]);
 
-	const showSuggestions =
-		focused && suggestions.length > 0 && !suggestions.includes(value);
+	const showSuggestions = focused && suggestions.length > 0 && !suggestions.includes(value);
 
 	const accept = (word: string) => {
 		onChange(word);
@@ -719,9 +682,7 @@ function WordInput({
 		<div className="relative">
 			<div
 				className={`flex items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 ${
-					value && !bip39Wordlist.includes(value)
-						? "border-destructive/50"
-						: "border-border"
+					value && !bip39Wordlist.includes(value) ? "border-destructive/50" : "border-border"
 				}`}
 			>
 				<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
@@ -784,13 +745,7 @@ function WordInput({
 	);
 }
 
-function DoneStep({
-	walletId,
-	onFinish,
-}: {
-	walletId: string;
-	onFinish: () => void;
-}) {
+function DoneStep({ walletId, onFinish }: { walletId: string; onFinish: () => void }) {
 	return (
 		<div className="space-y-6">
 			<div className="rounded-md border border-border bg-card/40 px-5 py-6 text-center">
@@ -801,8 +756,7 @@ function DoneStep({
 					{walletId.slice(0, 12)}…{walletId.slice(-4)}
 				</div>
 				<p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
-					The wallet is unlocked and syncing. Balance + history will populate
-					as the sync completes.
+					The wallet is unlocked and syncing. Balance + history will populate as the sync completes.
 				</p>
 			</div>
 			<button

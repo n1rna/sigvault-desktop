@@ -1,13 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useState } from "react";
 import SwitchModeButton from "../components/SwitchModeButton";
 import WindowControls from "../components/WindowControls";
-import type {
-	CommandResult,
-	EnvironmentConfig,
-	EnvironmentsResponse,
-} from "../types/events";
+import type { CommandResult, EnvironmentConfig, EnvironmentsResponse } from "../types/events";
 
 export default function SelectEnv() {
 	const [environments, setEnvironments] = useState<EnvironmentConfig[]>([]);
@@ -124,8 +120,7 @@ export default function SelectEnv() {
 						Choose a network.
 					</h1>
 					<p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
-						Pick which SigVault deployment to connect to. You can switch
-						later by signing out.
+						Pick which SigVault deployment to connect to. You can switch later by signing out.
 					</p>
 
 					{error && (
@@ -173,9 +168,7 @@ export default function SelectEnv() {
 										}`}
 									>
 										<div className="flex flex-col">
-											<span className="text-[14px] font-medium text-foreground">
-												{env.name}
-											</span>
+											<span className="text-[14px] font-medium text-foreground">{env.name}</span>
 											<span className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
 												{env.network} · {env.apiBaseUrl.replace(/^https?:\/\//, "")}
 											</span>

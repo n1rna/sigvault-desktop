@@ -9,11 +9,7 @@ export const AppStateContext = createContext<AppStateContextType | null>(null);
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
 	const state = useAppEvents();
 
-	return (
-		<AppStateContext.Provider value={state}>
-			{children}
-		</AppStateContext.Provider>
-	);
+	return <AppStateContext.Provider value={state}>{children}</AppStateContext.Provider>;
 }
 
 export function useAppState() {

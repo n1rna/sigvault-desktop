@@ -1,7 +1,7 @@
 use log::{error, info};
 use serde::Deserialize;
 use serde_json;
-use tauri::{State, AppHandle, WebviewWindow};
+use tauri::{AppHandle, State, WebviewWindow};
 
 use crate::error::AppErrorCode;
 use crate::hwi::{DeviceInfo, WalletConfig};
@@ -78,7 +78,10 @@ pub async fn cmd_discover_hardware_wallets(
     };
 
     let hw_manager = app_state.require_hw_manager().await?;
-    match hw_manager.discover_devices(config.as_ref(), Some(&app)).await {
+    match hw_manager
+        .discover_devices(config.as_ref(), Some(&app))
+        .await
+    {
         Ok(devices) => {
             info!("Successfully discovered {} device(s)", devices.len());
             let devices_json = serde_json::to_value(&devices)
@@ -149,9 +152,7 @@ pub async fn cmd_get_device_xpub(
     fingerprint: String,
     derivation_path: String,
 ) -> Result<CommandResult, String> {
-    info!(
-        "Extracting xpub for device {fingerprint} at path {derivation_path}"
-    );
+    info!("Extracting xpub for device {fingerprint} at path {derivation_path}");
 
     let hw_manager = app_state.require_hw_manager().await?;
     match hw_manager
@@ -271,9 +272,7 @@ pub async fn cmd_submit_transaction_signature(
     device_derivation_path: String,
     ledger_hmacs: Option<std::collections::HashMap<String, String>>,
 ) -> Result<CommandResult, String> {
-    info!(
-        "Submitting transaction signature for session {session_id}"
-    );
+    info!("Submitting transaction signature for session {session_id}");
 
     let ws_handler = app_state.ws_handler.lock().await;
 
@@ -325,8 +324,8 @@ pub async fn cmd_get_ledger_hmacs(
 ) -> Result<CommandResult, String> {
     let hw_manager = app_state.require_hw_manager().await?;
     let hmacs = hw_manager.get_ledger_hmacs_hex().await;
-    let hmacs_json = serde_json::to_value(&hmacs)
-        .map_err(|e| format!("Failed to serialize HMACs: {e}"))?;
+    let hmacs_json =
+        serde_json::to_value(&hmacs).map_err(|e| format!("Failed to serialize HMACs: {e}"))?;
     Ok(CommandResult {
         success: true,
         message: format!("Found {} Ledger HMAC(s)", hmacs.len()),

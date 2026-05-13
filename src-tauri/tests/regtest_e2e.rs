@@ -56,8 +56,7 @@ use bitcoin::{Address, Amount, FeeRate, Network, Psbt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sigvault_desktop_lib::local_wallet::manager::{
-    derive_account_at_path, derive_master_xpriv, LianaPrimary, LocalWalletManager,
-    MultisigCosigner,
+    derive_account_at_path, derive_master_xpriv, LianaPrimary, LocalWalletManager, MultisigCosigner,
 };
 use sigvault_desktop_lib::local_wallet::state::{LocalWalletState, UnlockedHandle};
 use sigvault_desktop_lib::local_wallet::storage::{read_seed_file, WalletDirLayout, WalletId};
@@ -188,7 +187,8 @@ impl BitcoindRpc {
     /// and return the txid. Needs the bitcoind wallet to have a
     /// spendable balance (mine 101 blocks to a wallet address first).
     async fn send_to_address(&self, address: &str, amount_btc: f64) -> Result<String, String> {
-        self.call("sendtoaddress", json!([address, amount_btc])).await
+        self.call("sendtoaddress", json!([address, amount_btc]))
+            .await
     }
 
     /// Get a fresh address from the default-loaded bitcoind wallet.
@@ -310,9 +310,7 @@ async fn build_sign_broadcast(
             wallet, persister, ..
         } = &mut *guard;
         let mut builder = wallet.build_tx();
-        builder.fee_rate(
-            FeeRate::from_sat_per_vb(fee_sat_per_vb).ok_or("fee rate")?,
-        );
+        builder.fee_rate(FeeRate::from_sat_per_vb(fee_sat_per_vb).ok_or("fee rate")?);
         let addr = Address::from_str(recipient)
             .map_err(|e| e.to_string())?
             .require_network(network)
@@ -377,8 +375,7 @@ async fn build_sign_broadcast(
     let tx = psbt.extract_tx().map_err(|e| format!("extract: {e}"))?;
     let url = electrs_url();
     let txid = tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let client =
-            ElectrumClient::connect(&url).map_err(|e| format!("electrum connect: {e}"))?;
+        let client = ElectrumClient::connect(&url).map_err(|e| format!("electrum connect: {e}"))?;
         client.broadcast(&tx).map_err(|e| format!("broadcast: {e}"))
     })
     .await
@@ -417,9 +414,13 @@ async fn singlesig_hot_full_cycle() {
         .await
         .expect("fund via bitcoind");
     let miner_addr = rpc.get_new_address().await.expect("miner addr");
-    rpc.generate_to_address(2, &miner_addr).await.expect("confirm");
+    rpc.generate_to_address(2, &miner_addr)
+        .await
+        .expect("confirm");
 
-    sync_wallet(&mgr, &id, Network::Regtest).await.expect("sync");
+    sync_wallet(&mgr, &id, Network::Regtest)
+        .await
+        .expect("sync");
 
     // Send half back to a fresh bitcoind address.
     let recipient = rpc.get_new_address().await.expect("recipient");
@@ -437,7 +438,9 @@ async fn singlesig_hot_full_cycle() {
 
     // Cleanup: mine confirmation + sync once more so subsequent runs
     // don't see this UTXO as unconfirmed-pending in electrs caches.
-    rpc.generate_to_address(2, &miner_addr).await.expect("confirm send");
+    rpc.generate_to_address(2, &miner_addr)
+        .await
+        .expect("confirm send");
 }
 
 #[tokio::test]
@@ -457,7 +460,10 @@ async fn watch_only_descriptor_import() {
         .create_singlesig_hot("source", Network::Regtest, pass_a)
         .await
         .expect("create source");
-    mgr_a.unlock_wallet(&id_a, pass_a).await.expect("unlock source");
+    mgr_a
+        .unlock_wallet(&id_a, pass_a)
+        .await
+        .expect("unlock source");
     let meta_a = mgr_a.read_metadata(&id_a).expect("read meta");
 
     let (_tmp_b, mgr_b) = fresh_manager();
@@ -482,12 +488,17 @@ async fn watch_only_descriptor_import() {
         .peek_address(&id_b, KeychainKind::External, 0)
         .await
         .unwrap();
-    assert_eq!(addr_a, addr_b, "watch-only must derive same address as source");
+    assert_eq!(
+        addr_a, addr_b,
+        "watch-only must derive same address as source"
+    );
 
     // Fund the address; both wallets should observe the balance after sync.
     rpc.send_to_address(&addr_a, 0.05).await.expect("fund");
     let miner_addr = rpc.get_new_address().await.unwrap();
-    rpc.generate_to_address(2, &miner_addr).await.expect("confirm");
+    rpc.generate_to_address(2, &miner_addr)
+        .await
+        .expect("confirm");
 
     sync_wallet(&mgr_b, &id_b, Network::Regtest)
         .await
@@ -583,9 +594,7 @@ async fn app_restart_preserves_wallets() {
 #[tokio::test]
 async fn mainnet_creation_gated() {
     let (_tmp, mgr) = fresh_manager();
-    let result = mgr
-        .create_singlesig_hot("mn", Network::Bitcoin, b"x")
-        .await;
+    let result = mgr.create_singlesig_hot("mn", Network::Bitcoin, b"x").await;
     assert!(result.is_err(), "mainnet creation must be rejected");
 }
 
@@ -673,7 +682,10 @@ async fn bip39_passphrase_round_trip() {
             "multisig",
         )
         .await;
-    assert!(bad.is_err(), "wrong BIP39 passphrase must fail fingerprint check");
+    assert!(
+        bad.is_err(),
+        "wrong BIP39 passphrase must fail fingerprint check"
+    );
 
     // Confirm signing works for the recovered wallet (we just check
     // it can derive without panicking — full PSBT round-trip would

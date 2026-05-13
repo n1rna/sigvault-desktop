@@ -92,10 +92,7 @@ fn parse_descriptor_key_origins(descriptor: &str) -> Vec<(Fingerprint, Derivatio
                     <Fingerprint as FromStr>::from_str(fp_hex),
                     DerivationPath::from_str(&full_path_str),
                 ) {
-                    println!(
-                        "  Parsed key origin: fp={} account_path={}",
-                        fp, path
-                    );
+                    println!("  Parsed key origin: fp={} account_path={}", fp, path);
                     origins.push((fp, path));
                 }
             }
@@ -159,9 +156,7 @@ fn diagnose_psbt_for_bitbox(psbt_b64: &str, device_fingerprint: &str) {
             }
 
             found = true;
-            let is_internal = input
-                .tap_internal_key
-                .map_or(false, |ik| &ik == xonly);
+            let is_internal = input.tap_internal_key.map_or(false, |ik| &ik == xonly);
             let leaves = leaf_hashes.len();
 
             if is_internal && leaves == 0 {
@@ -241,9 +236,7 @@ fn diagnose_psbt_for_bitbox(psbt_b64: &str, device_fingerprint: &str) {
                 continue;
             }
             found = true;
-            let is_internal = output
-                .tap_internal_key
-                .map_or(false, |ik| &ik == xonly);
+            let is_internal = output.tap_internal_key.map_or(false, |ik| &ik == xonly);
             let leaves = leaf_hashes.len();
 
             if is_internal && leaves == 0 {
@@ -252,10 +245,10 @@ fn diagnose_psbt_for_bitbox(psbt_b64: &str, device_fingerprint: &str) {
                     path
                 );
             } else if !is_internal && output.tap_internal_key.is_none() && leaves == 0 {
+                println!("    -> PROBLEM: our key has 0 leaves but tap_internal_key is MISSING!");
                 println!(
-                    "    -> PROBLEM: our key has 0 leaves but tap_internal_key is MISSING!"
+                    "       find_our_key will return KeyNotUnique -> output treated as EXTERNAL"
                 );
-                println!("       find_our_key will return KeyNotUnique -> output treated as EXTERNAL");
                 println!("       FIX: set tap_internal_key on this output");
             } else if leaves == 1 {
                 println!(
@@ -267,7 +260,9 @@ fn diagnose_psbt_for_bitbox(psbt_b64: &str, device_fingerprint: &str) {
                     "    -> PROBLEM: our key has {} leaves, expected 0 (internal) or 1 (script)",
                     leaves
                 );
-                println!("       find_our_key will return KeyNotUnique -> output treated as EXTERNAL");
+                println!(
+                    "       find_our_key will return KeyNotUnique -> output treated as EXTERNAL"
+                );
             }
             break;
         }
@@ -452,6 +447,7 @@ async fn test_discover_with_wallet_config() {
         name: wallet_name.clone(),
         descriptor: descriptor.clone(),
         hmac: None,
+        ledger_hmacs: None,
     };
 
     println!("  Wallet name:  {}", wallet_name);
@@ -508,6 +504,7 @@ async fn test_discover_and_unlock() {
         name: wallet_name.clone(),
         descriptor: descriptor.clone(),
         hmac: None,
+        ledger_hmacs: None,
     };
 
     print_separator(&format!("DISCOVER AND UNLOCK (network: {:?})", network));
@@ -592,12 +589,20 @@ async fn test_get_device_xpubs() {
 
     let derivation_paths: Vec<&str> = match network {
         Network::Bitcoin => vec![
-            "m/84'/0'/0'", "m/86'/0'/0'", "m/48'/0'/0'/2'",
-            "m/84'/1'/0'", "m/86'/1'/0'", "m/48'/1'/0'/2'",
+            "m/84'/0'/0'",
+            "m/86'/0'/0'",
+            "m/48'/0'/0'/2'",
+            "m/84'/1'/0'",
+            "m/86'/1'/0'",
+            "m/48'/1'/0'/2'",
         ],
         _ => vec![
-            "m/84'/1'/0'", "m/86'/1'/0'", "m/48'/1'/0'/2'",
-            "m/84'/0'/0'", "m/86'/0'/0'", "m/48'/0'/0'/2'",
+            "m/84'/1'/0'",
+            "m/86'/1'/0'",
+            "m/48'/1'/0'/2'",
+            "m/84'/0'/0'",
+            "m/86'/0'/0'",
+            "m/48'/0'/0'/2'",
         ],
     };
 
@@ -633,13 +638,22 @@ async fn test_get_device_xpubs() {
             let start = Instant::now();
             match manager.get_device_info(fingerprint, derivation_path).await {
                 Ok(info) => {
-                    println!("  [{}] Extracted in {:.2?}", derivation_path, start.elapsed());
+                    println!(
+                        "  [{}] Extracted in {:.2?}",
+                        derivation_path,
+                        start.elapsed()
+                    );
                     println!("    Xpub:        {}", info.xpub);
                     println!("    Fingerprint: {}", info.fingerprint);
                     println!("    Device Type: {}", info.device_type);
                 }
                 Err(e) => {
-                    println!("  [{}] FAILED after {:.2?}: {:?}", derivation_path, start.elapsed(), e);
+                    println!(
+                        "  [{}] FAILED after {:.2?}: {:?}",
+                        derivation_path,
+                        start.elapsed(),
+                        e
+                    );
                 }
             }
         }
@@ -682,14 +696,8 @@ async fn test_sign_psbt() {
                     println!("  PSBT parsed successfully:");
                     println!("  Inputs:  {}", psbt.inputs.len());
                     println!("  Outputs: {}", psbt.outputs.len());
-                    println!(
-                        "  TX locktime: {}",
-                        psbt.unsigned_tx.lock_time
-                    );
-                    println!(
-                        "  TX version:  {}",
-                        psbt.unsigned_tx.version
-                    );
+                    println!("  TX locktime: {}", psbt.unsigned_tx.lock_time);
+                    println!("  TX version:  {}", psbt.unsigned_tx.version);
 
                     for (i, (tx_in, input)) in psbt
                         .unsigned_tx
@@ -734,7 +742,10 @@ async fn test_sign_psbt() {
                             for (pubkey, (leaf_hashes, (fp, path))) in &input.tap_key_origins {
                                 println!(
                                     "      pk: {} fp: {} path: {} leaves: {}",
-                                    pubkey, fp, path, leaf_hashes.len()
+                                    pubkey,
+                                    fp,
+                                    path,
+                                    leaf_hashes.len()
                                 );
                                 for lh in leaf_hashes {
                                     println!("        leaf_hash: {}", lh);
@@ -775,7 +786,10 @@ async fn test_sign_psbt() {
                             for (pubkey, (leaf_hashes, (fp, path))) in &output.tap_key_origins {
                                 println!(
                                     "      pk: {} fp: {} path: {} leaves: {}",
-                                    pubkey, fp, path, leaf_hashes.len()
+                                    pubkey,
+                                    fp,
+                                    path,
+                                    leaf_hashes.len()
                                 );
                             }
                         }
@@ -803,6 +817,7 @@ async fn test_sign_psbt() {
         name: wallet_name.clone(),
         descriptor: descriptor.clone(),
         hmac: None,
+        ledger_hmacs: None,
     };
 
     println!("  Wallet name:  {}", wallet_name);
@@ -857,15 +872,25 @@ async fn test_sign_psbt() {
                     if let Some(fp) = unlocked.fingerprint() {
                         if let Some(ref desc) = descriptor {
                             let origins = parse_descriptor_key_origins(desc);
-                            let fp_matches: Vec<_> = origins.iter()
+                            let fp_matches: Vec<_> = origins
+                                .iter()
                                 .filter(|(ofp, _)| ofp.to_string() == fp)
                                 .collect();
                             if fp_matches.is_empty() {
                                 println!("  WARNING: Device fingerprint {} does NOT match any key in descriptor!", fp);
-                                println!("  Descriptor key fingerprints: {:?}", origins.iter().map(|(f,_)| f.to_string()).collect::<Vec<_>>());
+                                println!(
+                                    "  Descriptor key fingerprints: {:?}",
+                                    origins
+                                        .iter()
+                                        .map(|(f, _)| f.to_string())
+                                        .collect::<Vec<_>>()
+                                );
                                 println!("  Signing will likely fail with 'invalid input'.\n");
                             } else {
-                                println!("  Device fingerprint {} matches descriptor key (OK)\n", fp);
+                                println!(
+                                    "  Device fingerprint {} matches descriptor key (OK)\n",
+                                    fp
+                                );
                             }
                         }
                     }
@@ -873,7 +898,9 @@ async fn test_sign_psbt() {
                 Err(e) => {
                     println!("  UNLOCK FAILED after {:.2?}: {:?}", start.elapsed(), e);
                     println!("  This often means the device's keys don't match the descriptor.");
-                    println!("  Check that TEST_DESCRIPTOR was generated from THIS specific device.\n");
+                    println!(
+                        "  Check that TEST_DESCRIPTOR was generated from THIS specific device.\n"
+                    );
                 }
             }
         }
@@ -898,7 +925,7 @@ async fn test_sign_psbt() {
     // Add unlocked devices (they're now in supported_devices on the manager)
     for device in &locked {
         // Check if the manager now has this device as supported
-        if manager.get_device(& device.id).await.is_some() {
+        if manager.get_device(&device.id).await.is_some() {
             sign_targets.push((
                 device.id.clone(),
                 device.device_type.clone(),
@@ -912,7 +939,10 @@ async fn test_sign_psbt() {
         return;
     }
 
-    println!("  Step 3: Signing PSBT with {} device(s)...\n", sign_targets.len());
+    println!(
+        "  Step 3: Signing PSBT with {} device(s)...\n",
+        sign_targets.len()
+    );
 
     for (id, dtype, fp) in &sign_targets {
         print_separator(&format!("SIGNING WITH: {} ({}) [{}]", dtype, id, fp));
@@ -964,10 +994,10 @@ async fn test_sign_psbt() {
                 println!("  - Does the PSBT contain inputs matching this device's keys?");
                 println!("  - Is the PSBT for the correct network ({:?})?", network);
                 println!("  - Did you confirm/approve on the device?");
-                println!("  - For BitBox02: is firmware >= v9.21.0 (required for Taproot policies)?");
                 println!(
-                    "  - For Ledger: is the wallet policy registered?"
+                    "  - For BitBox02: is firmware >= v9.21.0 (required for Taproot policies)?"
                 );
+                println!("  - For Ledger: is the wallet policy registered?");
             }
         }
         println!();
@@ -1365,7 +1395,10 @@ async fn test_trezor_diagnostics() {
         .await
         .expect("Discovery failed");
 
-    let trezors: Vec<_> = devices.iter().filter(|d| d.device_type == "Trezor").collect();
+    let trezors: Vec<_> = devices
+        .iter()
+        .filter(|d| d.device_type == "Trezor")
+        .collect();
 
     if trezors.is_empty() {
         println!("  No Trezor devices found.");
@@ -1413,7 +1446,10 @@ fn test_validate_psbt_for_bitbox_offline() {
     // 3. Simulate find_our_key for each fingerprint
     for (fp, account_path) in &key_origins {
         let fp_bytes = fp.as_bytes();
-        println!("\n--- Simulating find_our_key for fp={} account={} ---", fp, account_path);
+        println!(
+            "\n--- Simulating find_our_key for fp={} account={} ---",
+            fp, account_path
+        );
 
         for (i, input) in psbt.inputs.iter().enumerate() {
             print!("  Input #{}: ", i);
@@ -1436,10 +1472,18 @@ fn test_validate_psbt_for_bitbox_offline() {
                     break;
                 }
             }
-            if !found { println!("KeyNotFound (expected for other signer)"); }
+            if !found {
+                println!("KeyNotFound (expected for other signer)");
+            }
         }
 
-        for (i, (tx_out, output)) in psbt.unsigned_tx.output.iter().zip(psbt.outputs.iter()).enumerate() {
+        for (i, (tx_out, output)) in psbt
+            .unsigned_tx
+            .output
+            .iter()
+            .zip(psbt.outputs.iter())
+            .enumerate()
+        {
             print!("  Output #{}: ", i);
             let mut found = false;
             for (xonly, (leaf_hashes, (output_fp, path))) in &output.tap_key_origins {
@@ -1455,15 +1499,25 @@ fn test_validate_psbt_for_bitbox_offline() {
                             break;
                         }
                     }
-                    println!("INTERNAL(script) path={} leaves={}", path, leaf_hashes.len());
+                    println!(
+                        "INTERNAL(script) path={} leaves={}",
+                        path,
+                        leaf_hashes.len()
+                    );
                     found = true;
                     break;
                 }
             }
             if !found {
-                println!("EXTERNAL {} sats type={}",
+                println!(
+                    "EXTERNAL {} sats type={}",
                     tx_out.value.to_sat(),
-                    if tx_out.script_pubkey.is_p2tr() { "P2TR" } else { "other" });
+                    if tx_out.script_pubkey.is_p2tr() {
+                        "P2TR"
+                    } else {
+                        "other"
+                    }
+                );
             }
         }
     }
@@ -1471,11 +1525,21 @@ fn test_validate_psbt_for_bitbox_offline() {
     println!("\n--- Checks ---");
     let locktime = psbt.unsigned_tx.lock_time.to_consensus_u32();
     let version = psbt.unsigned_tx.version.0;
-    println!("  version={} locktime={} inputs={} outputs={}", version, locktime, psbt.inputs.len(), psbt.outputs.len());
+    println!(
+        "  version={} locktime={} inputs={} outputs={}",
+        version,
+        locktime,
+        psbt.inputs.len(),
+        psbt.outputs.len()
+    );
     assert!(locktime < 500_000_000, "locktime >= 500000000");
     assert!(version == 1 || version == 2, "version not 1 or 2");
     for (i, input) in psbt.inputs.iter().enumerate() {
-        assert!(input.witness_utxo.is_some(), "input #{} missing witness_utxo", i);
+        assert!(
+            input.witness_utxo.is_some(),
+            "input #{} missing witness_utxo",
+            i
+        );
         if let Some(ref utxo) = input.witness_utxo {
             assert!(utxo.value.to_sat() > 0, "input #{} zero value", i);
         }
@@ -1494,6 +1558,7 @@ fn test_validate_psbt_for_bitbox_offline() {
 ///   TEST_PSBT=<base64> cargo test -p sigvault-desktop --test hwi_integration \
 ///     test_psbt_decode -- --nocapture
 #[test]
+#[ignore = "needs TEST_PSBT env var; default placeholder is not valid base64"]
 fn test_psbt_decode() {
     use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
     use bitcoin::Psbt;
@@ -1537,11 +1602,17 @@ fn test_psbt_decode() {
         }
 
         match input.tap_key_sig {
-            Some(sig) => println!("    tap_key_sig: {} (sighash: {:?})", sig.signature, sig.sighash_type),
+            Some(sig) => println!(
+                "    tap_key_sig: {} (sighash: {:?})",
+                sig.signature, sig.sighash_type
+            ),
             None => println!("    tap_key_sig: none"),
         }
 
-        println!("    tap_script_sigs: {} entries", input.tap_script_sigs.len());
+        println!(
+            "    tap_script_sigs: {} entries",
+            input.tap_script_sigs.len()
+        );
         for ((pk, lh), sig) in &input.tap_script_sigs {
             println!(
                 "      pk={}... leaf={} sig={}... sighash={:?}",
@@ -1574,7 +1645,10 @@ fn test_psbt_decode() {
             );
         }
 
-        println!("    tap_key_origins: {} entries", input.tap_key_origins.len());
+        println!(
+            "    tap_key_origins: {} entries",
+            input.tap_key_origins.len()
+        );
         for (pk, (leaf_hashes, (fp, path))) in &input.tap_key_origins {
             println!(
                 "      pk={}... fp={} path={} leaf_hashes={}",
@@ -1618,7 +1692,10 @@ fn test_psbt_decode() {
             None => println!("    tap_tree: none"),
         }
 
-        println!("    tap_key_origins: {} entries", output.tap_key_origins.len());
+        println!(
+            "    tap_key_origins: {} entries",
+            output.tap_key_origins.len()
+        );
         for (pk, (leaf_hashes, (fp, path))) in &output.tap_key_origins {
             println!(
                 "      pk={}... fp={} path={} leaf_hashes={}",
@@ -1660,6 +1737,7 @@ async fn test_sign_and_verify() {
         name: wallet_name.clone(),
         descriptor: descriptor.clone(),
         hmac: None,
+        ledger_hmacs: None,
     };
 
     let manager = HardwareWalletManager::new(network);
@@ -1732,7 +1810,9 @@ async fn test_sign_and_verify() {
         println!("  Signed by: {}", signed.fingerprint);
         println!("  Signed PSBT: {}", signed.psbt);
 
-        let signed_bytes = STANDARD.decode(&signed.psbt).expect("Invalid base64 from sign_psbt");
+        let signed_bytes = STANDARD
+            .decode(&signed.psbt)
+            .expect("Invalid base64 from sign_psbt");
         let signed_psbt = Psbt::deserialize(&signed_bytes).expect("Invalid PSBT bytes");
 
         let prevouts: Vec<bitcoin::TxOut> = signed_psbt
@@ -1787,7 +1867,10 @@ async fn test_sign_and_verify() {
             }
 
             if !input.tap_script_sigs.is_empty() {
-                println!("    Spend type: script-path ({} sigs)", input.tap_script_sigs.len());
+                println!(
+                    "    Spend type: script-path ({} sigs)",
+                    input.tap_script_sigs.len()
+                );
                 let mut cache = SighashCache::new(&signed_psbt.unsigned_tx);
 
                 for ((pk, leaf_hash), sig) in &input.tap_script_sigs {
@@ -1805,10 +1888,7 @@ async fn test_sign_and_verify() {
                         Ok(sighash) => {
                             let msg = bitcoin::secp256k1::Message::from(sighash);
                             match secp.verify_schnorr(&sig.signature, &msg, pk) {
-                                Ok(()) => println!(
-                                    "    pk={}... PASS",
-                                    &pk.to_string()[..16]
-                                ),
+                                Ok(()) => println!("    pk={}... PASS", &pk.to_string()[..16]),
                                 Err(e) => {
                                     println!(
                                         "    pk={}... script-path FAIL ({:?})",
@@ -1816,13 +1896,19 @@ async fn test_sign_and_verify() {
                                         e
                                     );
                                     // Also try verifying as keypath to diagnose
-                                    if let Ok(keypath_sighash) = cache.taproot_key_spend_signature_hash(
-                                        i,
-                                        &Prevouts::All(&prevouts),
-                                        sighash_type,
-                                    ) {
-                                        let keypath_msg = bitcoin::secp256k1::Message::from(keypath_sighash);
-                                        let output_key = bitcoin::XOnlyPublicKey::from_slice(&prevout.script_pubkey.as_bytes()[2..]).unwrap();
+                                    if let Ok(keypath_sighash) = cache
+                                        .taproot_key_spend_signature_hash(
+                                            i,
+                                            &Prevouts::All(&prevouts),
+                                            sighash_type,
+                                        )
+                                    {
+                                        let keypath_msg =
+                                            bitcoin::secp256k1::Message::from(keypath_sighash);
+                                        let output_key = bitcoin::XOnlyPublicKey::from_slice(
+                                            &prevout.script_pubkey.as_bytes()[2..],
+                                        )
+                                        .unwrap();
                                         match secp.verify_schnorr(&sig.signature, &keypath_msg, &output_key) {
                                             Ok(()) => println!(
                                                 "    pk={}... BUT PASSES as keypath (Trezor signed keypath, not script-path!)",
@@ -1843,14 +1929,12 @@ async fn test_sign_and_verify() {
                                             }
                                         }
                                     }
-                                },
+                                }
                             }
                         }
-                        Err(e) => println!(
-                            "    pk={}... sighash error: {:?}",
-                            &pk.to_string()[..16],
-                            e
-                        ),
+                        Err(e) => {
+                            println!("    pk={}... sighash error: {:?}", &pk.to_string()[..16], e)
+                        }
                     }
                 }
 
@@ -2005,6 +2089,7 @@ async fn test_full_sign_finalize_broadcast() {
         name: wallet_name.clone(),
         descriptor: descriptor.clone(),
         hmac: None,
+        ledger_hmacs: None,
     };
 
     let manager = HardwareWalletManager::new(network);
@@ -2064,7 +2149,10 @@ async fn test_full_sign_finalize_broadcast() {
 
     let mut accumulated_psbt_b64 = psbt_b64.clone();
 
-    println!("  Phase 3: Signing PSBT with {} device(s)...", sign_ids.len());
+    println!(
+        "  Phase 3: Signing PSBT with {} device(s)...",
+        sign_ids.len()
+    );
     for (id, dtype) in &sign_ids {
         println!("  Signing with {} ({})...", dtype, id);
         println!("  >>> Confirm on device <<<");
@@ -2103,11 +2191,8 @@ async fn test_full_sign_finalize_broadcast() {
             } else {
                 tap_sig.sighash_type
             };
-            match cache.taproot_key_spend_signature_hash(
-                i,
-                &Prevouts::All(&prevouts),
-                sighash_type,
-            ) {
+            match cache.taproot_key_spend_signature_hash(i, &Prevouts::All(&prevouts), sighash_type)
+            {
                 Ok(sighash) => {
                     let msg = bitcoin::secp256k1::Message::from(sighash);
                     if let Some(output_key) = input.tap_internal_key {
@@ -2187,7 +2272,9 @@ async fn test_full_sign_finalize_broadcast() {
         }
     }
 
-    let tx = final_psbt.extract_tx().expect("Failed to extract transaction");
+    let tx = final_psbt
+        .extract_tx()
+        .expect("Failed to extract transaction");
     let txid = tx.compute_txid();
     let raw_hex = bitcoin::consensus::encode::serialize_hex(&tx);
 

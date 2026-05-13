@@ -5,16 +5,13 @@
 // index pickers land in a later UX pass. Hardware-wallet "verify on
 // device" hooks in once QBL-220 wires HW into local mode.
 
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useNavigate, useParams } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { QRCodeSVG } from "qrcode.react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import WindowControls from "../../components/WindowControls";
-import type {
-	LocalReceiveAddress,
-	LocalWalletSummary,
-} from "../../types/events";
+import type { LocalReceiveAddress, LocalWalletSummary } from "../../types/events";
 
 export default function ReceiveScreen() {
 	const { walletId } = useParams<{ walletId: string }>();
@@ -101,9 +98,7 @@ export default function ReceiveScreen() {
 						</svg>
 					</button>
 					<div className="flex flex-col leading-none">
-						<span className="text-[14px] font-medium text-foreground">
-							Receive
-						</span>
+						<span className="text-[14px] font-medium text-foreground">Receive</span>
 						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
 							{wallet ? `${wallet.name} · ${wallet.network}` : "—"}
 						</span>
@@ -148,12 +143,7 @@ export default function ReceiveScreen() {
 							</div>
 							<div className="flex items-center justify-center rounded-lg border border-border bg-card p-6">
 								<div className="rounded-md bg-white p-4">
-									<QRCodeSVG
-										value={address.address}
-										size={224}
-										level="M"
-										marginSize={0}
-									/>
+									<QRCodeSVG value={address.address} size={224} level="M" marginSize={0} />
 								</div>
 							</div>
 
@@ -180,9 +170,8 @@ export default function ReceiveScreen() {
 
 							<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 								<p className="text-[11px] leading-relaxed text-muted-foreground">
-									This address can be reused safely but each reuse weakens
-									your privacy. Per-index and next-unused address pickers
-									ship in a later UX pass.
+									This address can be reused safely but each reuse weakens your privacy. Per-index
+									and next-unused address pickers ship in a later UX pass.
 								</p>
 							</div>
 						</div>

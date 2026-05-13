@@ -16,9 +16,9 @@
 // On the decode side, the scanner accepts ANY frame and dispatches by
 // prefix sniffing. Both formats are unambiguous in their leading bytes.
 
-import { Buffer } from "buffer";
+import { UR, URDecoder, UREncoder } from "@ngraveio/bc-ur";
 import { joinQRs, splitQRs } from "bbqr";
-import { UR, UREncoder, URDecoder } from "@ngraveio/bc-ur";
+import { Buffer } from "buffer";
 
 export type QrFormat = "bbqr" | "ur";
 
@@ -110,9 +110,7 @@ export class PsbtQrAssembler {
 	push(frame: string): string | null {
 		const detected: QrFormat = frame.startsWith("ur:") ? "ur" : "bbqr";
 		if (this.format && this.format !== detected) {
-			throw new Error(
-				`mixed QR formats in one scan (was ${this.format}, got ${detected})`,
-			);
+			throw new Error(`mixed QR formats in one scan (was ${this.format}, got ${detected})`);
 		}
 		this.format = detected;
 		if (detected === "ur") return this.pushUr(frame);

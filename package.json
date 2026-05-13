@@ -25,7 +25,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/"
   },
   "dependencies": {
     "@ngraveio/bc-ur": "^1.1.13",
@@ -47,6 +49,7 @@
     "tailwindcss": "^4.2.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
     "@tauri-apps/cli": "^2.11.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

@@ -5,8 +5,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use oauth2::{
-    basic::BasicClient, AuthUrl, ClientId, CsrfToken, PkceCodeChallenge,
-    RedirectUrl, TokenUrl,
+    basic::BasicClient, AuthUrl, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, TokenUrl,
 };
 
 /// OAuth authentication state
@@ -21,19 +20,15 @@ pub struct OAuthState {
 }
 
 impl OAuthState {
-    pub fn new(
-        client_id: String,
-        auth_url: String,
-        token_url: String,
-    ) -> Result<Self, String> {
+    pub fn new(client_id: String, auth_url: String, token_url: String) -> Result<Self, String> {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
         let socket_addr = get_available_addr().map_err(|e| format!("Failed to get socket: {e}"))?;
 
         // Build redirect URL with the actual socket address
         let redirect_url = format!("http://{socket_addr}/callback");
-        let redirect_url = RedirectUrl::new(redirect_url)
-            .map_err(|e| format!("Invalid redirect URL: {e}"))?;
+        let redirect_url =
+            RedirectUrl::new(redirect_url).map_err(|e| format!("Invalid redirect URL: {e}"))?;
 
         let client = create_oauth_client(client_id, auth_url, token_url, redirect_url)?;
 
@@ -65,11 +60,9 @@ fn create_oauth_client(
 ) -> Result<BasicClient, String> {
     let client_id = ClientId::new(client_id);
 
-    let auth_url = AuthUrl::new(auth_url)
-        .map_err(|e| format!("Invalid auth URL: {e}"))?;
+    let auth_url = AuthUrl::new(auth_url).map_err(|e| format!("Invalid auth URL: {e}"))?;
 
-    let token_url = TokenUrl::new(token_url)
-        .map_err(|e| format!("Invalid token URL: {e}"))?;
+    let token_url = TokenUrl::new(token_url).map_err(|e| format!("Invalid token URL: {e}"))?;
 
     Ok(BasicClient::new(
         client_id,

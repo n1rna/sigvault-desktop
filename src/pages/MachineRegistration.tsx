@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 import type { CommandResult } from "../types/events";
 
 export default function MachineRegistration() {
@@ -34,7 +34,9 @@ export default function MachineRegistration() {
 				setError(result.message || "Registration failed");
 			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to register machine. Please try again.");
+			setError(
+				err instanceof Error ? err.message : "Failed to register machine. Please try again.",
+			);
 		} finally {
 			setLoading(false);
 		}
@@ -50,8 +52,7 @@ export default function MachineRegistration() {
 			{/* ═══ Left column: hero ═══ */}
 			<section className="relative flex flex-1 flex-col justify-center px-12 py-10">
 				<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-					<span className="h-px w-6 bg-primary/60" />
-					§ 01 — Register machine
+					<span className="h-px w-6 bg-primary/60" />§ 01 — Register machine
 				</div>
 
 				<h1 className="mt-5 max-w-[440px] text-[36px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground">
@@ -61,9 +62,8 @@ export default function MachineRegistration() {
 				</h1>
 
 				<p className="mt-5 max-w-[420px] text-[13px] leading-relaxed text-muted-foreground">
-					SigVault ties signing privileges to the physical machine running
-					the desktop app. Registering this one unlocks the remote signing
-					workflow for your account.
+					SigVault ties signing privileges to the physical machine running the desktop app.
+					Registering this one unlocks the remote signing workflow for your account.
 				</p>
 
 				<ul className="mt-8 space-y-3">
@@ -96,7 +96,15 @@ export default function MachineRegistration() {
 
 				{error && (
 					<div className="mt-5 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
-						<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="mt-0.5 h-3.5 w-3.5 shrink-0"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<circle cx="12" cy="12" r="10" />
 							<line x1="12" y1="8" x2="12" y2="12" />
 							<line x1="12" y1="16" x2="12.01" y2="16" />
@@ -152,7 +160,14 @@ export default function MachineRegistration() {
 					>
 						{loading ? (
 							<>
-								<svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+								<svg
+									className="h-4 w-4 animate-spin"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2.5"
+									strokeLinecap="round"
+								>
 									<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 								</svg>
 								Registering…
@@ -160,7 +175,15 @@ export default function MachineRegistration() {
 						) : (
 							<>
 								Register machine
-								<svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+								<svg
+									className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
 									<path d="M5 12h14" />
 									<path d="m12 5 7 7-7 7" />
 								</svg>
