@@ -390,6 +390,11 @@ function WalletCard({
 							<span className="rounded-sm border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
 								{formatNetwork(wallet.network)}
 							</span>
+							{wallet.recovery_only && (
+								<span className="rounded-sm border border-amber-500/40 bg-amber-500/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
+									Recovery-only
+								</span>
+							)}
 						</div>
 						<div className="mt-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
 							<span>{formatPolicyType(wallet.policy_type)}</span>
