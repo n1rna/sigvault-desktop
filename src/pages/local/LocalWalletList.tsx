@@ -193,6 +193,13 @@ export default function LocalWalletList() {
 						</button>
 						<button
 							type="button"
+							onClick={() => navigate("/local/wallets/recover")}
+							className="flex h-9 items-center rounded-md border border-border bg-background px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
+						>
+							Recover
+						</button>
+						<button
+							type="button"
 							onClick={() => navigate("/local/wallets/new")}
 							className="group flex h-9 items-center gap-2 rounded-md bg-primary px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px]"
 						>
