@@ -21,7 +21,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use bdk_wallet::bitcoin::bip32::{Fingerprint, Xpriv};
+use bdk_wallet::bitcoin::bip32::Xpriv;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::keys::bip39::{Language, Mnemonic};
 use bdk_wallet::miniscript::descriptor::DescriptorPublicKey;
@@ -39,7 +39,9 @@ use zeroize::Zeroizing;
 
 use super::persister::{LocalBdkPersister, LocalPersisterError};
 use super::state::{SharedLocalWalletState, UnlockedHandle};
-use super::storage::{read_seed_file, write_seed_file, SeedStoreError, WalletDirLayout, WalletId};
+use super::storage::{
+    read_seed_file, write_seed_file, SeedPayload, SeedStoreError, WalletDirLayout, WalletId,
+};
 
 const POLICY_TYPE_SINGLESIG: &str = "singlesig";
 const POLICY_TYPE_SINGLESIG_HW: &str = "singlesig_hardware";
@@ -122,6 +124,14 @@ pub struct LocalWalletMetadata {
     /// readable (they all default to `false` = spendable primary).
     #[serde(default)]
     pub recovery_only: bool,
+    /// QBL-230 — derivation path the stored mnemonic was sliced at to
+    /// produce the wallet's hot xprv. Empty / `None` falls back to the
+    /// network's default singlesig path (`m/84'/coin'/0'`), which is
+    /// what every wallet created before QBL-230 used. Cosigner-recovered
+    /// wallets store the matching key's origin path from the supplied
+    /// descriptor here so signing derives the right xprv.
+    #[serde(default)]
+    pub derivation_path: Option<String>,
 }
 
 /// Lightweight view returned by `list_wallets` for the wallet list UI.
@@ -277,12 +287,16 @@ impl LocalWalletManager {
         let layout = self.layout(&id);
         layout.ensure_dir()?;
 
-        // The mnemonic is the durable secret. Persist as an encrypted
-        // UTF-8 string of space-separated words; on recovery we re-derive
-        // the xprv from it via Mnemonic::parse + to_seed.
+        // The mnemonic is the durable secret. Persist as a SeedPayload
+        // — the create flow never asks the user for a BIP39 passphrase,
+        // so it's always empty here; recovery is where users opt in.
         let words = keyset.words.clone();
         let mnemonic_str = words.join(" ");
-        write_seed_file(&layout, mnemonic_str.as_bytes(), passphrase)?;
+        let payload = SeedPayload {
+            mnemonic: mnemonic_str.clone(),
+            bip39_passphrase: String::new(),
+        };
+        write_seed_file(&layout, &payload, passphrase)?;
 
         let descriptors = WalletDescriptors::new(
             keyset.external_descriptor.clone(),
@@ -304,26 +318,34 @@ impl LocalWalletManager {
             has_hot_keys: true,
             created_at: now_unix_seconds(),
             recovery_only: false,
+            derivation_path: None,
         };
         self.write_metadata(&layout, &meta)?;
 
         Ok((id, words))
     }
 
-    /// Recover from a BIP39 mnemonic the user typed in. v1 only handles
-    /// the singlesig segwit-v0 case (mirrors `create_singlesig_hot`); a
-    /// later ticket will accept a descriptor for multisig / Liana hot
-    /// cosigner recovery.
+    /// Recover a singlesig segwit-v0 wallet from a BIP39 mnemonic the
+    /// user typed in. `bip39_passphrase` is the optional 25th-word
+    /// passphrase — empty for the common case of a wallet that was
+    /// created without one. Multisig / Liana cosigner recovery goes
+    /// through `recover_descriptor_hot_cosigner` instead.
     pub async fn recover_singlesig_hot(
         &self,
         name: &str,
         network: Network,
         mnemonic_str: &str,
-        passphrase: &[u8],
+        bip39_passphrase: &str,
+        encrypt_passphrase: &[u8],
     ) -> Result<WalletId, ManagerError> {
         ensure_supported_network(network)?;
 
-        let (account_xpriv, _) = derive_account_from_mnemonic(network, mnemonic_str)?;
+        let account_xpriv = derive_account_at_path(
+            network,
+            mnemonic_str,
+            bip39_passphrase,
+            &KeyUtils::get_primary_derivation_path(network).to_string(),
+        )?;
         let (external_descriptor, internal_descriptor, _xpub, fingerprint) =
             KeyUtils::get_account_extended_descriptor(account_xpriv);
 
@@ -331,7 +353,11 @@ impl LocalWalletManager {
         let layout = self.layout(&id);
         layout.ensure_dir()?;
 
-        write_seed_file(&layout, mnemonic_str.as_bytes(), passphrase)?;
+        let payload = SeedPayload {
+            mnemonic: mnemonic_str.to_string(),
+            bip39_passphrase: bip39_passphrase.to_string(),
+        };
+        write_seed_file(&layout, &payload, encrypt_passphrase)?;
 
         let descriptors =
             WalletDescriptors::new(external_descriptor.clone(), internal_descriptor.clone());
@@ -351,6 +377,108 @@ impl LocalWalletManager {
             has_hot_keys: true,
             created_at: now_unix_seconds(),
             recovery_only: false,
+            derivation_path: None,
+        };
+        self.write_metadata(&layout, &meta)?;
+
+        Ok(id)
+    }
+
+    /// Recover a multisig or Liana wallet where one of the cosigner
+    /// slots is a hot key (QBL-230). The user supplies their mnemonic +
+    /// the wallet's descriptor pair + the matching slot's master
+    /// fingerprint. We derive the master xprv from the mnemonic,
+    /// confirm the fingerprint actually appears in the descriptor's
+    /// origin blocks, and persist the wallet with `has_hot_keys=true`
+    /// and `derivation_path` set to whatever the descriptor's origin
+    /// block carries for that fingerprint.
+    ///
+    /// At sign time, `cmd_local_sign_psbt_software` reads
+    /// `derivation_path` from metadata and derives the account xprv
+    /// at that exact path (e.g. `m/48'/1'/0'/2'` for a BIP48 multisig
+    /// slot) rather than the singlesig default.
+    ///
+    /// `policy_type` must be `"multisig"` or `"liana"` — the descriptor
+    /// shape determines which, but the caller already knows from the
+    /// recovery wizard step.
+    pub async fn recover_descriptor_hot_cosigner(
+        &self,
+        name: &str,
+        network: Network,
+        mnemonic_str: &str,
+        bip39_passphrase: &str,
+        encrypt_passphrase: &[u8],
+        external_descriptor: &str,
+        internal_descriptor: &str,
+        policy_type: &str,
+    ) -> Result<WalletId, ManagerError> {
+        ensure_supported_network(network)?;
+        if policy_type != POLICY_TYPE_MULTISIG && policy_type != POLICY_TYPE_LIANA {
+            return Err(ManagerError::Runtime(format!(
+                "cosigner recovery requires policy_type 'multisig' or 'liana' (got '{policy_type}')"
+            )));
+        }
+
+        // Derive the master fingerprint from the mnemonic so we can
+        // look up which slot the seed fills in the descriptor.
+        let master_xpriv = derive_master_xpriv(network, mnemonic_str, bip39_passphrase)?;
+        let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
+        let my_fp = master_xpriv.fingerprint(&secp).to_string();
+
+        // Look up the user's derivation path inside the descriptor's
+        // origin blocks. Fingerprint mismatch means the supplied
+        // mnemonic doesn't correspond to any slot — surface a clear
+        // error so the user knows which seed they need.
+        let path = extract_origin_path_for_fingerprint(external_descriptor, &my_fp)
+            .ok_or_else(|| {
+                ManagerError::Runtime(format!(
+                    "the supplied mnemonic's master fingerprint ({my_fp}) is not in the descriptor"
+                ))
+            })?;
+
+        // Sanity-check by actually deriving at that path. If the
+        // descriptor's path is malformed, we want to surface the
+        // failure now rather than at sign time.
+        let _account_xpriv = derive_account_at_path(network, mnemonic_str, bip39_passphrase, &path)?;
+
+        let id = WalletId::new();
+        let layout = self.layout(&id);
+        layout.ensure_dir()?;
+
+        let payload = SeedPayload {
+            mnemonic: mnemonic_str.to_string(),
+            bip39_passphrase: bip39_passphrase.to_string(),
+        };
+        write_seed_file(&layout, &payload, encrypt_passphrase)?;
+
+        let descriptors = WalletDescriptors::new(
+            external_descriptor.to_string(),
+            internal_descriptor.to_string(),
+        );
+        let mut persister = LocalBdkPersister::open_or_create(&layout.bdk_store_path())?;
+        let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
+            .map_err(|e| ManagerError::Runtime(e.to_string()))?;
+
+        // Surface every fingerprint we can parse out of the descriptor
+        // for the wallet-list metadata column. The user's fingerprint
+        // is guaranteed to be in there since the lookup succeeded above.
+        let mut fingerprints = scan_descriptor_fingerprints(external_descriptor);
+        if !fingerprints.iter().any(|f| f.eq_ignore_ascii_case(&my_fp)) {
+            fingerprints.push(my_fp.clone());
+        }
+
+        let meta = LocalWalletMetadata {
+            id: id.clone(),
+            name: name.to_string(),
+            network: network.to_string(),
+            policy_type: policy_type.to_string(),
+            external_descriptor: external_descriptor.to_string(),
+            internal_descriptor: internal_descriptor.to_string(),
+            fingerprints,
+            has_hot_keys: true,
+            created_at: now_unix_seconds(),
+            recovery_only: false,
+            derivation_path: Some(path),
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -409,6 +537,7 @@ impl LocalWalletManager {
             has_hot_keys: false,
             created_at: now_unix_seconds(),
             recovery_only: false,
+            derivation_path: None,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -492,6 +621,7 @@ impl LocalWalletManager {
             has_hot_keys: false,
             created_at: now_unix_seconds(),
             recovery_only: false,
+            derivation_path: None,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -555,6 +685,7 @@ impl LocalWalletManager {
             has_hot_keys: false,
             created_at: now_unix_seconds(),
             recovery_only: false,
+            derivation_path: None,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -675,6 +806,7 @@ impl LocalWalletManager {
             has_hot_keys: false,
             created_at: now_unix_seconds(),
             recovery_only,
+            derivation_path: None,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -704,8 +836,15 @@ impl LocalWalletManager {
         // so balance / address peeking works, and signing routes
         // through the HW manager instead of an in-memory mnemonic.
         let seed_bytes = if meta.has_hot_keys {
-            read_seed_file(&layout, passphrase)?
-                .ok_or_else(|| ManagerError::NotFound(format!("seed.enc for {id}")))?
+            let payload = read_seed_file(&layout, passphrase)?
+                .ok_or_else(|| ManagerError::NotFound(format!("seed.enc for {id}")))?;
+            // The unlocked handle holds this for Zeroize-on-drop
+            // hygiene; the actual signing path re-reads the encrypted
+            // file with the user's passphrase, so storing just the
+            // mnemonic string here (vs the full payload) keeps the
+            // in-memory footprint minimal and avoids leaking the BIP39
+            // passphrase into more places than necessary.
+            payload.mnemonic.into_bytes()
         } else {
             Vec::new()
         };
@@ -780,27 +919,103 @@ impl LocalWalletManager {
     }
 }
 
-/// Parse a BIP39 mnemonic and derive the singlesig segwit-v0 account
-/// xprv (`m/84'/{coin}'/0'`) along with its fingerprint. Shared by
-/// `recover_singlesig_hot` (wallet creation) and `cmd_local_sign_psbt_*`
-/// (signing — re-derives the xprv from the just-decrypted seed rather
-/// than persisting it in memory across the unlock session).
-pub fn derive_account_from_mnemonic(
+/// Parse a BIP39 mnemonic + optional passphrase and derive the master
+/// xprv. The master fingerprint (first 4 bytes of hash160 of the
+/// master xpub) is what appears in descriptor `[fingerprint/path]`
+/// origin blocks, so this is the right entry point for matching a
+/// pasted descriptor against a recovery seed.
+pub fn derive_master_xpriv(
     network: Network,
     mnemonic_str: &str,
-) -> Result<(Xpriv, Fingerprint), ManagerError> {
+    bip39_passphrase: &str,
+) -> Result<Xpriv, ManagerError> {
     let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_str)
         .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
-    let seed = mnemonic.to_seed("");
-    let master_xpriv = Xpriv::new_master(network, &seed)
-        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
+    let seed = mnemonic.to_seed(bip39_passphrase);
+    Xpriv::new_master(network, &seed)
+        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))
+}
+
+/// Derive an arbitrary-path account xprv from a mnemonic. `path` is
+/// the BIP32 path without the leading `m/` (e.g. `48'/1'/0'/2'`).
+/// Cosigner recovery uses this to slice the master xprv at the path
+/// the descriptor's origin block requires.
+pub fn derive_account_at_path(
+    network: Network,
+    mnemonic_str: &str,
+    bip39_passphrase: &str,
+    path: &str,
+) -> Result<Xpriv, ManagerError> {
+    use std::str::FromStr;
+    let master = derive_master_xpriv(network, mnemonic_str, bip39_passphrase)?;
     let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
-    let account_path = KeyUtils::get_primary_derivation_path(network);
-    let account_xpriv = master_xpriv
-        .derive_priv(&secp, &account_path)
-        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
-    let fingerprint = account_xpriv.fingerprint(&secp);
-    Ok((account_xpriv, fingerprint))
+    let normalized = path
+        .strip_prefix("m/")
+        .or_else(|| path.strip_prefix('m'))
+        .unwrap_or(path);
+    let dp = bdk_wallet::bitcoin::bip32::DerivationPath::from_str(normalized)
+        .map_err(|e| ManagerError::Runtime(format!("invalid derivation path '{path}': {e}")))?;
+    master
+        .derive_priv(&secp, &dp)
+        .map_err(|e| ManagerError::Runtime(format!("derive at '{path}': {e}")))
+}
+
+/// Scan every origin block in a descriptor and collect the
+/// fingerprints. Cosigner recovery uses this to populate the
+/// wallet-list metadata column without requiring the user to
+/// re-enter each cosigner's fingerprint by hand.
+pub fn scan_descriptor_fingerprints(descriptor: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut search_from = 0;
+    while let Some(open) = descriptor[search_from..].find('[') {
+        let abs_open = search_from + open;
+        let after_open = abs_open + 1;
+        let close = match descriptor[after_open..].find(']') {
+            Some(c) => c,
+            None => break,
+        };
+        let abs_close = after_open + close;
+        let inner = &descriptor[after_open..abs_close];
+        let fp_part = inner.split('/').next().unwrap_or("");
+        if fp_part.len() == 8 && fp_part.chars().all(|c| c.is_ascii_hexdigit()) {
+            let lower = fp_part.to_lowercase();
+            if !out.iter().any(|seen| seen.eq_ignore_ascii_case(&lower)) {
+                out.push(lower);
+            }
+        }
+        search_from = abs_close + 1;
+    }
+    out
+}
+
+/// Scan a descriptor string for an origin block whose fingerprint
+/// matches `target_fp` (case-insensitive) and return the derivation
+/// path inside. Returns `None` if the fingerprint doesn't appear.
+/// Used by cosigner recovery to figure out which slot the user's
+/// mnemonic should fill, and at what derivation path.
+pub fn extract_origin_path_for_fingerprint(
+    descriptor: &str,
+    target_fp: &str,
+) -> Option<String> {
+    let target = target_fp.to_lowercase();
+    let lower = descriptor.to_lowercase();
+    let mut search_from = 0;
+    while let Some(open) = lower[search_from..].find('[') {
+        let abs_open = search_from + open;
+        let after_open = abs_open + 1;
+        let close = lower[after_open..].find(']')?;
+        let abs_close = after_open + close;
+        let inner = &descriptor[after_open..abs_close];
+        let (fp_part, path_part) = match inner.split_once('/') {
+            Some((fp, rest)) => (fp, rest),
+            None => (inner, ""),
+        };
+        if fp_part.to_lowercase() == target {
+            return Some(path_part.to_string());
+        }
+        search_from = abs_close + 1;
+    }
+    None
 }
 
 fn ensure_supported_network(network: Network) -> Result<(), ManagerError> {
@@ -1017,7 +1232,7 @@ mod tests {
         // but recover should accept any valid BIP39 length.
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let id = mgr
-            .recover_singlesig_hot("recovered", Network::Regtest, mnemonic, b"hunter2")
+            .recover_singlesig_hot("recovered", Network::Regtest, mnemonic, "", b"hunter2")
             .await
             .expect("recover");
         mgr.unlock_wallet(&id, b"hunter2")
@@ -1028,5 +1243,27 @@ mod tests {
             .await
             .expect("peek");
         assert!(addr.starts_with("bcrt1q"));
+    }
+
+    #[test]
+    fn extract_origin_path_finds_target_fingerprint() {
+        let desc = "wsh(sortedmulti(2,[abcd1234/48'/1'/0'/2']xpub1.../0/*,[deadbeef/48'/1'/0'/2']xpub2.../0/*))";
+        let path = extract_origin_path_for_fingerprint(desc, "abcd1234");
+        assert_eq!(path.as_deref(), Some("48'/1'/0'/2'"));
+        let path_case_insensitive = extract_origin_path_for_fingerprint(desc, "DEADBEEF");
+        assert_eq!(path_case_insensitive.as_deref(), Some("48'/1'/0'/2'"));
+        // Fingerprint not in descriptor → None.
+        let missing = extract_origin_path_for_fingerprint(desc, "00000000");
+        assert!(missing.is_none());
+    }
+
+    #[test]
+    fn scan_descriptor_fingerprints_collects_unique_origins() {
+        let desc = "wsh(sortedmulti(2,[abcd1234/48'/1'/0'/2']xpub.../0/*,[DEADBEEF/48'/1'/0'/2']xpub.../0/*,[abcd1234/48'/1'/0'/2']xpub.../0/*))";
+        let fps = scan_descriptor_fingerprints(desc);
+        // Two distinct fingerprints; the repeat should be deduplicated.
+        assert_eq!(fps.len(), 2);
+        assert!(fps.contains(&"abcd1234".to_string()));
+        assert!(fps.contains(&"deadbeef".to_string()));
     }
 }

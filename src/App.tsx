@@ -23,6 +23,7 @@ import RemoteSessions from "./pages/RemoteSessions";
 import SessionDetails from "./pages/SessionDetails";
 import LocalWalletList from "./pages/local/LocalWalletList";
 import CreateWalletWizard from "./pages/local/CreateWalletWizard";
+import RecoveryFlow from "./pages/local/RecoveryFlow";
 import WalletDashboard from "./pages/local/WalletDashboard";
 import ReceiveScreen from "./pages/local/ReceiveScreen";
 import SendScreen from "./pages/local/SendScreen";
@@ -98,6 +99,7 @@ function AppRouter() {
 			<Route path="/login" element={<Login />} />
 			<Route path="/local/wallets" element={<LocalWalletList />} />
 			<Route path="/local/wallets/new" element={<CreateWalletWizard />} />
+			<Route path="/local/wallets/recover" element={<RecoveryFlow />} />
 			<Route path="/local/wallets/:walletId" element={<WalletDashboard />} />
 			<Route
 				path="/local/wallets/:walletId/receive"
