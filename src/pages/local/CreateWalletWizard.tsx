@@ -206,7 +206,9 @@ export default function CreateWalletWizard() {
 	};
 
 	const submitLiana = async (input: {
-		primary: { fingerprint: string; xpub: string; derivation_path: string };
+		primary:
+			| { kind: "keys"; key: { fingerprint: string; xpub: string; derivation_path: string } }
+			| { kind: "unspendable" };
 		recoveries: {
 			timelock_blocks: number;
 			path: {
@@ -218,11 +220,18 @@ export default function CreateWalletWizard() {
 		setSubmitting(true);
 		setError(null);
 		try {
+			const wirePrimary =
+				input.primary.kind === "unspendable"
+					? { kind: "unspendable" }
+					: {
+							kind: "keys",
+							path: { keys: [input.primary.key], threshold: 1 },
+						};
 			const walletId = await invoke<string>("cmd_local_create_liana", {
 				request: {
 					name: basics.name,
 					network: basics.network,
-					primary: { keys: [input.primary], threshold: 1 },
+					primary: wirePrimary,
 					recoveries: input.recoveries,
 				},
 			});
@@ -1386,7 +1395,9 @@ function LianaStep({
 	submitting: boolean;
 	onBack: () => void;
 	onSubmit: (input: {
-		primary: { fingerprint: string; xpub: string; derivation_path: string };
+		primary:
+			| { kind: "keys"; key: { fingerprint: string; xpub: string; derivation_path: string } }
+			| { kind: "unspendable" };
 		recoveries: {
 			timelock_blocks: number;
 			path: {
@@ -1396,6 +1407,7 @@ function LianaStep({
 		}[];
 	}) => void;
 }) {
+	const [primaryMode, setPrimaryMode] = useState<"keys" | "unspendable">("keys");
 	const [primaryRaw, setPrimaryRaw] = useState("");
 	const [recoveryRaw, setRecoveryRaw] = useState("");
 	const [timelockBlocks, setTimelockBlocks] = useState(4320);
@@ -1409,13 +1421,18 @@ function LianaStep({
 		[recoveryRaw],
 	);
 	const ready =
-		primaryParsed !== null && recoveryParsed !== null && timelockBlocks > 0;
+		recoveryParsed !== null &&
+		timelockBlocks > 0 &&
+		(primaryMode === "unspendable" || primaryParsed !== null);
 
 	const submit = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!ready || submitting) return;
 		onSubmit({
-			primary: primaryParsed!,
+			primary:
+				primaryMode === "unspendable"
+					? { kind: "unspendable" }
+					: { kind: "keys", key: primaryParsed! },
 			recoveries: [
 				{
 					timelock_blocks: timelockBlocks,
@@ -1445,26 +1462,71 @@ function LianaStep({
 				</p>
 			</div>
 
-			<label className="block">
+			<div>
 				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Primary key
+					Primary path
 				</span>
-				<textarea
-					value={primaryRaw}
-					onChange={(e) => setPrimaryRaw(e.target.value)}
-					autoComplete="off"
-					autoCapitalize="off"
-					spellCheck={false}
-					rows={2}
-					placeholder="[fp/48'/1'/0'/2']xpub..."
-					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
-				/>
-				{primaryRaw.trim().length > 0 && primaryParsed === null && (
-					<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
-						Expected [fingerprint/path]xpub...
+				<div className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-border bg-card/40 p-1">
+					<button
+						type="button"
+						onClick={() => setPrimaryMode("keys")}
+						className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+							primaryMode === "keys"
+								? "bg-primary text-primary-foreground"
+								: "text-muted-foreground hover:text-foreground"
+						}`}
+					>
+						Use my keys
+					</button>
+					<button
+						type="button"
+						onClick={() => setPrimaryMode("unspendable")}
+						className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+							primaryMode === "unspendable"
+								? "bg-primary text-primary-foreground"
+								: "text-muted-foreground hover:text-foreground"
+						}`}
+					>
+						Unspendable
+					</button>
+				</div>
+			</div>
+
+			{primaryMode === "keys" && (
+				<label className="block">
+					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						Primary key
 					</span>
-				)}
-			</label>
+					<textarea
+						value={primaryRaw}
+						onChange={(e) => setPrimaryRaw(e.target.value)}
+						autoComplete="off"
+						autoCapitalize="off"
+						spellCheck={false}
+						rows={2}
+						placeholder="[fp/48'/1'/0'/2']xpub..."
+						className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
+					/>
+					{primaryRaw.trim().length > 0 && primaryParsed === null && (
+						<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
+							Expected [fingerprint/path]xpub...
+						</span>
+					)}
+				</label>
+			)}
+
+			{primaryMode === "unspendable" && (
+				<div className="rounded-md border border-amber-500/30 bg-amber-500/[0.05] px-4 py-3 text-[12px] leading-relaxed text-foreground">
+					<div className="font-medium">Recovery-only wallet</div>
+					<p className="mt-1 text-muted-foreground">
+						The primary path will be locked with a provably-unspendable
+						NUMS-derived key. Funds can <span className="font-medium text-foreground">only</span> be
+						moved after the recovery timelock elapses, using the recovery
+						key. Use this for cold-storage / inheritance setups where you
+						deliberately want no fast-spending option.
+					</p>
+				</div>
+			)}
 
 			<div>
 				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">

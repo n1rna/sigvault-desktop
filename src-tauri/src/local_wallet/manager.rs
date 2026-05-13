@@ -27,8 +27,8 @@ use bdk_wallet::keys::bip39::{Language, Mnemonic};
 use bdk_wallet::miniscript::descriptor::DescriptorPublicKey;
 use bdk_wallet::KeychainKind;
 use policy_core::{
-    build_descriptor, KeyUtils, PolicyPath as CorePolicyPath, RecoveryPath as CoreRecoveryPath,
-    WalletShape,
+    build_descriptor, unspendable_primary_xpub, KeyUtils, PolicyPath as CorePolicyPath,
+    RecoveryPath as CoreRecoveryPath, WalletShape,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -87,6 +87,18 @@ pub struct LianaRecoveryPath {
     pub path: LianaSpendingPath,
 }
 
+/// How the primary spending path is satisfied. `Keys` is the standard
+/// case (one or more user-controlled HW keys + threshold). `Unspendable`
+/// (QBL-235) tags the primary as recovery-only — we substitute a
+/// deterministic NUMS-derived xpub so only the timelocked recovery
+/// path(s) can ever spend. Mirrors Liana Desktop's "no primary key"
+/// affordance for cold-storage / inheritance setups.
+#[derive(Debug, Clone)]
+pub enum LianaPrimary {
+    Keys(LianaSpendingPath),
+    Unspendable,
+}
+
 /// What's persisted in `metadata.json` for a local wallet. Everything
 /// here is recoverable from disk without a passphrase — names, public
 /// descriptor strings, fingerprints. Nothing here is sensitive enough to
@@ -102,6 +114,14 @@ pub struct LocalWalletMetadata {
     pub fingerprints: Vec<String>,
     pub has_hot_keys: bool,
     pub created_at: i64,
+    /// Liana wallets only — `true` when the primary spending path was
+    /// created with QBL-235's "unspendable primary" option, meaning
+    /// only the timelocked recovery path(s) can ever sign. The
+    /// dashboard surfaces a "Recovery-only" badge based on this flag.
+    /// `#[serde(default)]` keeps wallets created before QBL-235
+    /// readable (they all default to `false` = spendable primary).
+    #[serde(default)]
+    pub recovery_only: bool,
 }
 
 /// Lightweight view returned by `list_wallets` for the wallet list UI.
@@ -115,6 +135,8 @@ pub struct WalletSummary {
     pub has_hot_keys: bool,
     pub created_at: i64,
     pub locked: bool,
+    #[serde(default)]
+    pub recovery_only: bool,
 }
 
 #[derive(Debug, Error)]
@@ -233,6 +255,7 @@ impl LocalWalletManager {
                 has_hot_keys: meta.has_hot_keys,
                 created_at: meta.created_at,
                 locked,
+                recovery_only: meta.recovery_only,
             });
         }
         Ok(out)
@@ -280,6 +303,7 @@ impl LocalWalletManager {
             fingerprints: vec![keyset.fingerprint.clone()],
             has_hot_keys: true,
             created_at: now_unix_seconds(),
+            recovery_only: false,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -326,6 +350,7 @@ impl LocalWalletManager {
             fingerprints: vec![fingerprint],
             has_hot_keys: true,
             created_at: now_unix_seconds(),
+            recovery_only: false,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -383,6 +408,7 @@ impl LocalWalletManager {
             fingerprints: vec![fingerprint.to_string()],
             has_hot_keys: false,
             created_at: now_unix_seconds(),
+            recovery_only: false,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -465,6 +491,7 @@ impl LocalWalletManager {
             fingerprints,
             has_hot_keys: false,
             created_at: now_unix_seconds(),
+            recovery_only: false,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -527,6 +554,7 @@ impl LocalWalletManager {
             fingerprints,
             has_hot_keys: false,
             created_at: now_unix_seconds(),
+            recovery_only: false,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -551,12 +579,11 @@ impl LocalWalletManager {
         &self,
         name: &str,
         network: Network,
-        primary: LianaSpendingPath,
+        primary: LianaPrimary,
         recoveries: Vec<LianaRecoveryPath>,
     ) -> Result<WalletId, ManagerError> {
         ensure_supported_network(network)?;
 
-        validate_liana_path(&primary, "primary")?;
         if recoveries.is_empty() {
             return Err(ManagerError::Runtime(
                 "Liana wallets require at least one recovery path".to_string(),
@@ -571,7 +598,25 @@ impl LocalWalletManager {
             validate_liana_path(&rec.path, &format!("recovery {idx}"))?;
         }
 
-        let primary_path = build_core_policy_path(&primary)?;
+        // Resolve the primary path. The `Keys` arm is the user-driven
+        // case (existing QBL-225 flow). `Unspendable` (QBL-235)
+        // substitutes a deterministic NUMS-derived xpub computed from
+        // the recovery key set — same construction Liana Desktop uses
+        // so the resulting wallet round-trips through Liana's policy
+        // parser as "no primary key".
+        let recovery_only = matches!(primary, LianaPrimary::Unspendable);
+        let primary_keys: Vec<&LianaKeyInput> = match &primary {
+            LianaPrimary::Keys(p) => {
+                validate_liana_path(p, "primary")?;
+                p.keys.iter().collect()
+            }
+            LianaPrimary::Unspendable => Vec::new(),
+        };
+        let primary_path: CorePolicyPath = match &primary {
+            LianaPrimary::Keys(p) => build_core_policy_path(p)?,
+            LianaPrimary::Unspendable => unspendable_primary_path(network, &recoveries)?,
+        };
+
         let recovery_paths: Vec<CoreRecoveryPath> = recoveries
             .iter()
             .enumerate()
@@ -601,13 +646,16 @@ impl LocalWalletManager {
         let _wallet = wr_create_wallet(&mut persister, network, &descriptors)
             .map_err(|e| ManagerError::Runtime(e.to_string()))?;
 
+        // Track fingerprints for the dashboard sidebar. Skip the
+        // unspendable-primary's all-zeros fingerprint — it would just
+        // be visual noise in the wallet list.
         let mut fingerprints: Vec<String> = Vec::new();
         let mut push_fp = |fp: &str| {
             if !fp.is_empty() && !fingerprints.iter().any(|seen| seen == fp) {
                 fingerprints.push(fp.to_string());
             }
         };
-        for k in &primary.keys {
+        for k in &primary_keys {
             push_fp(&k.fingerprint);
         }
         for rec in &recoveries {
@@ -626,6 +674,7 @@ impl LocalWalletManager {
             fingerprints,
             has_hot_keys: false,
             created_at: now_unix_seconds(),
+            recovery_only,
         };
         self.write_metadata(&layout, &meta)?;
 
@@ -825,6 +874,43 @@ fn key_input_to_descriptor_public_key(
             k.fingerprint, e
         ))
     })
+}
+
+/// Build the deterministic NUMS-derived primary path for an
+/// unspendable-primary Liana wallet (QBL-235). Walks every recovery
+/// key in declared order, hashes the concatenated pubkeys to derive
+/// the chain code, then formats the resulting xpub as a single-key
+/// primary at fingerprint `00000000`.
+fn unspendable_primary_path(
+    network: Network,
+    recoveries: &[LianaRecoveryPath],
+) -> Result<CorePolicyPath, ManagerError> {
+    let mut recovery_xpubs = Vec::new();
+    for rec in recoveries {
+        for k in &rec.path.keys {
+            let dpk = key_input_to_descriptor_public_key(k)?;
+            let xpub = match dpk {
+                DescriptorPublicKey::XPub(ref x) => x.xkey,
+                DescriptorPublicKey::MultiXPub(ref m) => m.xkey,
+                DescriptorPublicKey::Single(_) => {
+                    return Err(ManagerError::Runtime(
+                        "unspendable-primary wallets require xpub recovery keys (single pubkeys not supported)"
+                            .to_string(),
+                    ));
+                }
+            };
+            recovery_xpubs.push(xpub);
+        }
+    }
+    let xpub = unspendable_primary_xpub(&recovery_xpubs, network);
+    // Format as a Liana key expression. Fingerprint `00000000` and
+    // empty origin path is the convention for keys that aren't
+    // derived from any wallet — it matches what Liana Desktop emits.
+    let formatted = KeyUtils::format_key_for_liana("00000000", "", &xpub.to_string());
+    let dpk = DescriptorPublicKey::from_str(&formatted).map_err(|e| {
+        ManagerError::Runtime(format!("unspendable primary descriptor key: {e}"))
+    })?;
+    Ok(CorePolicyPath::Single(dpk))
 }
 
 #[cfg(test)]

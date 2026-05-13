@@ -121,11 +121,24 @@ pub struct LianaRecoveryPathDto {
     pub path: LianaSpendingPathDto,
 }
 
+/// The primary spending path for a Liana wallet. `keys` is the
+/// standard case (user-controlled keys + threshold). `unspendable`
+/// (QBL-235) tags the wallet recovery-only — backend substitutes a
+/// deterministic NUMS-derived xpub. The wire form is internally
+/// tagged so a missing variant gives a clear deserialization error
+/// rather than silently accepting empty input.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LianaPrimaryDto {
+    Keys { path: LianaSpendingPathDto },
+    Unspendable,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateLianaWalletRequest {
     pub name: String,
     pub network: String,
-    pub primary: LianaSpendingPathDto,
+    pub primary: LianaPrimaryDto,
     pub recoveries: Vec<LianaRecoveryPathDto>,
 }
 
@@ -324,9 +337,9 @@ pub async fn cmd_local_create_multisig(
 
 /// Create a Liana timelocked-policy wallet (QBL-225). Primary path is
 /// spendable immediately; each recovery path becomes spendable after its
-/// block-count timelock elapses. v1 collects all keys from hardware
-/// devices or pasted xpubs (no hot keys for the primary path — see
-/// QBL-235 for the related "unspendable primary" affordance).
+/// block-count timelock elapses. The primary path can be either a
+/// user-driven key set or an unspendable NUMS-derived sentinel
+/// (QBL-235) for recovery-only wallets.
 #[tauri::command]
 pub async fn cmd_local_create_liana(
     app: AppHandle,
@@ -352,7 +365,10 @@ pub async fn cmd_local_create_liana(
         }
     }
 
-    let primary = map_path(request.primary);
+    let primary = match request.primary {
+        LianaPrimaryDto::Keys { path } => super::manager::LianaPrimary::Keys(map_path(path)),
+        LianaPrimaryDto::Unspendable => super::manager::LianaPrimary::Unspendable,
+    };
     let recoveries: Vec<LianaRecoveryPath> = request
         .recoveries
         .into_iter()
