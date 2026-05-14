@@ -15,11 +15,7 @@ export default function UpdateBanner() {
 
 	if (dismissed || !update) return null;
 
-	const statusColor = error
-		? "bg-destructive"
-		: readyToRestart
-			? "bg-success"
-			: "bg-primary";
+	const statusColor = error ? "bg-destructive" : readyToRestart ? "bg-success" : "bg-primary";
 
 	return (
 		<div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
@@ -32,9 +28,7 @@ export default function UpdateBanner() {
 					<span
 						className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-50 ${statusColor}`}
 					/>
-					<span
-						className={`relative inline-flex h-2 w-2 rounded-full ${statusColor}`}
-					/>
+					<span className={`relative inline-flex h-2 w-2 rounded-full ${statusColor}`} />
 				</span>
 
 				{/* Message */}
@@ -47,9 +41,7 @@ export default function UpdateBanner() {
 							<span className="text-muted-foreground">·</span>
 							<span>
 								restart to apply{" "}
-								<span className="font-semibold text-primary">
-									v{update.version}
-								</span>
+								<span className="font-semibold text-primary">v{update.version}</span>
 							</span>
 						</>
 					) : downloading ? (
@@ -58,18 +50,14 @@ export default function UpdateBanner() {
 								downloading
 							</span>
 							<span className="text-muted-foreground">·</span>
-							<span className="font-semibold text-primary">
-								v{update.version}
-							</span>
+							<span className="font-semibold text-primary">v{update.version}</span>
 						</>
 					) : error ? (
 						<>
 							<span className="font-mono text-[9px] uppercase tracking-[0.18em] text-destructive">
 								failed
 							</span>
-							<span className="truncate text-muted-foreground">
-								{error}
-							</span>
+							<span className="truncate text-muted-foreground">{error}</span>
 						</>
 					) : (
 						<>
@@ -77,9 +65,7 @@ export default function UpdateBanner() {
 								update available
 							</span>
 							<span className="text-muted-foreground">·</span>
-							<span className="font-semibold text-foreground">
-								v{update.version}
-							</span>
+							<span className="font-semibold text-foreground">v{update.version}</span>
 						</>
 					)}
 				</span>
@@ -106,7 +92,15 @@ export default function UpdateBanner() {
 						onClick={restartApp}
 						className="flex h-7 items-center gap-1.5 rounded-full border border-success/40 bg-success/[0.08] px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-success transition-colors hover:border-success/70 hover:bg-success/[0.14]"
 					>
-						<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="h-3 w-3"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
 							<path d="M3 3v5h5" />
 						</svg>
@@ -121,7 +115,15 @@ export default function UpdateBanner() {
 						className="flex h-7 items-center gap-1.5 rounded-full border border-primary/40 bg-primary/[0.08] px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/70 hover:bg-primary/[0.14]"
 					>
 						update
-						<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="h-3 w-3"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<path d="M5 12h14" />
 							<path d="m12 5 7 7-7 7" />
 						</svg>
@@ -146,7 +148,15 @@ export default function UpdateBanner() {
 					title="Dismiss"
 					aria-label="Dismiss update"
 				>
-					<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<svg
+						className="h-3 w-3"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
 						<path d="M18 6 6 18" />
 						<path d="m6 6 12 12" />
 					</svg>

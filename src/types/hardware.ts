@@ -48,18 +48,14 @@ export function isDeviceUnsupported(device: DiscoveredDevice): boolean {
 	return device.state.state === "Unsupported";
 }
 
-export function getDeviceFingerprint(
-	device: DiscoveredDevice
-): string | undefined {
+export function getDeviceFingerprint(device: DiscoveredDevice): string | undefined {
 	if (device.state.state === "Supported") {
 		return device.state.fingerprint;
 	}
 	return undefined;
 }
 
-export function getDevicePairingCode(
-	device: DiscoveredDevice
-): string | undefined {
+export function getDevicePairingCode(device: DiscoveredDevice): string | undefined {
 	if (device.state.state === "Locked" && device.state.pairing_code) {
 		return device.state.pairing_code;
 	}

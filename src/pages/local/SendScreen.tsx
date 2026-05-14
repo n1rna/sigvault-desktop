@@ -12,15 +12,15 @@
 // the wizard surfaces the error and lets the user retry from the same
 // signed PSBT.
 
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useNavigate, useParams } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import DeviceDiscovery from "../../components/DeviceDiscovery";
-import WindowControls from "../../components/WindowControls";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import AnimatedQrModal from "../../components/AnimatedQrModal";
+import DeviceDiscovery from "../../components/DeviceDiscovery";
 import QrScanModal from "../../components/QrScanModal";
-import { savePsbtToFile, loadPsbtFromFile } from "../../lib/psbtFile";
+import WindowControls from "../../components/WindowControls";
+import { loadPsbtFromFile, savePsbtToFile } from "../../lib/psbtFile";
 import type {
 	LocalBalance,
 	LocalBroadcastPsbtResponse,
@@ -28,11 +28,7 @@ import type {
 	LocalSignPsbtResponse,
 	LocalWalletSummary,
 } from "../../types/events";
-import type {
-	DeviceInfo,
-	DiscoveredDevice,
-	WalletConfig,
-} from "../../types/hardware";
+import type { DeviceInfo, DiscoveredDevice, WalletConfig } from "../../types/hardware";
 
 type Step = "compose" | "path" | "confirm" | "done";
 
@@ -198,9 +194,7 @@ export default function SendScreen() {
 		}
 	};
 
-	const buildPsbtAndAdvance = async (
-		policyPath: Record<string, number[]> | null,
-	) => {
+	const buildPsbtAndAdvance = async (policyPath: Record<string, number[]> | null) => {
 		if (!walletId) return;
 		const v = validateCompose();
 		if (!v) return;
@@ -209,9 +203,7 @@ export default function SendScreen() {
 			const resp = await invoke<LocalBuildPsbtResponse>("cmd_local_build_psbt", {
 				request: {
 					wallet_id: walletId,
-					recipients: [
-						{ address: recipient.trim(), amount_sat: v.sat },
-					],
+					recipients: [{ address: recipient.trim(), amount_sat: v.sat }],
 					fee_rate_sat_vb: v.feeRate,
 					policy_path: policyPath,
 				},
@@ -230,25 +222,19 @@ export default function SendScreen() {
 		setError(null);
 		setBusy(true);
 		try {
-			const signed = await invoke<LocalSignPsbtResponse>(
-				"cmd_local_sign_psbt_software",
-				{
-					request: {
-						wallet_id: walletId,
-						psbt_base64: psbtBase64,
-						passphrase,
-					},
+			const signed = await invoke<LocalSignPsbtResponse>("cmd_local_sign_psbt_software", {
+				request: {
+					wallet_id: walletId,
+					psbt_base64: psbtBase64,
+					passphrase,
 				},
-			);
-			const broadcast = await invoke<LocalBroadcastPsbtResponse>(
-				"cmd_local_broadcast_psbt",
-				{
-					request: {
-						wallet_id: walletId,
-						psbt_base64: signed.psbt_base64,
-					},
+			});
+			const broadcast = await invoke<LocalBroadcastPsbtResponse>("cmd_local_broadcast_psbt", {
+				request: {
+					wallet_id: walletId,
+					psbt_base64: signed.psbt_base64,
 				},
-			);
+			});
 			setTxid(broadcast.txid);
 			setStep("done");
 		} catch (err) {
@@ -265,10 +251,7 @@ export default function SendScreen() {
 		if (!psbtBase64) return;
 		setError(null);
 		try {
-			await savePsbtToFile(
-				psbtBase64,
-				`sigvault-${walletId?.slice(0, 8) ?? "wallet"}.psbt`,
-			);
+			await savePsbtToFile(psbtBase64, `sigvault-${walletId?.slice(0, 8) ?? "wallet"}.psbt`);
 		} catch (err) {
 			setError(typeof err === "string" ? err : "Failed to save PSBT");
 		}
@@ -291,9 +274,7 @@ export default function SendScreen() {
 			}
 			await broadcastSignedPsbt(signed);
 		} catch (err) {
-			setError(
-				typeof err === "string" ? err : "Import or broadcast failed",
-			);
+			setError(typeof err === "string" ? err : "Import or broadcast failed");
 			setBusy(false);
 		}
 	};
@@ -304,15 +285,12 @@ export default function SendScreen() {
 	const broadcastSignedPsbt = async (signedPsbtBase64: string) => {
 		if (!walletId) return;
 		try {
-			const broadcast = await invoke<LocalBroadcastPsbtResponse>(
-				"cmd_local_broadcast_psbt",
-				{
-					request: {
-						wallet_id: walletId,
-						psbt_base64: signedPsbtBase64,
-					},
+			const broadcast = await invoke<LocalBroadcastPsbtResponse>("cmd_local_broadcast_psbt", {
+				request: {
+					wallet_id: walletId,
+					psbt_base64: signedPsbtBase64,
 				},
-			);
+			});
 			setTxid(broadcast.txid);
 			setStep("done");
 		} catch (err) {
@@ -333,31 +311,23 @@ export default function SendScreen() {
 		setError(null);
 		setBusy(true);
 		try {
-			const signed = await invoke<LocalSignPsbtResponse>(
-				"cmd_local_sign_psbt_hardware",
-				{
-					request: {
-						wallet_id: walletId,
-						psbt_base64: psbtBase64,
-						device_id: deviceId,
-					},
+			const signed = await invoke<LocalSignPsbtResponse>("cmd_local_sign_psbt_hardware", {
+				request: {
+					wallet_id: walletId,
+					psbt_base64: psbtBase64,
+					device_id: deviceId,
 				},
-			);
-			const broadcast = await invoke<LocalBroadcastPsbtResponse>(
-				"cmd_local_broadcast_psbt",
-				{
-					request: {
-						wallet_id: walletId,
-						psbt_base64: signed.psbt_base64,
-					},
+			});
+			const broadcast = await invoke<LocalBroadcastPsbtResponse>("cmd_local_broadcast_psbt", {
+				request: {
+					wallet_id: walletId,
+					psbt_base64: signed.psbt_base64,
 				},
-			);
+			});
 			setTxid(broadcast.txid);
 			setStep("done");
 		} catch (err) {
-			setError(
-				typeof err === "string" ? err : "Hardware sign or broadcast failed",
-			);
+			setError(typeof err === "string" ? err : "Hardware sign or broadcast failed");
 		} finally {
 			setBusy(false);
 		}
@@ -416,9 +386,7 @@ export default function SendScreen() {
 						</svg>
 					</button>
 					<div className="flex flex-col leading-none">
-						<span className="text-[14px] font-medium text-foreground">
-							Send
-						</span>
+						<span className="text-[14px] font-medium text-foreground">Send</span>
 						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
 							{wallet ? `${wallet.name} · ${wallet.network}` : "—"}
 						</span>
@@ -478,9 +446,7 @@ export default function SendScreen() {
 								setError(null);
 							}}
 							onSubmit={() => {
-								const chosen = paths.find(
-									(p) => p.id === selectedPathId,
-								);
+								const chosen = paths.find((p) => p.id === selectedPathId);
 								if (!chosen) {
 									setError("Pick a spending path to continue.");
 									return;
@@ -520,9 +486,7 @@ export default function SendScreen() {
 								setPsbtBase64(null);
 								setError(null);
 							}}
-							onDeviceSelected={(_info, device) =>
-								signAndBroadcastHardware(device.id)
-							}
+							onDeviceSelected={(_info, device) => signAndBroadcastHardware(device.id)}
 							onExportPsbt={exportPsbtToFile}
 							onImportSignedPsbt={importAndBroadcast}
 							onShowQr={() => setShowQr(true)}
@@ -543,29 +507,15 @@ export default function SendScreen() {
 			</div>
 
 			{showQr && psbtBase64 && (
-				<AnimatedQrModal
-					psbtBase64={psbtBase64}
-					onClose={() => setShowQr(false)}
-				/>
+				<AnimatedQrModal psbtBase64={psbtBase64} onClose={() => setShowQr(false)} />
 			)}
 
-			{scanQr && (
-				<QrScanModal
-					onClose={() => setScanQr(false)}
-					onComplete={onScannedSignedPsbt}
-				/>
-			)}
+			{scanQr && <QrScanModal onClose={() => setScanQr(false)} onComplete={onScannedSignedPsbt} />}
 		</div>
 	);
 }
 
-function StepIndicator({
-	stepIndex,
-	showPathStep,
-}: {
-	stepIndex: number;
-	showPathStep: boolean;
-}) {
+function StepIndicator({ stepIndex, showPathStep }: { stepIndex: number; showPathStep: boolean }) {
 	const labels = showPathStep
 		? ["Compose", "Path", "Confirm", "Done"]
 		: ["Compose", "Confirm", "Done"];
@@ -582,18 +532,12 @@ function StepIndicator({
 						<div key={label} className="flex flex-1 items-center gap-2">
 							<div
 								className={`h-1 flex-1 rounded-full transition-colors ${
-									done
-										? "bg-primary"
-										: active
-											? "bg-primary/60"
-											: "bg-border"
+									done ? "bg-primary" : active ? "bg-primary/60" : "bg-border"
 								}`}
 							/>
 							<span
 								className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
-									active || done
-										? "text-foreground"
-										: "text-muted-foreground/70"
+									active || done ? "text-foreground" : "text-muted-foreground/70"
 								}`}
 							>
 								{label}
@@ -630,13 +574,8 @@ function ComposeStep({
 	onSubmit: () => void;
 }) {
 	const fr = Number(feeRate);
-	const ready =
-		recipient.trim().length > 0 &&
-		sat !== null &&
-		Number.isFinite(fr) &&
-		fr > 0;
-	const exceedsBalance =
-		balance !== null && sat !== null && sat > balance.confirmed_sat;
+	const ready = recipient.trim().length > 0 && sat !== null && Number.isFinite(fr) && fr > 0;
+	const exceedsBalance = balance !== null && sat !== null && sat > balance.confirmed_sat;
 
 	return (
 		<form
@@ -652,7 +591,6 @@ function ComposeStep({
 				</span>
 				<input
 					type="text"
-					autoFocus
 					value={recipient}
 					onChange={(e) => onChangeRecipient(e.target.value)}
 					autoComplete="off"
@@ -677,11 +615,7 @@ function ComposeStep({
 				/>
 				<div className="mt-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
 					<span>{sat !== null ? `${sat.toLocaleString()} sat` : "—"}</span>
-					{balance && (
-						<span>
-							balance {formatBtc(balance.confirmed_sat)} BTC
-						</span>
-					)}
+					{balance && <span>balance {formatBtc(balance.confirmed_sat)} BTC</span>}
 				</div>
 				{exceedsBalance && (
 					<div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
@@ -768,12 +702,10 @@ function PathStep({
 			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 				<p className="text-[12px] leading-relaxed text-muted-foreground">
 					This wallet has{" "}
-					<span className="font-medium text-foreground">
-						{paths.length} spending paths
-					</span>
-					. Each path imposes its own conditions (signer set, timelock).
-					Pick the one you want to satisfy with this transaction — the
-					PSBT will be built so the chosen path's signers can finalize it.
+					<span className="font-medium text-foreground">{paths.length} spending paths</span>. Each
+					path imposes its own conditions (signer set, timelock). Pick the one you want to satisfy
+					with this transaction — the PSBT will be built so the chosen path's signers can finalize
+					it.
 				</p>
 			</div>
 
@@ -792,13 +724,9 @@ function PathStep({
 							}`}
 						>
 							<div className="flex items-baseline justify-between gap-3">
-								<span className="text-[13px] font-medium text-foreground">
-									{p.label}
-								</span>
+								<span className="text-[13px] font-medium text-foreground">{p.label}</span>
 								<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-									{p.fingerprints.length === 0
-										? "—"
-										: `${p.threshold}-of-${p.fingerprints.length}`}
+									{p.fingerprints.length === 0 ? "—" : `${p.threshold}-of-${p.fingerprints.length}`}
 								</span>
 							</div>
 							{p.description && (
@@ -878,22 +806,16 @@ function ConfirmStep({
 				</div>
 				<dl className="mt-3 space-y-2 text-[12px]">
 					<SummaryRow label="To">
-						<span className="break-all font-mono text-foreground">
-							{recipient}
-						</span>
+						<span className="break-all font-mono text-foreground">{recipient}</span>
 					</SummaryRow>
 					<SummaryRow label="Amount">
-						<span className="font-mono text-foreground">
-							{formatBtc(sat)} BTC
-						</span>
+						<span className="font-mono text-foreground">{formatBtc(sat)} BTC</span>
 						<span className="ml-2 font-mono text-muted-foreground/80">
 							{sat.toLocaleString()} sat
 						</span>
 					</SummaryRow>
 					<SummaryRow label="Fee rate">
-						<span className="font-mono text-foreground">
-							{feeRate} sat/vB
-						</span>
+						<span className="font-mono text-foreground">{feeRate} sat/vB</span>
 					</SummaryRow>
 				</dl>
 			</div>
@@ -903,12 +825,11 @@ function ConfirmStep({
 					Passphrase
 				</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-					Re-enter the wallet passphrase to authorize signing. The seed is
-					decrypted only for this transaction.
+					Re-enter the wallet passphrase to authorize signing. The seed is decrypted only for this
+					transaction.
 				</p>
 				<input
 					type="password"
-					autoFocus
 					value={passphrase}
 					onChange={(e) => onChangePassphrase(e.target.value)}
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
@@ -952,13 +873,7 @@ function ConfirmStep({
 	);
 }
 
-function SummaryRow({
-	label,
-	children,
-}: {
-	label: string;
-	children: React.ReactNode;
-}) {
+function SummaryRow({ label, children }: { label: string; children: React.ReactNode }) {
 	return (
 		<div className="flex flex-col gap-0.5">
 			<dt className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground/80">
@@ -999,8 +914,8 @@ function DoneStep({
 				Transaction broadcast.
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-				Your transaction is in the mempool. It'll appear in the wallet
-				history once the next sync sees it.
+				Your transaction is in the mempool. It'll appear in the wallet history once the next sync
+				sees it.
 			</p>
 
 			<button
@@ -1072,9 +987,7 @@ function HardwareConfirmStep({
 	onScanQr: () => void;
 	walletConfig?: WalletConfig;
 }) {
-	const [signMode, setSignMode] = useState<"connected" | "external">(
-		"connected",
-	);
+	const [signMode, setSignMode] = useState<"connected" | "external">("connected");
 	return (
 		<div className="space-y-6">
 			<div className="rounded-md border border-border bg-card px-4 py-4">
@@ -1083,14 +996,10 @@ function HardwareConfirmStep({
 				</div>
 				<dl className="mt-3 space-y-2 text-[12px]">
 					<SummaryRow label="To">
-						<span className="break-all font-mono text-foreground">
-							{recipient}
-						</span>
+						<span className="break-all font-mono text-foreground">{recipient}</span>
 					</SummaryRow>
 					<SummaryRow label="Amount">
-						<span className="font-mono text-foreground">
-							{formatBtc(sat)} BTC
-						</span>
+						<span className="font-mono text-foreground">{formatBtc(sat)} BTC</span>
 						<span className="ml-2 font-mono text-muted-foreground/80">
 							{sat.toLocaleString()} sat
 						</span>
@@ -1131,11 +1040,8 @@ function HardwareConfirmStep({
 					<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 						<p className="text-[12px] leading-relaxed text-muted-foreground">
 							Connect and unlock your hardware wallet, then click{" "}
-							<span className="font-medium text-foreground">
-								Discover Devices
-							</span>
-							. You'll review and approve the transaction on the device
-							itself — the private keys never leave it.
+							<span className="font-medium text-foreground">Discover Devices</span>. You'll review
+							and approve the transaction on the device itself — the private keys never leave it.
 						</p>
 					</div>
 
@@ -1152,10 +1058,9 @@ function HardwareConfirmStep({
 				<div className="space-y-4">
 					<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 						<p className="text-[12px] leading-relaxed text-muted-foreground">
-							Send the unsigned PSBT to a signer on another machine
-							(Coldcard, SeedSigner, Sparrow, Foundation Passport,
-							Specter, Keystone, an air-gapped laptop, ...). When it
-							hands you back a signed PSBT, import or scan it to broadcast.
+							Send the unsigned PSBT to a signer on another machine (Coldcard, SeedSigner, Sparrow,
+							Foundation Passport, Specter, Keystone, an air-gapped laptop, ...). When it hands you
+							back a signed PSBT, import or scan it to broadcast.
 						</p>
 					</div>
 
@@ -1220,9 +1125,7 @@ function HardwareConfirmStep({
 				</button>
 				{busy && (
 					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						{signMode === "connected"
-							? "Signing & broadcasting…"
-							: "Working…"}
+						{signMode === "connected" ? "Signing & broadcasting…" : "Working…"}
 					</span>
 				)}
 			</div>

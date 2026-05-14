@@ -3,12 +3,9 @@
 // per-wallet sync indicators off this hook; the underlying event channel
 // is shared across all wallets, so the hook filters by wallet_id.
 
-import { useEffect, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import type {
-	LocalWalletSyncPhase,
-	LocalWalletSyncProgress,
-} from "../types/events";
+import { useEffect, useState } from "react";
+import type { LocalWalletSyncPhase, LocalWalletSyncProgress } from "../types/events";
 
 export type LocalSyncStatus = "idle" | "active" | "complete" | "error";
 
@@ -39,9 +36,7 @@ const SYNC_CHANNEL = "local_wallet_sync_progress";
  * progress event for `walletId` arrives; resets to idle if `walletId`
  * changes.
  */
-export function useLocalWalletSync(
-	walletId: string | null | undefined,
-): LocalSyncState {
+export function useLocalWalletSync(walletId: string | null | undefined): LocalSyncState {
 	const [state, setState] = useState<LocalSyncState>(initial);
 
 	useEffect(() => {

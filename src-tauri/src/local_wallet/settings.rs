@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn defaults_have_no_mainnet_entry() {
         let s = LocalSettings::default();
-        assert!(s.electrs_urls.get("bitcoin").is_none());
+        assert!(!s.electrs_urls.contains_key("bitcoin"));
     }
 
     #[test]
@@ -224,8 +224,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store = SettingsStore::new(tmp.path().to_path_buf());
 
-        let mut original = LocalSettings::default();
-        original.default_network = "testnet4".to_string();
+        let mut original = LocalSettings {
+            default_network: "testnet4".to_string(),
+            ..LocalSettings::default()
+        };
         original
             .electrs_urls
             .insert("testnet4".to_string(), "ssl://example:50002".to_string());

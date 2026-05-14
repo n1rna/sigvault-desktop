@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CommandResult, RemoteSession } from "../types/events";
+import { useEffect, useMemo, useState } from "react";
 import { useAppState } from "../contexts/AppStateContext";
+import type { CommandResult, RemoteSession } from "../types/events";
 
 type SortOrder = "newest" | "oldest";
 
@@ -36,8 +36,7 @@ export default function RemoteSessions() {
 
 	const loadSessions = async () => {
 		try {
-			const sessions =
-				await invoke<RemoteSession[]>("cmd_get_remote_sessions");
+			const sessions = await invoke<RemoteSession[]>("cmd_get_remote_sessions");
 			setRemoteSessions(sessions);
 		} catch {
 			// Session loading errors are non-fatal
@@ -59,10 +58,9 @@ export default function RemoteSessions() {
 	const handleConnect = async (sessionId: string) => {
 		setConnectingTo(sessionId);
 		try {
-			const result = await invoke<CommandResult>(
-				"cmd_start_session_websocket_connection",
-				{ sessionId },
-			);
+			const result = await invoke<CommandResult>("cmd_start_session_websocket_connection", {
+				sessionId,
+			});
 			if (!result.success) {
 				setError(result.message || "Failed to connect");
 			}
@@ -92,25 +90,17 @@ export default function RemoteSessions() {
 
 		const sorted = [...result].sort((a, b) => {
 			if (a.created_at && b.created_at) {
-				const diff =
-					new Date(b.created_at).getTime() -
-					new Date(a.created_at).getTime();
-				if (diff !== 0)
-					return sortOrder === "newest" ? diff : -diff;
+				const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+				if (diff !== 0) return sortOrder === "newest" ? diff : -diff;
 			}
-			return sortOrder === "newest"
-				? b._index - a._index
-				: a._index - b._index;
+			return sortOrder === "newest" ? b._index - a._index : a._index - b._index;
 		});
 
 		return sorted;
 	}, [remoteSessions, typeFilter, sortOrder]);
 
 	const activeCount = useMemo(
-		() =>
-			remoteSessions.filter(
-				(s) => s.status.toLowerCase() === "active",
-			).length,
+		() => remoteSessions.filter((s) => s.status.toLowerCase() === "active").length,
 		[remoteSessions],
 	);
 
@@ -124,16 +114,14 @@ export default function RemoteSessions() {
 				<div className="flex items-start justify-between gap-6">
 					<div className="flex-1">
 						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-6 bg-primary/60" />
-							§ Sessions
+							<span className="h-px w-6 bg-primary/60" />§ Sessions
 						</div>
 						<h1 className="mt-4 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground">
 							Remote Sessions
 						</h1>
 						<p className="mt-2 max-w-[520px] text-[13px] leading-relaxed text-muted-foreground">
-							Join active signing ceremonies or wait for new ones.
-							Connect with your hardware wallet to contribute a
-							signature.
+							Join active signing ceremonies or wait for new ones. Connect with your hardware wallet
+							to contribute a signature.
 						</p>
 					</div>
 
@@ -186,7 +174,15 @@ export default function RemoteSessions() {
 
 				{error && (
 					<div className="mt-5 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
-						<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="mt-0.5 h-3.5 w-3.5 shrink-0"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<circle cx="12" cy="12" r="10" />
 							<line x1="12" y1="8" x2="12" y2="12" />
 							<line x1="12" y1="16" x2="12.01" y2="16" />
@@ -229,11 +225,7 @@ export default function RemoteSessions() {
 							)}
 							<button
 								type="button"
-								onClick={() =>
-									setSortOrder((s) =>
-										s === "newest" ? "oldest" : "newest",
-									)
-								}
+								onClick={() => setSortOrder((s) => (s === "newest" ? "oldest" : "newest"))}
 								className="flex h-7 items-center gap-1.5 rounded-full border border-border/60 bg-transparent px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:border-border hover:text-foreground"
 							>
 								<svg
@@ -260,16 +252,21 @@ export default function RemoteSessions() {
 				{loading && remoteSessions.length === 0 ? (
 					<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
 						{[0, 1, 2, 3].map((i) => (
-							<div
-								key={i}
-								className="h-[72px] animate-pulse bg-card"
-							/>
+							<div key={i} className="h-[72px] animate-pulse bg-card" />
 						))}
 					</div>
 				) : filteredAndSorted.length === 0 ? (
 					<div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-card/30 py-20 text-center">
 						<div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-background">
-							<svg className="h-6 w-6 text-muted-foreground/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+							<svg
+								className="h-6 w-6 text-muted-foreground/50"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
 								<rect x="3" y="4" width="18" height="16" rx="2" />
 								<path d="M8 2v4" />
 								<path d="M16 2v4" />
@@ -277,9 +274,7 @@ export default function RemoteSessions() {
 							</svg>
 						</div>
 						<h3 className="mt-5 text-[14px] font-medium text-foreground">
-							{remoteSessions.length === 0
-								? "No sessions yet"
-								: "Nothing matches that filter"}
+							{remoteSessions.length === 0 ? "No sessions yet" : "Nothing matches that filter"}
 						</h3>
 						<p className="mt-1.5 max-w-[320px] text-[12px] leading-relaxed text-muted-foreground">
 							{remoteSessions.length === 0
@@ -290,8 +285,7 @@ export default function RemoteSessions() {
 				) : (
 					<div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border">
 						{filteredAndSorted.map((session) => {
-							const isActive =
-								session.status.toLowerCase() === "active";
+							const isActive = session.status.toLowerCase() === "active";
 							const isConnecting = connectingTo === session.id;
 							return (
 								<div
@@ -300,7 +294,15 @@ export default function RemoteSessions() {
 								>
 									{/* Type icon */}
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-										<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+										<svg
+											className="h-4 w-4"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="1.6"
+											strokeLinecap="round"
+											strokeLinejoin="round"
+										>
 											<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
 										</svg>
 									</div>
@@ -326,14 +328,10 @@ export default function RemoteSessions() {
 											</span>
 										</div>
 										<div className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-foreground">
-											<span className="truncate">
-												{shortId(session.id)}
-											</span>
+											<span className="truncate">{shortId(session.id)}</span>
 											{session.created_at && (
 												<>
-													<span className="text-muted-foreground/40">
-														·
-													</span>
+													<span className="text-muted-foreground/40">·</span>
 													<span className="text-muted-foreground">
 														{formatRelative(session.created_at)}
 													</span>
@@ -366,7 +364,15 @@ export default function RemoteSessions() {
 										) : (
 											<>
 												join
-												<svg className="h-3 w-3 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+												<svg
+													className="h-3 w-3 transition-transform group-hover:translate-x-0.5"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													strokeWidth="2"
+													strokeLinecap="round"
+													strokeLinejoin="round"
+												>
 													<path d="M5 12h14" />
 													<path d="m12 5 7 7-7 7" />
 												</svg>

@@ -429,8 +429,8 @@ impl LocalWalletManager {
         // origin blocks. Fingerprint mismatch means the supplied
         // mnemonic doesn't correspond to any slot — surface a clear
         // error so the user knows which seed they need.
-        let path = extract_origin_path_for_fingerprint(external_descriptor, &my_fp)
-            .ok_or_else(|| {
+        let path =
+            extract_origin_path_for_fingerprint(external_descriptor, &my_fp).ok_or_else(|| {
                 ManagerError::Runtime(format!(
                     "the supplied mnemonic's master fingerprint ({my_fp}) is not in the descriptor"
                 ))
@@ -439,7 +439,8 @@ impl LocalWalletManager {
         // Sanity-check by actually deriving at that path. If the
         // descriptor's path is malformed, we want to surface the
         // failure now rather than at sign time.
-        let _account_xpriv = derive_account_at_path(network, mnemonic_str, bip39_passphrase, &path)?;
+        let _account_xpriv =
+            derive_account_at_path(network, mnemonic_str, bip39_passphrase, &path)?;
 
         let id = WalletId::new();
         let layout = self.layout(&id);
@@ -932,8 +933,7 @@ pub fn derive_master_xpriv(
     let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_str)
         .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))?;
     let seed = mnemonic.to_seed(bip39_passphrase);
-    Xpriv::new_master(network, &seed)
-        .map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))
+    Xpriv::new_master(network, &seed).map_err(|e| ManagerError::InvalidMnemonic(e.to_string()))
 }
 
 /// Derive an arbitrary-path account xprv from a mnemonic. `path` is
@@ -993,10 +993,7 @@ pub fn scan_descriptor_fingerprints(descriptor: &str) -> Vec<String> {
 /// path inside. Returns `None` if the fingerprint doesn't appear.
 /// Used by cosigner recovery to figure out which slot the user's
 /// mnemonic should fill, and at what derivation path.
-pub fn extract_origin_path_for_fingerprint(
-    descriptor: &str,
-    target_fp: &str,
-) -> Option<String> {
+pub fn extract_origin_path_for_fingerprint(descriptor: &str, target_fp: &str) -> Option<String> {
     let target = target_fp.to_lowercase();
     let lower = descriptor.to_lowercase();
     let mut search_from = 0;
@@ -1122,9 +1119,8 @@ fn unspendable_primary_path(
     // empty origin path is the convention for keys that aren't
     // derived from any wallet — it matches what Liana Desktop emits.
     let formatted = KeyUtils::format_key_for_liana("00000000", "", &xpub.to_string());
-    let dpk = DescriptorPublicKey::from_str(&formatted).map_err(|e| {
-        ManagerError::Runtime(format!("unspendable primary descriptor key: {e}"))
-    })?;
+    let dpk = DescriptorPublicKey::from_str(&formatted)
+        .map_err(|e| ManagerError::Runtime(format!("unspendable primary descriptor key: {e}")))?;
     Ok(CorePolicyPath::Single(dpk))
 }
 
