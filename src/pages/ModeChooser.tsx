@@ -5,9 +5,9 @@
 // straight to the on-device wallet list. The choice is persisted via
 // `cmd_set_app_mode` and can be cleared from any "Switch mode" affordance.
 
-import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useState } from "react";
 import WindowControls from "../components/WindowControls";
 import type { AppMode } from "../types/events";
 
@@ -50,10 +50,7 @@ export default function ModeChooser() {
 			<div className="pointer-events-none absolute right-1/4 top-2/3 h-[320px] w-[320px] -translate-y-1/2 rounded-full bg-accent/[0.06] blur-[120px]" />
 
 			<main className="relative flex flex-1 items-center justify-center overflow-y-auto px-8 py-12">
-				<div
-					className="relative w-full max-w-[760px]"
-					onMouseDown={(e) => e.stopPropagation()}
-				>
+				<div className="relative w-full max-w-[760px]" onMouseDown={(e) => e.stopPropagation()}>
 					{/* ── Brand mark ── */}
 					<div className="flex items-center justify-center gap-3">
 						<div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-md">
@@ -89,9 +86,8 @@ export default function ModeChooser() {
 							How will you use SigVault?
 						</h1>
 						<p className="mx-auto mt-3 max-w-md text-[13px] leading-relaxed text-muted-foreground">
-							Pick the mode that fits your workflow. You can switch any time
-							from Settings — your wallets, sessions, and keys stay where
-							you left them.
+							Pick the mode that fits your workflow. You can switch any time from Settings — your
+							wallets, sessions, and keys stay where you left them.
 						</p>
 					</div>
 
@@ -207,14 +203,9 @@ function ModeCard({
 	ctaLabel: string;
 	onClick: () => void;
 }) {
-	const accentBg =
-		accent === "primary" ? "bg-primary/[0.10]" : "bg-accent/[0.10]";
-	const accentText =
-		accent === "primary" ? "text-primary" : "text-accent";
-	const accentBorder =
-		accent === "primary"
-			? "hover:border-primary/60"
-			: "hover:border-accent/60";
+	const accentBg = accent === "primary" ? "bg-primary/[0.10]" : "bg-accent/[0.10]";
+	const accentText = accent === "primary" ? "text-primary" : "text-accent";
+	const accentBorder = accent === "primary" ? "hover:border-primary/60" : "hover:border-accent/60";
 	return (
 		<button
 			type="button"
@@ -233,12 +224,8 @@ function ModeCard({
 				</span>
 			</div>
 
-			<h2 className="mt-5 text-[18px] font-medium tracking-[-0.01em] text-foreground">
-				{title}
-			</h2>
-			<p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-				{subtitle}
-			</p>
+			<h2 className="mt-5 text-[18px] font-medium tracking-[-0.01em] text-foreground">{title}</h2>
+			<p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">{subtitle}</p>
 
 			<ul className="mt-5 space-y-2">
 				{features.map((f) => (

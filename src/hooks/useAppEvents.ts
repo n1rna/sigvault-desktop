@@ -1,15 +1,15 @@
 // Hook for listening to backend events and managing app state
 
-import { useEffect, useReducer, useCallback, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import type {
 	AppEvent,
 	AppState,
-	StateUpdateEvent,
 	CommandEvent,
 	NotificationEvent,
-	SessionWorkflowPayload,
 	RemoteSession,
+	SessionWorkflowPayload,
+	StateUpdateEvent,
 } from "../types/events";
 
 const initialState: AppState = {
@@ -119,7 +119,6 @@ export function useAppEvents() {
 	}, []);
 
 	const handleSession = useCallback((data: SessionWorkflowPayload) => {
-
 		if (data?.success) {
 			dispatch({
 				type: "UPDATE_SESSION_STATE",

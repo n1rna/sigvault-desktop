@@ -166,4 +166,3 @@ pub async fn load(app: &AppHandle) -> Result<EnvManifest, String> {
         }
     }
 }
-

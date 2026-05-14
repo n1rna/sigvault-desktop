@@ -20,9 +20,7 @@ export const SUPPORTED_NETWORKS: readonly NetworkOption[] = [
 	{ id: "testnet4", label: "Testnet 4", hint: "Newer public testnet" },
 ];
 
-export const SUPPORTED_NETWORK_IDS: readonly string[] = SUPPORTED_NETWORKS.map(
-	(n) => n.id,
-);
+export const SUPPORTED_NETWORK_IDS: readonly string[] = SUPPORTED_NETWORKS.map((n) => n.id);
 
 /** Single feature flag the rest of the UI consults rather than hard-
  * coding a mainnet check. Currently always false — flip in lockstep

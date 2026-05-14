@@ -6,16 +6,13 @@
 // next; the buttons here route to placeholder pages so the navigation
 // graph stays whole during the transition.
 
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useNavigate, useParams } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import WindowControls from "../../components/WindowControls";
 import { useLocalWalletSync } from "../../hooks/useLocalWalletSync";
-import type {
-	LocalBalance,
-	LocalWalletSummary,
-} from "../../types/events";
+import type { LocalBalance, LocalWalletSummary } from "../../types/events";
 
 interface LocalTxRecord {
 	txid: string;
@@ -203,11 +200,7 @@ export default function WalletDashboard() {
 				</div>
 
 				<div className="flex items-center gap-2">
-					<SyncIndicator
-						sync={sync}
-						syncing={syncing}
-						onSync={triggerSync}
-					/>
+					<SyncIndicator sync={sync} syncing={syncing} onSync={triggerSync} />
 					<button
 						type="button"
 						onClick={lockAndExit}
@@ -275,8 +268,8 @@ export default function WalletDashboard() {
 							<div className="leading-snug">
 								<div className="font-medium">Recovery-only wallet.</div>
 								<div className="mt-0.5 text-muted-foreground">
-									The primary path is unspendable. Funds can only be moved
-									via the recovery key after the timelock elapses.
+									The primary path is unspendable. Funds can only be moved via the recovery key
+									after the timelock elapses.
 								</div>
 							</div>
 						</div>
@@ -284,9 +277,7 @@ export default function WalletDashboard() {
 
 					<div
 						className={
-							wallet?.policy_type === "watch_only"
-								? "grid grid-cols-1"
-								: "grid grid-cols-2 gap-3"
+							wallet?.policy_type === "watch_only" ? "grid grid-cols-1" : "grid grid-cols-2 gap-3"
 						}
 					>
 						<button
@@ -331,11 +322,7 @@ export default function WalletDashboard() {
 						)}
 					</div>
 
-					<HistoryList
-						history={history}
-						copiedTxid={copiedTxid}
-						onCopyTxid={copyTxid}
-					/>
+					<HistoryList history={history} copiedTxid={copiedTxid} onCopyTxid={copyTxid} />
 				</div>
 			</div>
 		</div>
@@ -363,8 +350,8 @@ function BalanceCard({ balance }: { balance: LocalBalance | null }) {
 			</div>
 			{pending > 0 && (
 				<div className="mt-3 flex items-center gap-2 font-mono text-[11px] text-warning">
-					<span className="inline-flex h-1.5 w-1.5 rounded-full bg-warning" />
-					+ {formatBtc(pending)} BTC pending
+					<span className="inline-flex h-1.5 w-1.5 rounded-full bg-warning" />+ {formatBtc(pending)}{" "}
+					BTC pending
 				</div>
 			)}
 		</div>
@@ -392,11 +379,7 @@ function SyncIndicator({
 			onClick={onSync}
 			disabled={active}
 			className="flex h-8 items-center gap-2 rounded-sm border border-border bg-background px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-70"
-			title={
-				active
-					? `${sync.phase ?? ""} (${sync.percent}%)`
-					: "Run an Electrum sync"
-			}
+			title={active ? `${sync.phase ?? ""} (${sync.percent}%)` : "Run an Electrum sync"}
 		>
 			{active ? (
 				<svg
@@ -472,23 +455,13 @@ function HistoryList({
 	);
 }
 
-function TxRow({
-	tx,
-	copied,
-	onCopy,
-}: {
-	tx: LocalTxRecord;
-	copied: boolean;
-	onCopy: () => void;
-}) {
+function TxRow({ tx, copied, onCopy }: { tx: LocalTxRecord; copied: boolean; onCopy: () => void }) {
 	const incoming = tx.net_sat >= 0;
 	return (
 		<li className="flex items-center gap-4 px-5 py-3">
 			<div
 				className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-					incoming
-						? "bg-success/[0.10] text-success"
-						: "bg-destructive/[0.10] text-destructive"
+					incoming ? "bg-success/[0.10] text-success" : "bg-destructive/[0.10] text-destructive"
 				}`}
 			>
 				<svg

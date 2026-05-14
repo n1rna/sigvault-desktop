@@ -1,5 +1,5 @@
-import { useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback } from "react";
 
 const appWindow = getCurrentWindow();
 
@@ -24,7 +24,13 @@ export default function WindowControls() {
 					onClick={() => appWindow.minimize()}
 					className="inline-flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 				>
-					<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+					<svg
+						className="h-3 w-3"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+					>
 						<path d="M5 12h14" />
 					</svg>
 				</button>
@@ -34,7 +40,13 @@ export default function WindowControls() {
 					onClick={() => appWindow.close()}
 					className="inline-flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
 				>
-					<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+					<svg
+						className="h-3 w-3"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+					>
 						<path d="M18 6 6 18" />
 						<path d="m6 6 12 12" />
 					</svg>

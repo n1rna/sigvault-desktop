@@ -1,0 +1,62 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.2.5/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"ignoreUnknown": true,
+		"includes": [
+			"**/*.ts",
+			"**/*.tsx",
+			"**/*.js",
+			"**/*.jsx",
+			"**/*.json",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/target",
+			"!src-tauri/gen",
+			"!package-lock.json"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 100
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noArrayIndexKey": "off",
+				"useIterableCallbackReturn": "off",
+				"noAssignInExpressions": "off"
+			},
+			"style": {
+				"useImportType": "off",
+				"useNumberNamespace": "off",
+				"noNonNullAssertion": "off",
+				"useNodejsImportProtocol": "off"
+			},
+			"a11y": {
+				"useKeyWithClickEvents": "off",
+				"noStaticElementInteractions": "off",
+				"noSvgWithoutTitle": "off",
+				"useButtonType": "off",
+				"noLabelWithoutControl": "off"
+			},
+			"correctness": {
+				"useExhaustiveDependencies": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always"
+		}
+	}
+}

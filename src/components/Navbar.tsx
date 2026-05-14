@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getVersion } from "@tauri-apps/api/app";
+import { useCallback, useEffect, useState } from "react";
 import { useAppState } from "../contexts/AppStateContext";
 import SwitchModeButton from "./SwitchModeButton";
 
@@ -56,7 +56,15 @@ export default function Navbar() {
 			{/* ── Brand ── */}
 			<div className="flex items-center gap-3 pl-5 pr-6">
 				<div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+					<svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2.2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						className="h-4 w-4"
+					>
 						<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
 						<path d="m9 12 2 2 4-4" />
 					</svg>
@@ -77,10 +85,7 @@ export default function Navbar() {
 			<div className="my-3 w-px bg-border/60" />
 
 			{/* ── Nav items ── */}
-			<div
-				className="flex items-center gap-1 px-4"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
+			<div className="flex items-center gap-1 px-4" onMouseDown={(e) => e.stopPropagation()}>
 				{navItems.map((item) => {
 					const isActive = route === item.route;
 					return (
@@ -106,10 +111,7 @@ export default function Navbar() {
 			<div className="flex-1" />
 
 			{/* ── Status pill ── */}
-			<div
-				className="flex items-center gap-2 pr-5"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
+			<div className="flex items-center gap-2 pr-5" onMouseDown={(e) => e.stopPropagation()}>
 				<div className="flex h-7 items-center gap-2 rounded-full border border-border/80 bg-background/60 px-3">
 					<span className="relative flex h-1.5 w-1.5">
 						<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
@@ -130,7 +132,15 @@ export default function Navbar() {
 				onMouseDown={(e) => e.stopPropagation()}
 				className="flex items-center gap-1.5 border-l border-border/60 bg-transparent px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
 			>
-				<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+				<svg
+					className="h-3 w-3"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+				>
 					<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
 					<polyline points="16 17 21 12 16 7" />
 					<line x1="21" y1="12" x2="9" y2="12" />
@@ -149,7 +159,14 @@ export default function Navbar() {
 					className="inline-flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 					aria-label="Minimize"
 				>
-					<svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+					<svg
+						className="h-3.5 w-3.5"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+					>
 						<path d="M5 12h14" />
 					</svg>
 				</button>
@@ -159,7 +176,14 @@ export default function Navbar() {
 					className="inline-flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
 					aria-label="Close"
 				>
-					<svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+					<svg
+						className="h-3.5 w-3.5"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+					>
 						<path d="M18 6 6 18" />
 						<path d="m6 6 12 12" />
 					</svg>

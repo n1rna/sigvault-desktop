@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { invoke } from "@tauri-apps/api/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "./Dashboard";
 
 vi.mock("../hooks/useAppEvents", () => ({
@@ -45,9 +45,7 @@ describe("Dashboard", () => {
 	});
 
 	it("shows loading state initially", () => {
-		vi.mocked(invoke).mockImplementation(
-			() => new Promise(() => {}),
-		);
+		vi.mocked(invoke).mockImplementation(() => new Promise(() => {}));
 
 		render(<Dashboard />);
 

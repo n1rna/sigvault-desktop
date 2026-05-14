@@ -5,13 +5,9 @@
 // (BBQr or UR) is chosen by the caller — the modal itself is
 // format-agnostic, it just renders whatever string the caller hands it.
 
-import { useEffect, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import {
-	psbtToBbqrFrames,
-	psbtToUrFrames,
-	type QrFormat,
-} from "../lib/psbtQr";
+import { useEffect, useState } from "react";
+import { psbtToBbqrFrames, psbtToUrFrames, type QrFormat } from "../lib/psbtQr";
 
 const FRAMES_PER_SECOND = 5;
 
@@ -32,10 +28,7 @@ export default function AnimatedQrModal({
 		setError(null);
 		setFrameIdx(0);
 		try {
-			const out =
-				format === "bbqr"
-					? psbtToBbqrFrames(psbtBase64)
-					: psbtToUrFrames(psbtBase64);
+			const out = format === "bbqr" ? psbtToBbqrFrames(psbtBase64) : psbtToUrFrames(psbtBase64);
 			setFrames(out.frames);
 			setTotalParts(out.totalParts);
 		} catch (err) {
@@ -130,15 +123,14 @@ export default function AnimatedQrModal({
 				<div className="rounded-md border border-border bg-card/40 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
 					{format === "bbqr" ? (
 						<>
-							<span className="font-medium text-foreground">BBQr</span> works
-							with Coldcard, SeedSigner, Krux. Hold this QR up to the
-							device's camera; it will read the frames as they cycle.
+							<span className="font-medium text-foreground">BBQr</span> works with Coldcard,
+							SeedSigner, Krux. Hold this QR up to the device's camera; it will read the frames as
+							they cycle.
 						</>
 					) : (
 						<>
-							<span className="font-medium text-foreground">UR</span> works
-							with Sparrow, Foundation Passport, Specter, Keystone.
-							Fountain-coded — scan order doesn't matter, the device
+							<span className="font-medium text-foreground">UR</span> works with Sparrow, Foundation
+							Passport, Specter, Keystone. Fountain-coded — scan order doesn't matter, the device
 							can pick frames out of sequence.
 						</>
 					)}
@@ -152,12 +144,7 @@ export default function AnimatedQrModal({
 					<>
 						<div className="mt-4 flex items-center justify-center rounded-md border border-border bg-white p-4">
 							{currentFrame && (
-								<QRCodeCanvas
-									value={currentFrame}
-									size={320}
-									level="M"
-									includeMargin={false}
-								/>
+								<QRCodeCanvas value={currentFrame} size={320} level="M" includeMargin={false} />
 							)}
 						</div>
 

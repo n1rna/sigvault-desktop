@@ -14,23 +14,17 @@
 //     pasted xpubs (QBL-225). Hot primary keys are out of scope for v1
 //     — see QBL-235 for the related "unspendable primary" affordance.
 
-import { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import DeviceDiscovery from "../../components/DeviceDiscovery";
 import WindowControls from "../../components/WindowControls";
 import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalWalletCreateResponse } from "../../types/events";
 import type { DeviceInfo } from "../../types/hardware";
 
-type Method =
-	| "generate"
-	| "recover"
-	| "hardware"
-	| "watch_only"
-	| "multisig"
-	| "liana";
+type Method = "generate" | "recover" | "hardware" | "watch_only" | "multisig" | "liana";
 
 type Step =
 	| "basics"
@@ -67,9 +61,7 @@ export default function CreateWalletWizard() {
 	const [passphrase, setPassphrase] = useState("");
 	const [confirmPassphrase, setConfirmPassphrase] = useState("");
 	const [recoveryLength, setRecoveryLength] = useState<12 | 24>(24);
-	const [recoveryWords, setRecoveryWords] = useState<string[]>(
-		Array(24).fill(""),
-	);
+	const [recoveryWords, setRecoveryWords] = useState<string[]>(Array(24).fill(""));
 	const [generatedWords, setGeneratedWords] = useState<string[]>([]);
 	const [createdId, setCreatedId] = useState<string | null>(null);
 	const [backedUp, setBackedUp] = useState(false);
@@ -96,17 +88,14 @@ export default function CreateWalletWizard() {
 			let walletId: string;
 			let words: string[] = [];
 			if (basics.method === "generate") {
-				const resp = await invoke<LocalWalletCreateResponse>(
-					"cmd_local_create_wallet",
-					{
-						request: {
-							name: basics.name,
-							network: basics.network,
-							policy_type: "singlesig_hot",
-							passphrase,
-						},
+				const resp = await invoke<LocalWalletCreateResponse>("cmd_local_create_wallet", {
+					request: {
+						name: basics.name,
+						network: basics.network,
+						policy_type: "singlesig_hot",
+						passphrase,
 					},
-				);
+				});
 				walletId = resp.wallet_id;
 				words = resp.mnemonic_words;
 			} else {
@@ -164,9 +153,7 @@ export default function CreateWalletWizard() {
 			setCreatedId(walletId);
 			setStep("done");
 		} catch (err) {
-			setError(
-				typeof err === "string" ? err : "Failed to create multisig wallet",
-			);
+			setError(typeof err === "string" ? err : "Failed to create multisig wallet");
 		} finally {
 			setSubmitting(false);
 		}
@@ -197,9 +184,7 @@ export default function CreateWalletWizard() {
 			setCreatedId(walletId);
 			setStep("done");
 		} catch (err) {
-			setError(
-				typeof err === "string" ? err : "Failed to create watch-only wallet",
-			);
+			setError(typeof err === "string" ? err : "Failed to create watch-only wallet");
 		} finally {
 			setSubmitting(false);
 		}
@@ -241,9 +226,7 @@ export default function CreateWalletWizard() {
 			setCreatedId(walletId);
 			setStep("done");
 		} catch (err) {
-			setError(
-				typeof err === "string" ? err : "Failed to create Liana wallet",
-			);
+			setError(typeof err === "string" ? err : "Failed to create Liana wallet");
 		} finally {
 			setSubmitting(false);
 		}
@@ -270,9 +253,7 @@ export default function CreateWalletWizard() {
 			setCreatedId(walletId);
 			setStep("done");
 		} catch (err) {
-			setError(
-				typeof err === "string" ? err : "Failed to create hardware wallet",
-			);
+			setError(typeof err === "string" ? err : "Failed to create hardware wallet");
 		} finally {
 			setSubmitting(false);
 		}
@@ -329,15 +310,8 @@ export default function CreateWalletWizard() {
 			<div className="pointer-events-none absolute left-1/2 top-1/3 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-primary/[0.06] blur-[140px]" />
 
 			<main className="relative flex flex-1 items-start justify-center overflow-y-auto px-6 py-10">
-				<div
-					className="relative w-full max-w-[520px]"
-					onMouseDown={(e) => e.stopPropagation()}
-				>
-					<Header
-						stepIndex={stepIndex}
-						onCancel={cancel}
-						method={basics.method}
-					/>
+				<div className="relative w-full max-w-[520px]" onMouseDown={(e) => e.stopPropagation()}>
+					<Header stepIndex={stepIndex} onCancel={cancel} method={basics.method} />
 
 					{error && (
 						<div className="mt-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
@@ -444,9 +418,7 @@ export default function CreateWalletWizard() {
 						/>
 					)}
 
-					{step === "done" && (
-						<DoneStep method={basics.method} onContinue={finish} />
-					)}
+					{step === "done" && <DoneStep method={basics.method} onContinue={finish} />}
 				</div>
 			</main>
 		</div>
@@ -502,18 +474,12 @@ function Header({
 							<div key={label} className="flex flex-1 items-center gap-2">
 								<div
 									className={`h-1 flex-1 rounded-full transition-colors ${
-										done
-											? "bg-primary"
-											: active
-												? "bg-primary/60"
-												: "bg-border"
+										done ? "bg-primary" : active ? "bg-primary/60" : "bg-border"
 									}`}
 								/>
 								<span
 									className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
-										active || done
-											? "text-foreground"
-											: "text-muted-foreground/70"
+										active || done ? "text-foreground" : "text-muted-foreground/70"
 									}`}
 								>
 									{label}
@@ -550,7 +516,6 @@ function BasicsStep({
 				</span>
 				<input
 					type="text"
-					autoFocus
 					value={value.name}
 					onChange={(e) => onChange({ ...value, name: e.target.value })}
 					placeholder="My local wallet"
@@ -576,9 +541,7 @@ function BasicsStep({
 										: "border-border bg-card hover:border-primary/60"
 								}`}
 							>
-								<span className="text-[12px] font-medium text-foreground">
-									{n.label}
-								</span>
+								<span className="text-[12px] font-medium text-foreground">{n.label}</span>
 								<span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
 									{n.hint}
 								</span>
@@ -680,9 +643,7 @@ function MethodCard({
 			}`}
 		>
 			<span className="text-[13px] font-medium text-foreground">{title}</span>
-			<span className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-				{hint}
-			</span>
+			<span className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{hint}</span>
 		</button>
 	);
 }
@@ -717,9 +678,7 @@ function PassphraseStep({
 	const passphraseOk = passphrase.length >= 8 && passphrase === confirmPassphrase;
 	const recoveryOk =
 		method === "generate" ||
-		recoveryWords
-			.slice(0, recoveryLength)
-			.every((w) => w.trim().length > 0);
+		recoveryWords.slice(0, recoveryLength).every((w) => w.trim().length > 0);
 	const ready = passphraseOk && recoveryOk;
 
 	return (
@@ -768,9 +727,7 @@ function PassphraseStep({
 								<input
 									type="text"
 									value={w}
-									onChange={(e) =>
-										onChangeRecoveryWord(i, e.target.value.toLowerCase())
-									}
+									onChange={(e) => onChangeRecoveryWord(i, e.target.value.toLowerCase())}
 									autoComplete="off"
 									autoCapitalize="off"
 									spellCheck={false}
@@ -787,12 +744,10 @@ function PassphraseStep({
 					Passphrase
 				</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-					Encrypts the seed on disk. You'll need this to unlock the wallet.
-					At least 8 characters.
+					Encrypts the seed on disk. You'll need this to unlock the wallet. At least 8 characters.
 				</p>
 				<input
 					type="password"
-					autoFocus={method === "generate"}
 					value={passphrase}
 					onChange={(e) => onChangePassphrase(e.target.value)}
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
@@ -898,12 +853,12 @@ function MnemonicDisplayStep({
 					</svg>
 					<div className="text-[12px] leading-relaxed text-foreground">
 						<p className="font-medium">
-							Record this phrase. It is the only way to recover your wallet
-							if you forget your passphrase.
+							Record this phrase. It is the only way to recover your wallet if you forget your
+							passphrase.
 						</p>
 						<p className="mt-1 text-muted-foreground">
-							Write it down on paper. Do not screenshot. Anyone with these
-							words can spend your bitcoin.
+							Write it down on paper. Do not screenshot. Anyone with these words can spend your
+							bitcoin.
 						</p>
 					</div>
 				</div>
@@ -918,9 +873,7 @@ function MnemonicDisplayStep({
 						<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
 							{String(i + 1).padStart(2, "0")}
 						</span>
-						<span className="flex-1 font-mono text-[12px] text-foreground">
-							{w}
-						</span>
+						<span className="flex-1 font-mono text-[12px] text-foreground">{w}</span>
 					</div>
 				))}
 			</div>
@@ -941,8 +894,8 @@ function MnemonicDisplayStep({
 					className="mt-0.5 h-4 w-4 cursor-pointer accent-primary"
 				/>
 				<span className="text-[12px] leading-relaxed text-foreground">
-					I have recorded my recovery phrase in a safe place. I understand
-					this is the only way to restore the wallet if I lose my passphrase.
+					I have recorded my recovery phrase in a safe place. I understand this is the only way to
+					restore the wallet if I lose my passphrase.
 				</span>
 			</label>
 
@@ -970,13 +923,7 @@ function MnemonicDisplayStep({
 	);
 }
 
-function DoneStep({
-	method,
-	onContinue,
-}: {
-	method: Method;
-	onContinue: () => void;
-}) {
+function DoneStep({ method, onContinue }: { method: Method; onContinue: () => void }) {
 	return (
 		<div className="mt-12 flex flex-col items-center text-center">
 			<div className="flex h-14 w-14 items-center justify-center rounded-full border border-success/40 bg-success/[0.08]">
@@ -1006,8 +953,7 @@ function DoneStep({
 									: "Wallet recovered."}
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-				The wallet is unlocked and ready. Open it to view balance, addresses,
-				and history.
+				The wallet is unlocked and ready. Open it to view balance, addresses, and history.
 			</p>
 			<button
 				type="button"
@@ -1047,15 +993,13 @@ function HardwareStep({
 		<div className="mt-8 space-y-6">
 			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 				<p className="text-[12px] leading-relaxed text-muted-foreground">
-					Connect your hardware wallet, unlock it (PIN / passphrase on the
-					device), then click{" "}
-					<span className="font-medium text-foreground">Discover Devices</span>.
-					Once it shows as Supported, continue — the wizard reads its xpub at{" "}
+					Connect your hardware wallet, unlock it (PIN / passphrase on the device), then click{" "}
+					<span className="font-medium text-foreground">Discover Devices</span>. Once it shows as
+					Supported, continue — the wizard reads its xpub at{" "}
 					<span className="font-mono text-[11px] text-foreground">
 						{primaryDerivationPath(network)}
 					</span>{" "}
-					and creates a watch-only wallet here. Your private keys never leave
-					the device.
+					and creates a watch-only wallet here. Your private keys never leave the device.
 				</p>
 			</div>
 
@@ -1121,9 +1065,7 @@ function WatchOnlyStep({
 		if (!ready || submitting) return;
 		const ext = external.trim();
 		const int = internal.trim();
-		const fingerprints = [
-			...new Set([...parseFingerprints(ext), ...parseFingerprints(int)]),
-		];
+		const fingerprints = [...new Set([...parseFingerprints(ext), ...parseFingerprints(int)])];
 		onSubmit({ external: ext, internal: int, fingerprints, spendable });
 	};
 
@@ -1131,12 +1073,11 @@ function WatchOnlyStep({
 		<form className="mt-8 space-y-6" onSubmit={submit}>
 			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 				<p className="text-[12px] leading-relaxed text-muted-foreground">
-					Paste the wallet's <span className="font-medium text-foreground">external</span>{" "}
-					(receive) and <span className="font-medium text-foreground">internal</span>{" "}
-					(change) descriptors. Both should resolve to public-key-only
-					expressions — anything containing private keys is rejected at
-					import time. Typical Sparrow / Liana / Specter exports give you
-					two strings of the form{" "}
+					Paste the wallet's <span className="font-medium text-foreground">external</span> (receive)
+					and <span className="font-medium text-foreground">internal</span> (change) descriptors.
+					Both should resolve to public-key-only expressions — anything containing private keys is
+					rejected at import time. Typical Sparrow / Liana / Specter exports give you two strings of
+					the form{" "}
 					<span className="font-mono text-[11px] text-foreground">
 						wpkh([fp/84'/1'/0']xpub.../0/*)
 					</span>
@@ -1188,10 +1129,9 @@ function WatchOnlyStep({
 						Enable spending with hardware wallet
 					</div>
 					<div className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-						Adds a Send button. Signing happens via a connected hardware
-						device (Ledger, BitBox, Jade, Coldcard, etc.) or by exporting
-						the PSBT to an air-gapped signer. Leave off for a pure read-only
-						wallet.
+						Adds a Send button. Signing happens via a connected hardware device (Ledger, BitBox,
+						Jade, Coldcard, etc.) or by exporting the PSBT to an air-gapped signer. Leave off for a
+						pure read-only wallet.
 					</div>
 				</div>
 			</label>
@@ -1260,16 +1200,12 @@ function MultisigStep({
 		<form className="mt-8 space-y-6" onSubmit={submit}>
 			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 				<p className="text-[12px] leading-relaxed text-muted-foreground">
-					Build an M-of-N multisig wallet from cosigner descriptor keys.
-					Paste each cosigner's public key expression — typically{" "}
-					<span className="font-mono text-[11px] text-foreground">
-						[fp/84'/1'/0']xpub...
-					</span>{" "}
-					(without the trailing{" "}
-					<span className="font-mono text-[11px] text-foreground">/0/*</span>{" "}
-					or{" "}
-					<span className="font-mono text-[11px] text-foreground">/1/*</span>).
-					Resulting addresses use{" "}
+					Build an M-of-N multisig wallet from cosigner descriptor keys. Paste each cosigner's
+					public key expression — typically{" "}
+					<span className="font-mono text-[11px] text-foreground">[fp/84'/1'/0']xpub...</span>{" "}
+					(without the trailing <span className="font-mono text-[11px] text-foreground">/0/*</span>{" "}
+					or <span className="font-mono text-[11px] text-foreground">/1/*</span>). Resulting
+					addresses use{" "}
 					<span className="font-mono text-[11px] text-foreground">
 						wsh(sortedmulti(M, k1, …, kN))
 					</span>
@@ -1287,9 +1223,7 @@ function MultisigStep({
 						min={1}
 						max={n}
 						value={threshold}
-						onChange={(e) =>
-							setThreshold(Math.max(1, Math.min(n, Number(e.target.value) || 1)))
-						}
+						onChange={(e) => setThreshold(Math.max(1, Math.min(n, Number(e.target.value) || 1)))}
 						className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
 					/>
 				</label>
@@ -1412,14 +1346,8 @@ function LianaStep({
 	const [recoveryRaw, setRecoveryRaw] = useState("");
 	const [timelockBlocks, setTimelockBlocks] = useState(4320);
 
-	const primaryParsed = useMemo(
-		() => parseDescriptorKey(primaryRaw),
-		[primaryRaw],
-	);
-	const recoveryParsed = useMemo(
-		() => parseDescriptorKey(recoveryRaw),
-		[recoveryRaw],
-	);
+	const primaryParsed = useMemo(() => parseDescriptorKey(primaryRaw), [primaryRaw]);
+	const recoveryParsed = useMemo(() => parseDescriptorKey(recoveryRaw), [recoveryRaw]);
 	const ready =
 		recoveryParsed !== null &&
 		timelockBlocks > 0 &&
@@ -1447,18 +1375,13 @@ function LianaStep({
 			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 				<p className="text-[12px] leading-relaxed text-muted-foreground">
 					Build a Liana timelocked-recovery wallet. The{" "}
-					<span className="font-medium text-foreground">primary</span> key can
-					spend immediately. The{" "}
-					<span className="font-medium text-foreground">recovery</span> key
-					unlocks after the timelock elapses (counted from the last on-chain
-					activity for the wallet). Paste each key as a descriptor key
-					expression —{" "}
-					<span className="font-mono text-[11px] text-foreground">
-						[fp/48'/1'/0'/2']xpub...
-					</span>{" "}
-					— typically collected from a hardware wallet beforehand. v1
-					supports one key per path; multi-key paths and hot primaries are
-					follow-ups.
+					<span className="font-medium text-foreground">primary</span> key can spend immediately.
+					The <span className="font-medium text-foreground">recovery</span> key unlocks after the
+					timelock elapses (counted from the last on-chain activity for the wallet). Paste each key
+					as a descriptor key expression —{" "}
+					<span className="font-mono text-[11px] text-foreground">[fp/48'/1'/0'/2']xpub...</span> —
+					typically collected from a hardware wallet beforehand. v1 supports one key per path;
+					multi-key paths and hot primaries are follow-ups.
 				</p>
 			</div>
 
@@ -1519,11 +1442,10 @@ function LianaStep({
 				<div className="rounded-md border border-amber-500/30 bg-amber-500/[0.05] px-4 py-3 text-[12px] leading-relaxed text-foreground">
 					<div className="font-medium">Recovery-only wallet</div>
 					<p className="mt-1 text-muted-foreground">
-						The primary path will be locked with a provably-unspendable
-						NUMS-derived key. Funds can <span className="font-medium text-foreground">only</span> be
-						moved after the recovery timelock elapses, using the recovery
-						key. Use this for cold-storage / inheritance setups where you
-						deliberately want no fast-spending option.
+						The primary path will be locked with a provably-unspendable NUMS-derived key. Funds can{" "}
+						<span className="font-medium text-foreground">only</span> be moved after the recovery
+						timelock elapses, using the recovery key. Use this for cold-storage / inheritance setups
+						where you deliberately want no fast-spending option.
 					</p>
 				</div>
 			)}
@@ -1558,9 +1480,7 @@ function LianaStep({
 						max={65535}
 						value={timelockBlocks}
 						onChange={(e) =>
-							setTimelockBlocks(
-								Math.max(1, Math.min(65535, Number(e.target.value) || 1)),
-							)
+							setTimelockBlocks(Math.max(1, Math.min(65535, Number(e.target.value) || 1)))
 						}
 						className="w-32 rounded-md border border-border bg-background px-3 py-2 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
 					/>

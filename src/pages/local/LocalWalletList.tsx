@@ -6,10 +6,10 @@
 // wallet auto-syncs in the background; the dashboard wires the progress
 // hook for the visible status indicator.
 
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import SwitchModeButton from "../../components/SwitchModeButton";
 import WindowControls from "../../components/WindowControls";
 import type { LocalWalletSummary } from "../../types/events";
@@ -160,10 +160,7 @@ export default function LocalWalletList() {
 						</h1>
 					</div>
 
-					<div
-						className="flex items-center gap-3"
-						onMouseDown={(e) => e.stopPropagation()}
-					>
+					<div className="flex items-center gap-3" onMouseDown={(e) => e.stopPropagation()}>
 						<button
 							type="button"
 							onClick={() => navigate("/local/settings")}
@@ -316,8 +313,8 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 				No wallets yet.
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-				Create your first local wallet to start receiving and signing
-				transactions on-device. Your seed never leaves this machine.
+				Create your first local wallet to start receiving and signing transactions on-device. Your
+				seed never leaves this machine.
 			</p>
 			<button
 				type="button"
@@ -391,9 +388,7 @@ function WalletCard({
 					</div>
 					<div className="flex flex-col">
 						<div className="flex items-center gap-3">
-							<span className="text-[14px] font-medium text-foreground">
-								{wallet.name}
-							</span>
+							<span className="text-[14px] font-medium text-foreground">{wallet.name}</span>
 							<span className="rounded-sm border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
 								{formatNetwork(wallet.network)}
 							</span>
@@ -521,7 +516,6 @@ function UnlockModal({
 					</span>
 					<input
 						type="password"
-						autoFocus
 						value={passphrase}
 						onChange={(e) => setPassphrase(e.target.value)}
 						className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
@@ -583,9 +577,8 @@ function DeleteModal({
 		<ModalShell title="Delete wallet" subtitle={wallet.name} onClose={onClose}>
 			<form onSubmit={submit} className="space-y-4">
 				<p className="text-[12px] leading-relaxed text-muted-foreground">
-					This permanently removes the on-disk wallet, including the encrypted
-					seed. Recovery requires the original BIP39 mnemonic. Type the wallet
-					name to confirm.
+					This permanently removes the on-disk wallet, including the encrypted seed. Recovery
+					requires the original BIP39 mnemonic. Type the wallet name to confirm.
 				</p>
 				<label className="block">
 					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -593,7 +586,6 @@ function DeleteModal({
 					</span>
 					<input
 						type="text"
-						autoFocus
 						value={confirmName}
 						onChange={(e) => setConfirmName(e.target.value)}
 						placeholder={wallet.name}
@@ -652,9 +644,7 @@ function ModalShell({
 			>
 				<div className="mb-5 flex items-start justify-between">
 					<div>
-						<h2 className="text-[16px] font-medium tracking-[-0.01em] text-foreground">
-							{title}
-						</h2>
+						<h2 className="text-[16px] font-medium tracking-[-0.01em] text-foreground">{title}</h2>
 						{subtitle && (
 							<p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
 								{subtitle}

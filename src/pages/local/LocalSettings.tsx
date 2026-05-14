@@ -12,10 +12,10 @@
 // authoritative source of truth — client-side validation is purely a
 // UX nicety.
 
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import WindowControls from "../../components/WindowControls";
 import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalSettings as LocalSettingsType } from "../../types/events";
@@ -86,10 +86,7 @@ export default function LocalSettings() {
 
 	const fieldErrors = settings
 		? Object.fromEntries(
-				SUPPORTED_NETWORKS.map((n) => [
-					n.id,
-					validateUrl(settings.electrs_urls[n.id] ?? ""),
-				]),
+				SUPPORTED_NETWORKS.map((n) => [n.id, validateUrl(settings.electrs_urls[n.id] ?? "")]),
 			)
 		: {};
 	const hasErrors = Object.values(fieldErrors).some((e) => e !== null);
@@ -144,9 +141,7 @@ export default function LocalSettings() {
 						</svg>
 					</button>
 					<div className="flex flex-col leading-none">
-						<span className="text-[14px] font-medium text-foreground">
-							Settings
-						</span>
+						<span className="text-[14px] font-medium text-foreground">Settings</span>
 						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
 							local · electrs endpoints
 						</span>
@@ -191,8 +186,7 @@ export default function LocalSettings() {
 									§ — Default network
 								</div>
 								<p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-									Pre-selected on the wallet creation wizard. Mainnet is not
-									available in v1.
+									Pre-selected on the wallet creation wizard. Mainnet is not available in v1.
 								</p>
 								<div className="mt-4 grid grid-cols-3 gap-2">
 									{SUPPORTED_NETWORKS.map((n) => {
@@ -208,9 +202,7 @@ export default function LocalSettings() {
 														: "border-border bg-card hover:border-primary/60"
 												}`}
 											>
-												<span className="text-[12px] font-medium text-foreground">
-													{n.label}
-												</span>
+												<span className="text-[12px] font-medium text-foreground">{n.label}</span>
 												<span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
 													{n.hint}
 												</span>
@@ -234,10 +226,8 @@ export default function LocalSettings() {
 										tcp://host:port
 									</span>
 									, or bare
-									<span className="mx-1 font-mono text-[11px] text-foreground">
-										host:port
-									</span>
-									. Leave blank if you haven't set up that network yet.
+									<span className="mx-1 font-mono text-[11px] text-foreground">host:port</span>.
+									Leave blank if you haven't set up that network yet.
 								</p>
 								<div className="mt-4 space-y-4">
 									{SUPPORTED_NETWORKS.map((n) => {
@@ -270,9 +260,7 @@ export default function LocalSettings() {
 													autoCapitalize="off"
 													spellCheck={false}
 													className={`mt-2 w-full rounded-md border bg-background px-3 py-2.5 font-mono text-[12px] text-foreground outline-none transition-colors focus:border-primary ${
-														fieldError
-															? "border-destructive/60"
-															: "border-border"
+														fieldError ? "border-destructive/60" : "border-border"
 													}`}
 												/>
 												{fieldError && (

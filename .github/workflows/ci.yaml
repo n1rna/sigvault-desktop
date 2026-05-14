@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: "Also run the #[ignore]'d regtest e2e tests (needs a regtest stack — currently a TODO; see job comments)"
+        type: boolean
+        default: false
+
+# Cancel in-flight runs on the same branch when a new commit lands.
+# Keeps CI minutes down on busy PRs without losing main-branch results.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # `-D warnings` lives in `src-tauri/Cargo.toml`'s `[lints]` block now
+  # (matches the walletrs convention) — that's authoritative for both
+  # CI and local runs.
+
+jobs:
+  rust:
+    name: Rust — fmt, clippy, test, audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux system deps (tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libudev-dev
+
+      - name: Setup Rust (stable, with rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # Bump on bigger refactors to invalidate stale incrementals.
+          shared-key: desktop-v1
+
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        # `--all-targets` covers tests + benches too. Warnings are
+        # promoted to errors via RUSTFLAGS env var above.
+        run: cargo clippy --all-targets --no-deps
+
+      - name: cargo test
+        working-directory: src-tauri
+        # Default test runner skips `#[ignore]`'d cases — perfect for
+        # this layer: covers the 31 in-tree unit tests + the 5 non-
+        # network tests in `tests/regtest_e2e.rs`. The 3 regtest-
+        # required cases stay manual until the e2e job below is wired.
+        run: cargo test
+
+      - name: Install cargo-audit
+        # Pre-built action would be faster but adds a third-party dep
+        # to our CI surface. ~30 s install on cold cache, cached by
+        # Swatinem/rust-cache on subsequent runs.
+        run: cargo install --locked cargo-audit
+
+      - name: cargo audit (supply chain)
+        working-directory: src-tauri
+        # `continue-on-error: true` because cargo-audit exits non-zero
+        # on yanked crates too, and yanked != vulnerability —
+        # informational only. Real CVEs still show up in the run
+        # summary so reviewers see them; we just don't block PRs on
+        # transitive yanked-version drift. Triage genuine
+        # vulnerabilities by clicking through to the run output.
+        continue-on-error: true
+        run: cargo audit
+
+  # Note: walletrs is pulled in as a git dep (not a submodule in this
+  # repo), and the walletrs repo runs its own CI on every PR. We don't
+  # duplicate that here — the desktop's `cargo test` exercises
+  # walletrs transitively via every integration test that touches the
+  # wallet manager. If you bump the walletrs dep ref and downstream
+  # breaks, the rust job above surfaces it on the next PR.
+
+  frontend:
+    name: Frontend — tsc, vitest, vite build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Biome lint + format check
+        # `biome.json` at the repo root has a permissive baseline —
+        # many rules are turned off because existing code patterns
+        # would otherwise be flagged in droves. The CI gate is "no
+        # new biome errors", not "biome-perfect codebase".
+        run: npm run lint
+
+      - name: TypeScript typecheck
+        # Surfaces TS type errors before tsc gets folded into `npm run
+        # build`.
+        run: npx tsc --noEmit
+
+      - name: Vitest
+        # `npm test` -> `vitest run`. Skipped silently if no test files
+        # exist (vitest exits 0 with "no test files found").
+        run: npm test
+
+      - name: Vite production build
+        # Catches missing imports / build-time errors that tsc doesn't.
+        # Doesn't bundle the Tauri Rust binary — that's the release
+        # workflow's job. ~2 s on cold cache.
+        run: npm run build
+
+  # ────────────────────────────────────────────────────────────────
+  # Optional: full regtest e2e against bitcoind + electrs.
+  #
+  # The 3 #[ignore]'d tests in `src-tauri/tests/regtest_e2e.rs` need
+  # a live bitcoind RPC + electrs to run. Self-hosting them in CI via
+  # GitHub Actions service containers is non-trivial because electrs
+  # needs to wait for bitcoind's wallet to be loaded + ZMQ to come up.
+  #
+  # Until a docker-compose orchestration is wired into this job, run
+  # them locally before tagging:
+  #
+  #   cd src-tauri
+  #   cargo test --test regtest_e2e -- --ignored --nocapture
+  #
+  # See `docs/qa/standalone-wallet-v1.md` for the full manual matrix.
+  # ────────────────────────────────────────────────────────────────
+  e2e_regtest:
+    name: E2E (regtest) — placeholder
+    if: github.event_name == 'workflow_dispatch' && inputs.run_e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO — wire bitcoind + electrs services
+        run: |
+          echo "Not yet implemented. Run locally:" >&2
+          echo "  cargo test --test regtest_e2e -- --ignored --nocapture" >&2
+          exit 1

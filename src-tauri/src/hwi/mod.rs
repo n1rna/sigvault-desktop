@@ -1,8 +1,8 @@
+use crate::window::emit_notification;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::Manager;
-use crate::window::emit_notification;
 
 fn descriptor_to_multipath(desc: &str) -> String {
     desc.replace("/**", "/<0;1>/*")
@@ -207,38 +207,50 @@ impl HardwareWalletManager {
         match tokio::time::timeout(
             std::time::Duration::from_secs(3),
             SpecterSimulator::try_connect(),
-        ).await {
+        )
+        .await
+        {
             Ok(result) => match result {
-            Ok(device) => {
-                let id = "specter-simulator".to_string();
-                let device = Arc::new(device);
-                match self
-                    .handle_supported_device(
-                        id.clone(),
-                        device.clone(),
-                        wallet_config,
-                        &mut supported_devices,
-                    )
-                    .await
-                {
-                    Ok(discovered) => devices.push(discovered),
-                    Err(e) => debug!("Specter simulator error: {e}"),
+                Ok(device) => {
+                    let id = "specter-simulator".to_string();
+                    let device = Arc::new(device);
+                    match self
+                        .handle_supported_device(
+                            id.clone(),
+                            device.clone(),
+                            wallet_config,
+                            &mut supported_devices,
+                        )
+                        .await
+                    {
+                        Ok(discovered) => devices.push(discovered),
+                        Err(e) => debug!("Specter simulator error: {e}"),
+                    }
                 }
-            }
-            Err(HWIError::DeviceNotFound) => {}
-            Err(e) => debug!("Specter simulator connection error: {e}"),
-            }
+                Err(HWIError::DeviceNotFound) => {}
+                Err(e) => debug!("Specter simulator connection error: {e}"),
+            },
             Err(_) => debug!("Specter simulator connection timed out"),
         }
 
-        emit_progress("scanning_ledger_simulator", "Scanning for Ledger simulator...", devices.len());
+        emit_progress(
+            "scanning_ledger_simulator",
+            "Scanning for Ledger simulator...",
+            devices.len(),
+        );
 
         // Try Ledger Simulator
         match LedgerSimulator::try_connect().await {
             Ok(device) => {
                 let id = "ledger-simulator".to_string();
                 match self
-                    .handle_ledger_device(id, device, wallet_config, app_handle, &mut supported_devices)
+                    .handle_ledger_device(
+                        id,
+                        device,
+                        wallet_config,
+                        app_handle,
+                        &mut supported_devices,
+                    )
                     .await
                 {
                     Ok(discovered) => devices.push(discovered),
@@ -249,7 +261,11 @@ impl HardwareWalletManager {
             Err(e) => debug!("Ledger simulator connection error: {e}"),
         }
 
-        emit_progress("scanning_specter_usb", "Scanning for Specter devices...", devices.len());
+        emit_progress(
+            "scanning_specter_usb",
+            "Scanning for Specter devices...",
+            devices.len(),
+        );
 
         // Enumerate Specter devices
         match Specter::enumerate().await {
@@ -274,13 +290,19 @@ impl HardwareWalletManager {
             Err(e) => warn!("Error enumerating Specter devices: {e}"),
         }
 
-        emit_progress("scanning_jade", "Scanning for Jade devices...", devices.len());
+        emit_progress(
+            "scanning_jade",
+            "Scanning for Jade devices...",
+            devices.len(),
+        );
 
         // Try Jade QEMU emulator (TCP) with timeout
         match tokio::time::timeout(
             std::time::Duration::from_secs(3),
             async_hwi::jade::JadeEmulator::try_connect(),
-        ).await {
+        )
+        .await
+        {
             Ok(Ok(jade)) => {
                 let id = "jade-emulator".to_string();
                 // Jade emulator starts uninitialized — report as locked
@@ -293,49 +315,47 @@ impl HardwareWalletManager {
                     }
                 };
                 if let Some(info) = info {
-                let version = async_hwi::parse_version(&info.jade_version).ok();
-                let device_network = match info.jade_networks {
-                    jade::api::JadeNetworks::Main => Network::Bitcoin,
-                    jade::api::JadeNetworks::Test | jade::api::JadeNetworks::All => self.network,
-                };
-                let jade = jade.with_network(device_network);
+                    let version = async_hwi::parse_version(&info.jade_version).ok();
+                    let device_network = match info.jade_networks {
+                        jade::api::JadeNetworks::Main => Network::Bitcoin,
+                        jade::api::JadeNetworks::Test | jade::api::JadeNetworks::All => {
+                            self.network
+                        }
+                    };
+                    let jade = jade.with_network(device_network);
 
-                match info.jade_state {
-                    jade::api::JadeState::Ready => {
-                        // Already unlocked — treat as supported device
-                        let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade);
-                        match self
-                            .handle_supported_device(
-                                id.clone(),
-                                device.clone(),
-                                wallet_config,
-                                &mut supported_devices,
-                            )
-                            .await
-                        {
-                            Ok(discovered) => devices.push(discovered),
-                            Err(e) => debug!("Jade emulator error: {e:?}"),
+                    match info.jade_state {
+                        jade::api::JadeState::Ready => {
+                            // Already unlocked — treat as supported device
+                            let device: Arc<dyn HWI + Send + Sync> = Arc::new(jade);
+                            match self
+                                .handle_supported_device(
+                                    id.clone(),
+                                    device.clone(),
+                                    wallet_config,
+                                    &mut supported_devices,
+                                )
+                                .await
+                            {
+                                Ok(discovered) => devices.push(discovered),
+                                Err(e) => debug!("Jade emulator error: {e:?}"),
+                            }
+                        }
+                        _ => {
+                            // Locked/uninitialized — store for unlock flow
+                            locked_devices.insert(id.clone(), LockedDeviceHandle::JadeTcp(jade));
+                            devices.push(DiscoveredDevice {
+                                id: id.clone(),
+                                device_type: "Jade".to_string(),
+                                model: "Jade (emulator)".to_string(),
+                                state: DeviceState::Locked { pairing_code: None },
+                            });
+                            info!(
+                                "Jade emulator discovered (state: {:?}, version: {:?})",
+                                info.jade_state, version,
+                            );
                         }
                     }
-                    _ => {
-                        // Locked/uninitialized — store for unlock flow
-                        locked_devices.insert(
-                            id.clone(),
-                            LockedDeviceHandle::JadeTcp(jade),
-                        );
-                        devices.push(DiscoveredDevice {
-                            id: id.clone(),
-                            device_type: "Jade".to_string(),
-                            model: "Jade (emulator)".to_string(),
-                            state: DeviceState::Locked { pairing_code: None },
-                        });
-                        info!(
-                            "Jade emulator discovered (state: {:?}, version: {:?})",
-                            info.jade_state,
-                            version,
-                        );
-                    }
-                }
                 } // if let Some(info)
             }
             Ok(Err(_)) => debug!("Jade emulator not available"),
@@ -401,60 +421,69 @@ impl HardwareWalletManager {
                     device_info.vendor_id(),
                     device_info.product_id()
                 );
-                debug!("BitBox02 detected at {:?}, attempting to open", device_info.path());
+                debug!(
+                    "BitBox02 detected at {:?}, attempting to open",
+                    device_info.path()
+                );
 
                 match device_info.open_device(&api) {
                     Err(e) => {
-                        warn!("Failed to open BitBox02 HID device at {:?}: {}", device_info.path(), e);
+                        warn!(
+                            "Failed to open BitBox02 HID device at {:?}: {}",
+                            device_info.path(),
+                            e
+                        );
                     }
                     Ok(hid_device) => {
-                    emit_progress(
-                        "bitbox02_connecting",
-                        "BitBox02 detected — enter your device password if prompted",
-                        devices.len(),
-                    );
-                    // bitbox-api uses blocking hidapi I/O inside async fns.
-                    // Run on a dedicated runtime to avoid deadlocking the
-                    // main tokio runtime (which also runs the UHID bridge
-                    // relay tasks for emulated devices).
-                    let connect_result = tokio::task::spawn_blocking(move || {
-                        let rt = tokio::runtime::Builder::new_multi_thread()
-                            .worker_threads(2)
-                            .enable_all()
-                            .build()
-                            .map_err(|e| HWIError::Device(format!("runtime: {e}")))?;
-                        rt.block_on(PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
-                            hid_device, None,
-                        ))
-                    })
-                    .await
-                    .map_err(|e| HWIError::Device(format!("task: {e}")))?;
-                    match connect_result {
-                        Ok(pairing_device) => {
-                            let pairing_code =
-                                pairing_device.pairing_code().map(|s| s.replace('\n', " "));
+                        emit_progress(
+                            "bitbox02_connecting",
+                            "BitBox02 detected — enter your device password if prompted",
+                            devices.len(),
+                        );
+                        // bitbox-api uses blocking hidapi I/O inside async fns.
+                        // Run on a dedicated runtime to avoid deadlocking the
+                        // main tokio runtime (which also runs the UHID bridge
+                        // relay tasks for emulated devices).
+                        let connect_result = tokio::task::spawn_blocking(move || {
+                            let rt = tokio::runtime::Builder::new_multi_thread()
+                                .worker_threads(2)
+                                .enable_all()
+                                .build()
+                                .map_err(|e| HWIError::Device(format!("runtime: {e}")))?;
+                            rt.block_on(
+                                PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
+                                    hid_device, None,
+                                ),
+                            )
+                        })
+                        .await
+                        .map_err(|e| HWIError::Device(format!("task: {e}")))?;
+                        match connect_result {
+                            Ok(pairing_device) => {
+                                let pairing_code =
+                                    pairing_device.pairing_code().map(|s| s.replace('\n', " "));
 
-                            // Store the locked device for later unlocking
-                            locked_devices.insert(
-                                id.clone(),
-                                LockedDeviceHandle::BitBox02(Box::new(pairing_device)),
-                            );
+                                // Store the locked device for later unlocking
+                                locked_devices.insert(
+                                    id.clone(),
+                                    LockedDeviceHandle::BitBox02(Box::new(pairing_device)),
+                                );
 
-                            devices.push(DiscoveredDevice {
-                                id,
-                                device_type: "BitBox02".to_string(),
-                                model: "BitBox02".to_string(),
-                                state: DeviceState::Locked { pairing_code },
-                            });
+                                devices.push(DiscoveredDevice {
+                                    id,
+                                    device_type: "BitBox02".to_string(),
+                                    model: "BitBox02".to_string(),
+                                    state: DeviceState::Locked { pairing_code },
+                                });
 
-                            emit_progress(
-                                "scanning_bitbox02",
-                                "Found BitBox02 device (needs pairing)",
-                                devices.len(),
-                            );
+                                emit_progress(
+                                    "scanning_bitbox02",
+                                    "Found BitBox02 device (needs pairing)",
+                                    devices.len(),
+                                );
+                            }
+                            Err(e) => warn!("BitBox02 pairing connection error: {e:?}"),
                         }
-                        Err(e) => warn!("BitBox02 pairing connection error: {e:?}"),
-                    }
                     }
                 }
             }
@@ -481,7 +510,8 @@ impl HardwareWalletManager {
                             let cc_api = coldcard::api::Api::new()?;
                             cc_api.open(&sn, None)
                         }),
-                    ).await;
+                    )
+                    .await;
                     let cc_result = match cc_result {
                         Ok(Ok(Ok(r))) => Some(r),
                         Ok(Ok(Err(e))) => {
@@ -521,7 +551,11 @@ impl HardwareWalletManager {
             }
         }
 
-        emit_progress("scanning_ledger", "Scanning for Ledger devices...", devices.len());
+        emit_progress(
+            "scanning_ledger",
+            "Scanning for Ledger devices...",
+            devices.len(),
+        );
 
         // Enumerate Ledger devices
         for detected in Ledger::<TransportHID>::enumerate(&api) {
@@ -535,7 +569,13 @@ impl HardwareWalletManager {
             match Ledger::<TransportHID>::connect(&api, detected) {
                 Ok(device) => {
                     match self
-                        .handle_ledger_device(id, device, wallet_config, app_handle, &mut supported_devices)
+                        .handle_ledger_device(
+                            id,
+                            device,
+                            wallet_config,
+                            app_handle,
+                            &mut supported_devices,
+                        )
                         .await
                     {
                         Ok(discovered) => devices.push(discovered),
@@ -547,7 +587,11 @@ impl HardwareWalletManager {
             }
         }
 
-        emit_progress("scanning_trezor", "Scanning for Trezor devices...", devices.len());
+        emit_progress(
+            "scanning_trezor",
+            "Scanning for Trezor devices...",
+            devices.len(),
+        );
 
         // Enumerate Trezor devices
         for available in async_hwi::trezor::api::find_devices(false) {
@@ -617,64 +661,65 @@ impl HardwareWalletManager {
                 let mut bitbox = BitBox02::from(paired_device).with_network(self.network);
                 let fingerprint = bitbox.get_master_fingerprint().await?;
                 let version = bitbox.get_version().await.ok();
-                info!(
-                    "BitBox02 paired: fingerprint={fingerprint}, version={version:?}"
-                );
+                info!("BitBox02 paired: fingerprint={fingerprint}, version={version:?}");
 
                 let mut registered = None;
                 if let Some(config) = wallet_config {
                     if let Some(ref desc) = config.descriptor {
                         let bb_desc = descriptor_for_bitbox(desc);
                         {
-                        bitbox = bitbox.with_policy(&bb_desc)
-                            .map_err(|e| HWIError::Device(format!("Failed to set BitBox02 policy: {e}")))?;
-                        info!(
+                            bitbox = bitbox.with_policy(&bb_desc).map_err(|e| {
+                                HWIError::Device(format!("Failed to set BitBox02 policy: {e}"))
+                            })?;
+                            info!(
                             "Checking BitBox02 policy registration with descriptor and network: {:?} and {:?}",
                             bb_desc, self.network
                         );
 
-                        match bitbox.is_policy_registered(&bb_desc).await {
-                            Ok(is_registered) => {
-                                info!("BitBox02 policy registration status: {is_registered}");
-                                registered = Some(is_registered);
+                            match bitbox.is_policy_registered(&bb_desc).await {
+                                Ok(is_registered) => {
+                                    info!("BitBox02 policy registration status: {is_registered}");
+                                    registered = Some(is_registered);
 
-                                // Always re-register to ensure fresh state
-                                info!("Force re-registering BitBox02 policy...");
-                                if !is_registered {
-                                    info!("BitBox02 policy not registered, registering...");
-                                    let wallet_name = format!(
-                                        "sigvault-{}",
-                                        hex::encode(&fingerprint.to_bytes()[..4]).to_string()
-                                            + "-"
-                                            + &rand::random::<u32>().to_string()[..4]
-                                    );
-                                    match bitbox.register_wallet(&wallet_name, &bb_desc).await {
-                                        Ok(_) => {
-                                            info!("BitBox02 policy registered successfully");
-                                            registered = Some(true);
+                                    // Always re-register to ensure fresh state
+                                    info!("Force re-registering BitBox02 policy...");
+                                    if !is_registered {
+                                        info!("BitBox02 policy not registered, registering...");
+                                        let wallet_name = format!(
+                                            "sigvault-{}",
+                                            hex::encode(&fingerprint.to_bytes()[..4]).to_string()
+                                                + "-"
+                                                + &rand::random::<u32>().to_string()[..4]
+                                        );
+                                        match bitbox.register_wallet(&wallet_name, &bb_desc).await {
+                                            Ok(_) => {
+                                                info!("BitBox02 policy registered successfully");
+                                                registered = Some(true);
+                                            }
+                                            Err(e) => {
+                                                error!(
+                                                    "Failed to register policy on BitBox02: {e:?}"
+                                                );
+                                                error!("Device fingerprint was: {fingerprint}. Check that descriptor keys match this device.");
+                                                return Err(e.into());
+                                            }
                                         }
-                                        Err(e) => {
-                                            error!(
-                                                "Failed to register policy on BitBox02: {e:?}"
-                                            );
-                                            error!("Device fingerprint was: {fingerprint}. Check that descriptor keys match this device.");
-                                            return Err(e.into());
-                                        }
-                                    }
-                                } else {
-                                    info!(
+                                    } else {
+                                        info!(
                                         "BitBox02 policy already registered, skipping registration"
                                     );
+                                    }
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "Failed to check policy registration on BitBox02: {e:?}"
+                                    );
+                                    error!("Device fingerprint was: {fingerprint}. Check that descriptor keys match this device.");
+                                    return Err(e.into());
                                 }
                             }
-                            Err(e) => {
-                                error!("Failed to check policy registration on BitBox02: {e:?}");
-                                error!("Device fingerprint was: {fingerprint}. Check that descriptor keys match this device.");
-                                return Err(e.into());
-                            }
-                        }
 
-                        debug!("BitBox02 policy registration status: {registered:?}");
+                            debug!("BitBox02 policy registration status: {registered:?}");
                         } // close else (non-multisig policy path)
                     } else {
                         debug!("No descriptor provided for BitBox02, skipping policy check");
@@ -834,9 +879,7 @@ impl HardwareWalletManager {
         fingerprint: &str,
         derivation_path: &str,
     ) -> Result<DeviceInfo, Box<dyn Error + Send + Sync>> {
-        info!(
-            "Extracting device info for fingerprint: {fingerprint}, path: {derivation_path}"
-        );
+        info!("Extracting device info for fingerprint: {fingerprint}, path: {derivation_path}");
 
         let path = DerivationPath::from_str(derivation_path)?;
 
@@ -1003,7 +1046,10 @@ impl HardwareWalletManager {
                     if let Some(ref desc) = config.descriptor {
                         let fp_str = fingerprint.to_string();
                         let cached_hmac = self.ledger_hmacs.lock().await.get(&fp_str).copied();
-                        let backend_hmac = config.ledger_hmacs.as_ref().and_then(|m| m.get(&fp_str).copied());
+                        let backend_hmac = config
+                            .ledger_hmacs
+                            .as_ref()
+                            .and_then(|m| m.get(&fp_str).copied());
                         let hmac = if config.hmac.is_some() {
                             config.hmac
                         } else if let Some(cached) = cached_hmac {
@@ -1011,21 +1057,42 @@ impl HardwareWalletManager {
                             Some(cached)
                         } else if let Some(from_backend) = backend_hmac {
                             info!("Using backend-persisted Ledger HMAC for fingerprint {fp_str}");
-                            self.ledger_hmacs.lock().await.insert(fp_str.clone(), from_backend);
+                            self.ledger_hmacs
+                                .lock()
+                                .await
+                                .insert(fp_str.clone(), from_backend);
                             Some(from_backend)
                         } else {
                             info!("Registering wallet policy on Ledger (confirm on device)...");
                             if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
-                                emit_notification(&w, "Device Discovery", "Ledger found — approve wallet policy on your device", "info");
+                                emit_notification(
+                                    &w,
+                                    "Device Discovery",
+                                    "Ledger found — approve wallet policy on your device",
+                                    "info",
+                                );
                             }
                             match device.register_wallet(&config.name, desc).await {
                                 Ok(h) => {
-                                    info!("Ledger wallet registered, hmac: {:?}", h.map(hex::encode));
+                                    info!(
+                                        "Ledger wallet registered, hmac: {:?}",
+                                        h.map(hex::encode)
+                                    );
                                     if let Some(ref hmac_bytes) = h {
-                                        self.ledger_hmacs.lock().await.insert(fp_str.clone(), *hmac_bytes);
+                                        self.ledger_hmacs
+                                            .lock()
+                                            .await
+                                            .insert(fp_str.clone(), *hmac_bytes);
                                     }
-                                    if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
-                                        emit_notification(&w, "Device Discovery", "Ledger wallet policy registered", "success");
+                                    if let Some(w) =
+                                        app_handle.and_then(|h| h.get_webview_window("main"))
+                                    {
+                                        emit_notification(
+                                            &w,
+                                            "Device Discovery",
+                                            "Ledger wallet policy registered",
+                                            "success",
+                                        );
                                     }
                                     h
                                 }
@@ -1047,9 +1114,9 @@ impl HardwareWalletManager {
                                     device_type: "Ledger".to_string(),
                                     model: "Ledger".to_string(),
                                     state: DeviceState::Unsupported {
-                                        reason: UnsupportedReason::InitializationError(
-                                            format!("Policy registration failed: {e:?}"),
-                                        ),
+                                        reason: UnsupportedReason::InitializationError(format!(
+                                            "Policy registration failed: {e:?}"
+                                        )),
                                         version: Some(version.to_string()),
                                     },
                                 });
@@ -1092,7 +1159,12 @@ impl HardwareWalletManager {
         app_handle: Option<&tauri::AppHandle>,
     ) -> Result<DiscoveredDevice, HWIError> {
         if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
-            emit_notification(&w, "Device Discovery", "Trezor found — enter PIN on your device if prompted", "info");
+            emit_notification(
+                &w,
+                "Device Discovery",
+                "Trezor found — enter PIN on your device if prompted",
+                "info",
+            );
         }
         match (
             trezor.get_master_fingerprint().await,

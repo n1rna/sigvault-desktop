@@ -71,11 +71,7 @@ export interface NotificationEvent {
 	duration_ms?: number;
 }
 
-export type LocalWalletSyncPhase =
-	| "connecting"
-	| "fetching_history"
-	| "persisting"
-	| "complete";
+export type LocalWalletSyncPhase = "connecting" | "fetching_history" | "persisting" | "complete";
 
 export interface LocalWalletSyncProgress {
 	wallet_id: string;

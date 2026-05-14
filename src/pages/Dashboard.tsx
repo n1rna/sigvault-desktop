@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
+import { useEffect, useState } from "react";
 
 interface UserInfo {
 	id?: string;
@@ -106,16 +106,13 @@ export default function Dashboard() {
 				{/* Greeting */}
 				<div>
 					<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-						<span className="h-px w-6 bg-primary/60" />
-						§ Overview
+						<span className="h-px w-6 bg-primary/60" />§ Overview
 					</div>
 
 					<h1 className="mt-5 text-[42px] font-medium leading-[1.05] tracking-[-0.025em] text-foreground">
 						{formatGreeting()},
 						<br />
-						<span className="text-primary">
-							{loading ? "…" : getDisplayName()}
-						</span>
+						<span className="text-primary">{loading ? "…" : getDisplayName()}</span>
 					</h1>
 
 					{!loading && userInfo?.email && (
@@ -141,7 +138,15 @@ export default function Dashboard() {
 
 						{/* Icon */}
 						<div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/[0.1] text-primary shadow-inner">
-							<svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+							<svg
+								className="h-5 w-5"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.8"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
 								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
 								<polyline points="14 2 14 8 20 8" />
 								<path d="M9 13h6" />
@@ -161,7 +166,15 @@ export default function Dashboard() {
 							</div>
 						</div>
 
-						<svg className="relative h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="relative h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-foreground"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<path d="M5 12h14" />
 							<path d="m12 5 7 7-7 7" />
 						</svg>
@@ -187,8 +200,7 @@ export default function Dashboard() {
 				<div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-border to-transparent" />
 
 				<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-					<span className="h-px w-6 bg-accent/60" />
-					§ Resources
+					<span className="h-px w-6 bg-accent/60" />§ Resources
 				</div>
 
 				<h2 className="mt-3 text-[18px] font-medium tracking-tight text-foreground">
@@ -211,9 +223,7 @@ export default function Dashboard() {
 							className="group flex items-center gap-3 bg-background px-4 py-3.5 text-left transition-colors hover:bg-muted/60"
 						>
 							<div className="flex-1 min-w-0">
-								<div className="text-[12.5px] font-medium text-foreground">
-									{item.label}
-								</div>
+								<div className="text-[12.5px] font-medium text-foreground">{item.label}</div>
 								<div className="mt-0.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70">
 									{item.hint}
 								</div>

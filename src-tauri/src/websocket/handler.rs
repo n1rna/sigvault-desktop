@@ -266,7 +266,11 @@ impl WebsocketHandler {
                 .success(payload.success)
                 .message(payload.message.unwrap_or_default())
                 .build()
-                    .map_err(|e| crate::error::AppError::WindowError(format!("Failed to build session event: {e}")))?,
+                .map_err(|e| {
+                    crate::error::AppError::WindowError(format!(
+                        "Failed to build session event: {e}"
+                    ))
+                })?,
         )
         .await
         .map_err(|e: Box<dyn Error + Send + 'static>| {

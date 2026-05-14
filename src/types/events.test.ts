@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import type {
 	AppState,
-	StateUpdateEvent,
 	CommandEvent,
+	CommandResult,
 	NotificationEvent,
 	RemoteSession,
-	CommandResult,
+	StateUpdateEvent,
 	WindowApplicationRoute,
 } from "./events";
 

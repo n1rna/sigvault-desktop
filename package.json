@@ -25,14 +25,15 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/"
   },
   "dependencies": {
     "@ngraveio/bc-ur": "^1.1.13",
     "@scure/bip39": "^2.2.0",
     "@tailwindcss/vite": "^4.2.0",
     "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-deep-link": "^2.4.8",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-opener": "^2",
@@ -47,6 +48,7 @@
     "tailwindcss": "^4.2.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
     "@tauri-apps/cli": "^2.11.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

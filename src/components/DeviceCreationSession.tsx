@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import type { CommandResult } from "../types/events";
 import type { DeviceInfo, WalletConfig } from "../types/hardware";
 import DeviceDiscovery from "./DeviceDiscovery";
@@ -27,18 +27,15 @@ export default function DeviceCreationSession({
 		setError(null);
 
 		try {
-			const result = await invoke<CommandResult>(
-				"cmd_submit_device_registration",
-				{
-					sessionId: sessionId,
-					deviceInfo: {
-						xpub: deviceInfo.xpub,
-						fingerprint: deviceInfo.fingerprint,
-						derivation_path: deviceInfo.derivation_path,
-						device_type: deviceInfo.device_type,
-					},
+			const result = await invoke<CommandResult>("cmd_submit_device_registration", {
+				sessionId: sessionId,
+				deviceInfo: {
+					xpub: deviceInfo.xpub,
+					fingerprint: deviceInfo.fingerprint,
+					derivation_path: deviceInfo.derivation_path,
+					device_type: deviceInfo.device_type,
 				},
-			);
+			});
 
 			if (result.success) {
 				onDeviceSubmitted();
@@ -63,9 +60,7 @@ export default function DeviceCreationSession({
 			{submitting ? (
 				<div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card p-12">
 					<div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-muted border-t-primary" />
-					<p className="text-sm text-muted-foreground">
-						Submitting device registration…
-					</p>
+					<p className="text-sm text-muted-foreground">Submitting device registration…</p>
 				</div>
 			) : (
 				<DeviceDiscovery

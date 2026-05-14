@@ -1,10 +1,10 @@
-import { useCallback, useEffect } from "react";
-import { useAppState } from "../contexts/AppStateContext";
 import { invoke } from "@tauri-apps/api/core";
-import type { CommandResult } from "../types/events";
-import type { TransactionSigningData } from "../types/transaction";
+import { useCallback, useEffect } from "react";
 import DeviceCreationSession from "../components/DeviceCreationSession";
 import TransactionSigning from "../components/TransactionSigning";
+import { useAppState } from "../contexts/AppStateContext";
+import type { CommandResult } from "../types/events";
+import type { TransactionSigningData } from "../types/transaction";
 
 function shortId(id: string) {
 	if (id.length <= 14) return id;
@@ -24,7 +24,9 @@ export default function SessionDetails() {
 	}, [clearActivityLog]);
 
 	useEffect(() => {
-		return () => { clearActivityLog(); };
+		return () => {
+			clearActivityLog();
+		};
 	}, [clearActivityLog]);
 
 	useEffect(() => {
@@ -50,8 +52,7 @@ export default function SessionDetails() {
 	const isDeviceCreationSession = sessionType === "DEVICE_REGISTRATION";
 	const isTransactionSigningSession = sessionType === "TRANSACTION_SIGNING";
 
-	const network =
-		(activeSession.sessionState?.requirements?.network as string) || "testnet";
+	const network = (activeSession.sessionState?.requirements?.network as string) || "testnet";
 	const derivationPath =
 		(activeSession.sessionState?.requirements?.derivation_path as string) || "m/84'/0'/0'";
 
@@ -97,9 +98,7 @@ export default function SessionDetails() {
 		return null;
 	};
 
-	const friendlyType = sessionType
-		? sessionType.replace(/_/g, " ").toLowerCase()
-		: null;
+	const friendlyType = sessionType ? sessionType.replace(/_/g, " ").toLowerCase() : null;
 
 	return (
 		<div className="relative flex h-full w-full flex-col overflow-hidden">
@@ -111,8 +110,7 @@ export default function SessionDetails() {
 				<div className="flex items-start justify-between gap-6">
 					<div className="flex-1">
 						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-6 bg-primary/60" />
-							§ Active session
+							<span className="h-px w-6 bg-primary/60" />§ Active session
 						</div>
 						<h1 className="mt-4 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground">
 							{friendlyType
@@ -158,9 +156,7 @@ export default function SessionDetails() {
 							)}
 							<span
 								className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
-									activeSession.isConnected
-										? "bg-success"
-										: "bg-destructive"
+									activeSession.isConnected ? "bg-success" : "bg-destructive"
 								}`}
 							/>
 						</span>
@@ -171,9 +167,7 @@ export default function SessionDetails() {
 					{sessionType ? (
 						<div className="flex h-8 items-center gap-2 rounded-full border border-primary/30 bg-primary/[0.06] px-3 font-mono text-[10px] uppercase tracking-[0.16em]">
 							<span className="text-muted-foreground">type</span>
-							<span className="text-foreground">
-								{sessionType}
-							</span>
+							<span className="text-foreground">{sessionType}</span>
 						</div>
 					) : (
 						activeSession.sessionId && (
@@ -199,14 +193,20 @@ export default function SessionDetails() {
 			<div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-12 pb-10">
 				{activeSession.sessionState?.error && (
 					<div className="mb-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
-						<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="mt-0.5 h-3.5 w-3.5 shrink-0"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<circle cx="12" cy="12" r="10" />
 							<line x1="12" y1="8" x2="12" y2="12" />
 							<line x1="12" y1="16" x2="12.01" y2="16" />
 						</svg>
-						<span className="leading-snug">
-							{activeSession.sessionState.error}
-						</span>
+						<span className="leading-snug">{activeSession.sessionState.error}</span>
 					</div>
 				)}
 

@@ -1,13 +1,10 @@
-import type {
-	DiscoveredDevice,
-	UnsupportedReason,
-} from "../types/hardware";
+import type { DiscoveredDevice, UnsupportedReason } from "../types/hardware";
 import {
+	getDeviceFingerprint,
+	getDevicePairingCode,
 	isDeviceLocked,
 	isDeviceSupported,
 	isDeviceUnsupported,
-	getDeviceFingerprint,
-	getDevicePairingCode,
 } from "../types/hardware";
 
 interface DeviceCardProps {
@@ -89,18 +86,10 @@ export default function DeviceCard({
 					: isUnsupported
 						? "border-border bg-muted/30 opacity-80"
 						: "border-border bg-card hover:border-primary/40 hover:bg-card/80",
-		isSupported
-			? "cursor-pointer"
-			: isLocked
-				? "cursor-default"
-				: "cursor-not-allowed",
+		isSupported ? "cursor-pointer" : isLocked ? "cursor-default" : "cursor-not-allowed",
 	].join(" ");
 
-	const statusLabel = isSupported
-		? "Ready"
-		: isLocked
-			? "Locked"
-			: "Unsupported";
+	const statusLabel = isSupported ? "Ready" : isLocked ? "Locked" : "Unsupported";
 
 	const statusColor = isSupported
 		? "border-success/30 bg-success/[0.08] text-success"
@@ -119,7 +108,15 @@ export default function DeviceCard({
 					<div className="flex items-center gap-3">
 						{/* Device icon tile */}
 						<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-							<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+							<svg
+								className="h-4 w-4"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.8"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
 								<rect x="4" y="2" width="16" height="20" rx="2" />
 								<path d="M8 6h8" />
 								<path d="M9 14h6" />
@@ -200,14 +197,10 @@ export default function DeviceCard({
 								<span className="flex items-center gap-1.5 font-mono text-[11px] text-foreground">
 									<span
 										className={`h-1.5 w-1.5 rounded-full ${
-											device.state.registered
-												? "bg-success"
-												: "bg-warning"
+											device.state.registered ? "bg-success" : "bg-warning"
 										}`}
 									/>
-									{device.state.registered
-										? "registered"
-										: "not registered"}
+									{device.state.registered ? "registered" : "not registered"}
 								</span>
 							</div>
 						)}
@@ -216,7 +209,14 @@ export default function DeviceCard({
 				{/* Status message while unlocking */}
 				{isUnlocking && unlockStatusMessage && (
 					<div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/[0.04] px-3 py-2 font-mono text-[11px] text-muted-foreground">
-						<svg className="h-3 w-3 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+						<svg
+							className="h-3 w-3 animate-spin text-primary"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+						>
 							<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 						</svg>
 						{unlockStatusMessage}
@@ -224,39 +224,47 @@ export default function DeviceCard({
 				)}
 
 				{/* Pairing code */}
-				{isUnlocking && pairingCode && (() => {
-					const parts = pairingCode.trim().split(/\s+/);
-					const topLine = parts.slice(0, 2).join(" ");
-					const bottomLine = parts.slice(2).join(" ");
-					return (
-						<div className="relative overflow-hidden rounded-md border border-primary/30 bg-background p-4">
-							<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
-							<div className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-								§ Pairing code
+				{isUnlocking &&
+					pairingCode &&
+					(() => {
+						const parts = pairingCode.trim().split(/\s+/);
+						const topLine = parts.slice(0, 2).join(" ");
+						const bottomLine = parts.slice(2).join(" ");
+						return (
+							<div className="relative overflow-hidden rounded-md border border-primary/30 bg-background p-4">
+								<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+								<div className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+									§ Pairing code
+								</div>
+								<code className="mt-2 block text-center font-mono text-[22px] font-semibold tracking-[0.25em] text-primary">
+									{topLine}
+									{bottomLine && <br />}
+									{bottomLine}
+								</code>
+								<p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+									confirm on device display
+								</p>
 							</div>
-							<code className="mt-2 block text-center font-mono text-[22px] font-semibold tracking-[0.25em] text-primary">
-								{topLine}
-								{bottomLine && <br />}
-								{bottomLine}
-							</code>
-							<p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-								confirm on device display
-							</p>
-						</div>
-					);
-				})()}
+						);
+					})()}
 
 				{/* Unsupported reason */}
 				{isUnsupported && device.state.state === "Unsupported" && (
 					<div className="flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3 py-2.5 text-[12px] text-destructive">
-						<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							className="mt-0.5 h-3.5 w-3.5 shrink-0"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<circle cx="12" cy="12" r="10" />
 							<line x1="12" y1="8" x2="12" y2="12" />
 							<line x1="12" y1="16" x2="12.01" y2="16" />
 						</svg>
-						<span className="leading-snug">
-							{getUnsupportedReasonText(device.state.reason)}
-						</span>
+						<span className="leading-snug">{getUnsupportedReasonText(device.state.reason)}</span>
 					</div>
 				)}
 
@@ -274,7 +282,15 @@ export default function DeviceCard({
 						>
 							{isSelected ? (
 								<>
-									<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+									<svg
+										className="h-3 w-3"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2.5"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									>
 										<polyline points="20 6 9 17 4 12" />
 									</svg>
 									selected
@@ -282,7 +298,15 @@ export default function DeviceCard({
 							) : (
 								<>
 									select
-									<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+									<svg
+										className="h-3 w-3"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									>
 										<path d="M5 12h14" />
 										<path d="m12 5 7 7-7 7" />
 									</svg>
@@ -300,14 +324,29 @@ export default function DeviceCard({
 						>
 							{isUnlocking ? (
 								<>
-									<svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+									<svg
+										className="h-3 w-3 animate-spin"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+									>
 										<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 									</svg>
 									unlocking
 								</>
 							) : (
 								<>
-									<svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+									<svg
+										className="h-3 w-3"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									>
 										<rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
 										<path d="M7 11V7a5 5 0 0 1 9.9-1" />
 									</svg>

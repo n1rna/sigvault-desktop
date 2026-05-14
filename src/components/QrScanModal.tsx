@@ -7,8 +7,8 @@
 // from an air-gapped signer that can only emit QR (no SD card slot, no
 // USB on the desktop side, etc.).
 
-import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
+import { useEffect, useRef, useState } from "react";
 import { PsbtQrAssembler } from "../lib/psbtQr";
 
 const SCAN_INTERVAL_MS = 200;
@@ -61,7 +61,7 @@ export default function QrScanModal({
 					ctx.drawImage(v, 0, 0, c.width, c.height);
 					const img = ctx.getImageData(0, 0, c.width, c.height);
 					const code = jsQR(img.data, img.width, img.height);
-					if (!code || !code.data) return;
+					if (!code?.data) return;
 					if (seenFramesRef.current.has(code.data)) return;
 					seenFramesRef.current.add(code.data);
 					try {
@@ -83,9 +83,7 @@ export default function QrScanModal({
 				}, SCAN_INTERVAL_MS);
 			} catch (err) {
 				setError(
-					err instanceof Error
-						? `Camera unavailable: ${err.message}`
-						: "Camera unavailable",
+					err instanceof Error ? `Camera unavailable: ${err.message}` : "Camera unavailable",
 				);
 			}
 		};
@@ -139,10 +137,9 @@ export default function QrScanModal({
 				</div>
 
 				<div className="rounded-md border border-border bg-card/40 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
-					Point your signing device's QR display at the camera. Both BBQr
-					(Coldcard, SeedSigner, Krux) and UR (Sparrow, Passport, Specter,
-					Keystone) frames are accepted — the format is detected
-					automatically from the first frame.
+					Point your signing device's QR display at the camera. Both BBQr (Coldcard, SeedSigner,
+					Krux) and UR (Sparrow, Passport, Specter, Keystone) frames are accepted — the format is
+					detected automatically from the first frame.
 				</div>
 
 				{error ? (

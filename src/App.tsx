@@ -1,33 +1,26 @@
 // Main App component with routing
 
-import { useEffect, useState } from "react";
-import {
-	BrowserRouter,
-	Routes,
-	Route,
-	Outlet,
-	useLocation,
-	useNavigate,
-} from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { AppStateProvider, useAppState } from "./contexts/AppStateContext";
+import { useEffect, useState } from "react";
+import { BrowserRouter, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import UpdateBanner from "./components/UpdateBanner";
-import Loading from "./pages/Loading";
-import ModeChooser from "./pages/ModeChooser";
-import { Login } from "./pages/Login";
-import SelectEnv from "./pages/SelectEnv";
+import { AppStateProvider, useAppState } from "./contexts/AppStateContext";
 import Dashboard from "./pages/Dashboard";
-import MachineRegistration from "./pages/MachineRegistration";
-import RemoteSessions from "./pages/RemoteSessions";
-import SessionDetails from "./pages/SessionDetails";
-import LocalWalletList from "./pages/local/LocalWalletList";
+import Loading from "./pages/Loading";
+import { Login } from "./pages/Login";
 import CreateWalletWizard from "./pages/local/CreateWalletWizard";
-import RecoveryFlow from "./pages/local/RecoveryFlow";
-import WalletDashboard from "./pages/local/WalletDashboard";
-import ReceiveScreen from "./pages/local/ReceiveScreen";
-import SendScreen from "./pages/local/SendScreen";
 import LocalSettings from "./pages/local/LocalSettings";
+import LocalWalletList from "./pages/local/LocalWalletList";
+import ReceiveScreen from "./pages/local/ReceiveScreen";
+import RecoveryFlow from "./pages/local/RecoveryFlow";
+import SendScreen from "./pages/local/SendScreen";
+import WalletDashboard from "./pages/local/WalletDashboard";
+import MachineRegistration from "./pages/MachineRegistration";
+import ModeChooser from "./pages/ModeChooser";
+import RemoteSessions from "./pages/RemoteSessions";
+import SelectEnv from "./pages/SelectEnv";
+import SessionDetails from "./pages/SessionDetails";
 
 function AuthenticatedLayout() {
 	return (
@@ -101,10 +94,7 @@ function AppRouter() {
 			<Route path="/local/wallets/new" element={<CreateWalletWizard />} />
 			<Route path="/local/wallets/recover" element={<RecoveryFlow />} />
 			<Route path="/local/wallets/:walletId" element={<WalletDashboard />} />
-			<Route
-				path="/local/wallets/:walletId/receive"
-				element={<ReceiveScreen />}
-			/>
+			<Route path="/local/wallets/:walletId/receive" element={<ReceiveScreen />} />
 			<Route path="/local/wallets/:walletId/send" element={<SendScreen />} />
 			<Route path="/local/settings" element={<LocalSettings />} />
 			<Route element={<AuthenticatedLayout />}>
@@ -134,7 +124,13 @@ function ActivityPanel() {
 				className="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-muted"
 			>
 				{isLatestInProgress ? (
-					<svg className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+					<svg
+						className="h-3.5 w-3.5 shrink-0 animate-spin text-primary"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+					>
 						<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 					</svg>
 				) : (
@@ -163,7 +159,13 @@ function ActivityPanel() {
 						return (
 							<div key={i} className="flex items-start gap-2">
 								{isInProgress ? (
-									<svg className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+									<svg
+										className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="1.5"
+									>
 										<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 									</svg>
 								) : (
@@ -171,7 +173,9 @@ function ActivityPanel() {
 										<span className="h-2 w-2 rounded-full bg-success" />
 									</span>
 								)}
-								<span className={`font-mono text-xs ${isInProgress ? "text-foreground" : "text-muted-foreground"}`}>
+								<span
+									className={`font-mono text-xs ${isInProgress ? "text-foreground" : "text-muted-foreground"}`}
+								>
 									{item.message}
 								</span>
 							</div>

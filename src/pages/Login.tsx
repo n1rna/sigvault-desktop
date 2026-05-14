@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useState } from "react";
 import SwitchModeButton from "../components/SwitchModeButton";
 import WindowControls from "../components/WindowControls";
 import type { EnvironmentConfig, EnvironmentsResponse } from "../types/events";
@@ -14,12 +14,8 @@ export function Login() {
 	useEffect(() => {
 		(async () => {
 			try {
-				const resp = await invoke<EnvironmentsResponse>(
-					"cmd_list_environments",
-				);
-				const match = resp?.environments?.find(
-					(e) => e.id === resp.selected_id,
-				);
+				const resp = await invoke<EnvironmentsResponse>("cmd_list_environments");
+				const match = resp?.environments?.find((e) => e.id === resp.selected_id);
 				setCurrentEnv(match ?? null);
 			} catch {
 				setCurrentEnv(null);
@@ -91,7 +87,15 @@ export function Login() {
 				{/* Brand lockup */}
 				<div className="relative z-10 flex items-center gap-3 p-10">
 					<div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-md">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2.2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							className="h-5 w-5"
+						>
 							<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
 							<path d="m9 12 2 2 4-4" />
 						</svg>
@@ -117,8 +121,8 @@ export function Login() {
 						<span className="text-primary">done right.</span>
 					</h2>
 					<p className="mt-5 max-w-[340px] text-[13px] leading-relaxed text-muted-foreground">
-						Coordinate hardware wallets across signers. Your keys never leave
-						your devices — SigVault is the conductor, not the custodian.
+						Coordinate hardware wallets across signers. Your keys never leave your devices —
+						SigVault is the conductor, not the custodian.
 					</p>
 
 					{/* Feature bullets */}
@@ -161,8 +165,7 @@ export function Login() {
 						Welcome back.
 					</h1>
 					<p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
-						Sign in with your SigVault account to join sessions and
-						coordinate with other signers.
+						Sign in with your SigVault account to join sessions and coordinate with other signers.
 					</p>
 
 					{/* Active environment badge */}
@@ -193,7 +196,15 @@ export function Login() {
 					{/* Error */}
 					{error && (
 						<div className="mt-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
-							<svg className="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+							<svg
+								className="mt-0.5 h-3.5 w-3.5 shrink-0"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
 								<circle cx="12" cy="12" r="10" />
 								<line x1="12" y1="8" x2="12" y2="12" />
 								<line x1="12" y1="16" x2="12.01" y2="16" />
@@ -210,7 +221,14 @@ export function Login() {
 					>
 						{isLoading ? (
 							<>
-								<svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+								<svg
+									className="h-4 w-4 animate-spin"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2.5"
+									strokeLinecap="round"
+								>
 									<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 								</svg>
 								Opening browser…
@@ -218,7 +236,15 @@ export function Login() {
 						) : (
 							<>
 								Continue with SigVault
-								<svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+								<svg
+									className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
 									<path d="M5 12h14" />
 									<path d="m12 5 7 7-7 7" />
 								</svg>

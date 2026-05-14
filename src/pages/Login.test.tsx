@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { invoke } from "@tauri-apps/api/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Login } from "./Login";
 
 vi.mock("../components/WindowControls", () => ({
@@ -43,9 +43,7 @@ describe("Login", () => {
 	it("renders login page with heading and button", () => {
 		render(<Login />);
 		expect(screen.getByText("Welcome back.")).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: /Continue with SigVault/i }),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /Continue with SigVault/i })).toBeInTheDocument();
 	});
 
 	it("calls cmd_authenticate on login click", async () => {
@@ -53,9 +51,7 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(
-			screen.getByRole("button", { name: /Continue with SigVault/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /Continue with SigVault/i }));
 
 		expect(invoke).toHaveBeenCalledWith("cmd_authenticate");
 	});
@@ -73,20 +69,14 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(
-			screen.getByRole("button", { name: /Continue with SigVault/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /Continue with SigVault/i }));
 
 		expect(screen.getByText("Opening browser…")).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: /Opening browser/i }),
-		).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Opening browser/i })).toBeDisabled();
 
 		resolveAuth();
 		await waitFor(() => {
-			expect(
-				screen.getByRole("button", { name: /Continue with SigVault/i }),
-			).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: /Continue with SigVault/i })).toBeInTheDocument();
 		});
 	});
 
@@ -95,9 +85,7 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(
-			screen.getByRole("button", { name: /Continue with SigVault/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /Continue with SigVault/i }));
 
 		await waitFor(() => {
 			expect(screen.getByText("Network error")).toBeInTheDocument();
@@ -109,9 +97,7 @@ describe("Login", () => {
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(
-			screen.getByRole("button", { name: /Continue with SigVault/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /Continue with SigVault/i }));
 
 		await waitFor(() => {
 			expect(screen.getByText("Failed to authenticate")).toBeInTheDocument();
@@ -119,24 +105,17 @@ describe("Login", () => {
 	});
 
 	it("clears error on retry", async () => {
-		setupInvoke([
-			{ kind: "reject", error: new Error("First error") },
-			{ kind: "resolve" },
-		]);
+		setupInvoke([{ kind: "reject", error: new Error("First error") }, { kind: "resolve" }]);
 		const user = userEvent.setup();
 
 		render(<Login />);
-		await user.click(
-			screen.getByRole("button", { name: /Continue with SigVault/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /Continue with SigVault/i }));
 
 		await waitFor(() => {
 			expect(screen.getByText("First error")).toBeInTheDocument();
 		});
 
-		await user.click(
-			screen.getByRole("button", { name: /Continue with SigVault/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /Continue with SigVault/i }));
 
 		await waitFor(() => {
 			expect(screen.queryByText("First error")).not.toBeInTheDocument();

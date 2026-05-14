@@ -34,8 +34,7 @@ export default function Loading() {
 				</div>
 
 				<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-					<span className="h-px w-6 bg-primary/60" />
-					§ Initializing
+					<span className="h-px w-6 bg-primary/60" />§ Initializing
 					<span className="h-px w-6 bg-primary/60" />
 				</div>
 
@@ -43,9 +42,7 @@ export default function Loading() {
 					SIGVAULT
 				</h1>
 
-				<p className="mt-3 text-[12px] text-muted-foreground">
-					Connecting to coordinator…
-				</p>
+				<p className="mt-3 text-[12px] text-muted-foreground">Connecting to coordinator…</p>
 
 				{/* Dot flicker */}
 				<div className="mt-8 flex items-center gap-1.5">
