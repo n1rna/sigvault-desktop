@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sigvault-horizontal-dark.png">
+    <img alt="SigVault" src="docs/assets/sigvault-horizontal.png" width="420">
+  </picture>
+</p>
+
 # SigVault Desktop
 
 ![status](https://1tt.dev/badge/status-beta-yellow.svg)

@@ -1,3 +1,4 @@
+import { SigVaultLogo } from "../components/SigVaultLogo";
 import WindowControls from "../components/WindowControls";
 
 export default function Loading() {
@@ -17,19 +18,8 @@ export default function Loading() {
 						className="absolute inset-0 -m-2 animate-spin rounded-full border border-transparent border-t-primary"
 						style={{ animationDuration: "1.8s" }}
 					/>
-					<div className="flex h-14 w-14 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg">
-						<svg
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2.2"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							className="h-7 w-7"
-						>
-							<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
-							<path d="m9 12 2 2 4-4" />
-						</svg>
+					<div className="flex h-14 w-14 items-center justify-center rounded-lg bg-card text-foreground shadow-lg">
+						<SigVaultLogo className="h-8 w-8" />
 					</div>
 				</div>
 
