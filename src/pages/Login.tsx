@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useState } from "react";
+import { SigVaultLogo } from "../components/SigVaultLogo";
 import SwitchModeButton from "../components/SwitchModeButton";
 import WindowControls from "../components/WindowControls";
 import type { EnvironmentConfig, EnvironmentsResponse } from "../types/events";
@@ -86,20 +87,7 @@ export function Login() {
 
 				{/* Brand lockup */}
 				<div className="relative z-10 flex items-center gap-3 p-10">
-					<div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-md">
-						<svg
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2.2"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							className="h-5 w-5"
-						>
-							<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
-							<path d="m9 12 2 2 4-4" />
-						</svg>
-					</div>
+					<SigVaultLogo className="h-9 w-9 text-foreground" />
 					<div className="flex flex-col leading-none">
 						<span className="font-mono text-[13px] font-bold tracking-[0.22em] text-foreground">
 							SIGVAULT

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useState } from "react";
 import { useAppState } from "../contexts/AppStateContext";
+import { SigVaultLogo } from "./SigVaultLogo";
 import SwitchModeButton from "./SwitchModeButton";
 
 const appWindow = getCurrentWindow();
@@ -55,20 +56,7 @@ export default function Navbar() {
 		>
 			{/* ── Brand ── */}
 			<div className="flex items-center gap-3 pl-5 pr-6">
-				<div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
-					<svg
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="2.2"
-						strokeLinecap="round"
-						strokeLinejoin="round"
-						className="h-4 w-4"
-					>
-						<path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z" />
-						<path d="m9 12 2 2 4-4" />
-					</svg>
-				</div>
+				<SigVaultLogo className="h-6 w-6 text-foreground" />
 				<div className="flex flex-col leading-none">
 					<span className="font-mono text-[11px] font-bold tracking-[0.22em] text-foreground">
 						SIGVAULT

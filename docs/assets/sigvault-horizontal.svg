@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 396 102" width="396" height="102">
+  <rect x="0" y="0" width="30" height="30" fill="#0e0e10"></rect>
+  <rect x="36" y="0" width="30" height="30" fill="#0e0e10"></rect>
+  <rect x="72" y="0" width="30" height="30" fill="#0e0e10"></rect>
+  <rect x="0" y="36" width="30" height="30" fill="#0e0e10"></rect>
+  <rect x="36" y="36" width="30" height="30" fill="#F7941D"></rect>
+  <rect x="72" y="36" width="30" height="30" fill="#0e0e10"></rect>
+  <rect x="0" y="72" width="30" height="30" fill="#0e0e10"></rect>
+  <rect x="36" y="72" width="30" height="30" fill="#0e0e10"></rect>
+  <rect x="72" y="72" width="30" height="30" fill="#0e0e10"></rect>
+  <text x="132" y="51" font-family="&#39;JetBrains Mono&#39;, ui-monospace, monospace" font-weight="700" font-size="56" letter-spacing="-2.5" fill="#0e0e10" dominant-baseline="central">sigvault</text>
+</svg>
