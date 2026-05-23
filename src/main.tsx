@@ -1,16 +1,8 @@
-import { Buffer } from "buffer";
+import "./polyfills";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./globals.css";
 import App from "./App";
-
-// `@ngraveio/bc-ur` (UR codec used by the QBL-234 animated-PSBT QR
-// flow) calls Buffer.from / Buffer.alloc unprefixed, expecting Node's
-// global Buffer. Vite doesn't shim that automatically — install it on
-// window before any module that uses UR loads.
-if (typeof window !== "undefined" && !(window as unknown as { Buffer?: unknown }).Buffer) {
-	(window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-}
 
 document.addEventListener("contextmenu", (e) => e.preventDefault());
 document.addEventListener("keydown", (e) => {
