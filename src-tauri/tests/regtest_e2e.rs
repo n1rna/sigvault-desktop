@@ -42,7 +42,7 @@
 //! | Network mismatch caught            | `network_mismatch_caught`         |
 //! | Mainnet creation gated             | `mainnet_creation_gated`          |
 //!
-//! HW-required rows (Liana with HW primary, multisig with HW
+//! HW-required rows (timelocked-policy with HW primary, multisig with HW
 //! cosigner, BitBox / Jade / Coldcard signing) stay in the manual
 //! checklist at `docs/qa/standalone-wallet-v1.md`.
 
@@ -56,7 +56,8 @@ use bitcoin::{Address, Amount, FeeRate, Network, Psbt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sigvault_desktop_lib::local_wallet::manager::{
-    derive_account_at_path, derive_master_xpriv, LianaPrimary, LocalWalletManager, MultisigCosigner,
+    derive_account_at_path, derive_master_xpriv, LocalWalletManager, MultisigCosigner,
+    TimelockedPrimary,
 };
 use sigvault_desktop_lib::local_wallet::state::{LocalWalletState, UnlockedHandle};
 use sigvault_desktop_lib::local_wallet::storage::{read_seed_file, WalletDirLayout, WalletId};
@@ -703,7 +704,7 @@ async fn unspendable_primary_descriptor_uses_nums() {
     // primary slot.
     use policy_core::BIP341_NUMS_HEX;
     let (_tmp, mgr) = fresh_manager();
-    // Build a recovery key with a known seed, then a Liana wallet
+    // Build a recovery key with a known seed, then a timelocked wallet
     // whose primary is unspendable.
     let m = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     let path = "48'/1'/0'/2'";
@@ -715,12 +716,12 @@ async fn unspendable_primary_descriptor_uses_nums() {
     let fp = master.fingerprint(&secp).to_string();
 
     use sigvault_desktop_lib::local_wallet::manager::{
-        LianaKeyInput, LianaRecoveryPath, LianaSpendingPath,
+        TimelockedKeyInput, TimelockedRecoveryPath, TimelockedSpendingPath,
     };
-    let rec = LianaRecoveryPath {
+    let rec = TimelockedRecoveryPath {
         timelock_blocks: 144,
-        path: LianaSpendingPath {
-            keys: vec![LianaKeyInput {
+        path: TimelockedSpendingPath {
+            keys: vec![TimelockedKeyInput {
                 fingerprint: fp.clone(),
                 xpub: xpub.to_string(),
                 derivation_path: path.to_string(),
@@ -729,14 +730,14 @@ async fn unspendable_primary_descriptor_uses_nums() {
         },
     };
     let id = mgr
-        .create_liana(
+        .create_timelocked(
             "unspendable",
             Network::Regtest,
-            LianaPrimary::Unspendable,
+            TimelockedPrimary::Unspendable,
             vec![rec],
         )
         .await
-        .expect("create liana unspendable");
+        .expect("create timelocked unspendable");
     let meta = mgr.read_metadata(&id).expect("meta");
     assert!(meta.recovery_only);
     // The NUMS pubkey appears in the descriptor when serialized as

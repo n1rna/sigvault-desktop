@@ -101,7 +101,7 @@ export interface LocalWalletSummary {
 	has_hot_keys: boolean;
 	created_at: number;
 	locked: boolean;
-	/** QBL-235 — Liana wallets created with the unspendable-primary
+	/** QBL-235 — timelocked-policy wallets created with the unspendable-primary
 	 *  option. Only the timelocked recovery path can ever sign. */
 	recovery_only?: boolean;
 }

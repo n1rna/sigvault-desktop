@@ -30,8 +30,8 @@ function formatPolicyType(t: string) {
 			return "Singlesig · hot";
 		case "multisig":
 			return "Multisig";
-		case "liana":
-			return "Liana · timelocked";
+		case "timelocked":
+			return "Timelocked policy";
 		case "watch_only":
 			return "Watch-only";
 		default:
