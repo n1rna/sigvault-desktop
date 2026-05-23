@@ -7,17 +7,9 @@
 
 # SigVault Desktop
 
-![status](https://1tt.dev/badge/status-beta-yellow.svg)
-![license](https://1tt.dev/badge/license-BSD--3--Clause-blue.svg)
-![tauri](https://1tt.dev/badge/built_with-Tauri-24C8DB.svg?logo=tauri&logoColor=white)
-![rust](https://1tt.dev/badge/rust-stable-orange.svg?logo=rust&logoColor=white)
-![typescript](https://1tt.dev/badge/typescript-5-3178C6.svg?logo=typescript&logoColor=white)
-![react](https://1tt.dev/badge/react-19-61DAFB.svg?logo=react&logoColor=white)
-![bitcoin](https://1tt.dev/badge/bitcoin-multisig-F7931A.svg?logo=bitcoin&logoColor=white)
-![macos](https://1tt.dev/badge/macOS-arm64_%7C_x64-000000.svg?logo=apple&logoColor=white)
-![linux](https://1tt.dev/badge/linux-x64-FCC624.svg?logo=linux&logoColor=black)
-![windows](https://1tt.dev/badge/windows-x64-0078D6.svg?logo=windows&logoColor=white)
-![networks](https://1tt.dev/badge/networks-regtest_%7C_signet_%7C_testnet-blue.svg)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/n1rna/sigvault-desktop?color=blue&label=release)](https://github.com/n1rna/sigvault-desktop/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/n1rna/sigvault-desktop/ci.yaml?branch=main&label=CI)](https://github.com/n1rna/sigvault-desktop/actions/workflows/ci.yaml)
 
 A Bitcoin multisig wallet manager that connects to hardware signing devices and coordinates multisig transaction signing through remote sessions.
 
