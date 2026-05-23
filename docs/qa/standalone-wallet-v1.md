@@ -77,7 +77,7 @@ Cross-check after creation: each HW device registers the policy on
 first signing prompt and doesn't re-prompt on subsequent signs in the
 same session.
 
-### Liana (timelocked-recovery)
+### Timelocked (primary + recovery)
 
 | Configuration | Regtest | Testnet4 |
 |---------------|---------|----------|
@@ -106,7 +106,7 @@ same session.
 
 - [ ] **App restart preserves state:** create + fund a wallet, close the app, reopen — wallet list shows the wallet, balance + history persist after re-unlock.
 - [ ] **Mode switch round-trip:** in Local mode create wallet A. Switch to Cloud mode. Switch back to Local. Wallet A is still there with same balance/history.
-- [ ] **Mainnet UI gating:** every wallet-creation entry point (singlesig hot, singlesig HW, multisig, Liana, watch-only, recovery) — does it surface mainnet as a network option? It should NOT (gated by QBL-232).
+- [ ] **Mainnet UI gating:** every wallet-creation entry point (singlesig hot, singlesig HW, multisig, timelocked, watch-only, recovery) — does it surface mainnet as a network option? It should NOT (gated by QBL-232).
 - [ ] **Network mismatch caught client-side:** in a regtest wallet, paste a testnet4 address in the Send recipient field → error surfaces before PSBT build.
 - [ ] **Wrong passphrase rejected:** in the unlock step, try a wrong passphrase 3× → each attempt fails cleanly with no state mutation (lock the wallet, try again with correct passphrase, succeeds).
 - [ ] **HW unplug mid-flow:** in the middle of signing, unplug the device. UI surfaces a clean error. Re-plug, try again, succeeds.

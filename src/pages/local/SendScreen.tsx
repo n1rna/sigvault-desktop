@@ -87,8 +87,8 @@ export default function SendScreen() {
 	const [psbtBase64, setPsbtBase64] = useState<string | null>(null);
 
 	// Spending paths (loaded on mount). For multi-branch descriptors
-	// (Liana primary vs recovery, taproot multi-leaf) we show a Path
-	// step; single-path wallets skip straight from compose to confirm.
+	// (timelocked primary vs recovery, taproot multi-leaf) we show a
+	// Path step; single-path wallets skip straight from compose to confirm.
 	const [paths, setPaths] = useState<SpendingPath[] | null>(null);
 	const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
 
@@ -153,7 +153,7 @@ export default function SendScreen() {
 	// Build a WalletConfig for HW discovery/unlock so policy registration
 	// (BitBox, Jade) and HMAC capture (Ledger) happen on the right
 	// device the first time the user signs. Returned for both singlesig
-	// HW and multisig/Liana descriptors — the descriptor is what the
+	// HW and multisig / timelocked descriptors — the descriptor is what the
 	// device hashes for HMAC / policy-id derivation.
 	const walletConfig: WalletConfig | undefined = details
 		? {

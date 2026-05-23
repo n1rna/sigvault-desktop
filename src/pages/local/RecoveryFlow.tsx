@@ -5,7 +5,7 @@
 //      Backend = `cmd_local_recover_from_mnemonic`. Same code path the
 //      original creation wizard offers, just surfaced as a dedicated
 //      entry point so users who want to recover can find it.
-//   2. Cosigner (multisig / Liana) — restore a wallet where one slot
+//   2. Cosigner (multisig / timelocked) — restore a wallet where one slot
 //      is a hot key. The user pastes the wallet's descriptor pair and
 //      we derive the matching slot from the supplied mnemonic. Backend
 //      verifies the master fingerprint actually appears in the
@@ -40,7 +40,7 @@ export default function RecoveryFlow() {
 	const [words, setWords] = useState<string[]>(() => Array(24).fill(""));
 	const [externalDescriptor, setExternalDescriptor] = useState("");
 	const [internalDescriptor, setInternalDescriptor] = useState("");
-	const [policyType, setPolicyType] = useState<"multisig" | "liana">("multisig");
+	const [policyType, setPolicyType] = useState<"multisig" | "timelocked">("multisig");
 	const [bip39Passphrase, setBip39Passphrase] = useState("");
 	const [passphrase, setPassphrase] = useState("");
 	const [confirmPassphrase, setConfirmPassphrase] = useState("");
@@ -308,7 +308,7 @@ function MethodStep({
 		},
 		{
 			id: "cosigner",
-			title: "Multisig / Liana hot cosigner",
+			title: "Multisig / timelocked hot cosigner",
 			hint: "Restore a wallet where one slot is a hot key. Needs the wallet's descriptor pair + your mnemonic. We'll match your slot by master fingerprint.",
 		},
 		{
@@ -394,8 +394,8 @@ function DetailsStep({
 	onChangeExternalDescriptor: (v: string) => void;
 	internalDescriptor: string;
 	onChangeInternalDescriptor: (v: string) => void;
-	policyType: "multisig" | "liana";
-	onChangePolicyType: (p: "multisig" | "liana") => void;
+	policyType: "multisig" | "timelocked";
+	onChangePolicyType: (p: "multisig" | "timelocked") => void;
 	bip39Passphrase: string;
 	onChangeBip39Passphrase: (v: string) => void;
 	passphrase: string;
@@ -506,14 +506,14 @@ function DetailsStep({
 							</button>
 							<button
 								type="button"
-								onClick={() => onChangePolicyType("liana")}
+								onClick={() => onChangePolicyType("timelocked")}
 								className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
-									policyType === "liana"
+									policyType === "timelocked"
 										? "bg-primary text-primary-foreground"
 										: "text-muted-foreground hover:text-foreground"
 								}`}
 							>
-								Liana
+								Timelocked
 							</button>
 						</div>
 					</div>

@@ -22,8 +22,8 @@ use wallet_runtime::{
 };
 
 use super::manager::{
-    derive_account_at_path, derive_master_xpriv, LianaKeyInput, LianaRecoveryPath,
-    LianaSpendingPath, LocalWalletManager, ManagerError, WalletSummary,
+    derive_account_at_path, derive_master_xpriv, LocalWalletManager, ManagerError,
+    TimelockedKeyInput, TimelockedRecoveryPath, TimelockedSpendingPath, WalletSummary,
 };
 use policy_core::KeyUtils;
 
@@ -43,8 +43,8 @@ pub struct CreateWalletRequest {
     pub name: String,
     pub network: String,
     /// Only `singlesig_hot` flows through this generic command. Multisig,
-    /// Liana, and watch-only have dedicated commands
-    /// (`cmd_local_create_multisig`, `cmd_local_create_liana`,
+    /// timelocked, and watch-only have dedicated commands
+    /// (`cmd_local_create_multisig`, `cmd_local_create_timelocked`,
     /// `cmd_local_create_watch_only`) — they don't share enough request
     /// shape with hot singlesig to fit one struct.
     pub policy_type: String,
@@ -117,25 +117,25 @@ pub struct CreateMultisigWalletRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct LianaKeyInputDto {
+pub struct TimelockedKeyInputDto {
     pub fingerprint: String,
     pub xpub: String,
     pub derivation_path: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct LianaSpendingPathDto {
-    pub keys: Vec<LianaKeyInputDto>,
+pub struct TimelockedSpendingPathDto {
+    pub keys: Vec<TimelockedKeyInputDto>,
     pub threshold: u32,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct LianaRecoveryPathDto {
+pub struct TimelockedRecoveryPathDto {
     pub timelock_blocks: u16,
-    pub path: LianaSpendingPathDto,
+    pub path: TimelockedSpendingPathDto,
 }
 
-/// The primary spending path for a Liana wallet. `keys` is the
+/// The primary spending path for a timelocked-policy wallet. `keys` is the
 /// standard case (user-controlled keys + threshold). `unspendable`
 /// (QBL-235) tags the wallet recovery-only — backend substitutes a
 /// deterministic NUMS-derived xpub. The wire form is internally
@@ -143,17 +143,17 @@ pub struct LianaRecoveryPathDto {
 /// rather than silently accepting empty input.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum LianaPrimaryDto {
-    Keys { path: LianaSpendingPathDto },
+pub enum TimelockedPrimaryDto {
+    Keys { path: TimelockedSpendingPathDto },
     Unspendable,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CreateLianaWalletRequest {
+pub struct CreateTimelockedWalletRequest {
     pub name: String,
     pub network: String,
-    pub primary: LianaPrimaryDto,
-    pub recoveries: Vec<LianaRecoveryPathDto>,
+    pub primary: TimelockedPrimaryDto,
+    pub recoveries: Vec<TimelockedRecoveryPathDto>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -271,7 +271,7 @@ pub async fn cmd_local_create_wallet(
                 mnemonic_words,
             })
         }
-        "multisig" | "liana" | "watch_only" => Err(format!(
+        "multisig" | "timelocked" | "watch_only" => Err(format!(
             "policy type '{}' uses a dedicated command — call cmd_local_create_{} instead",
             request.policy_type, request.policy_type
         )),
@@ -299,7 +299,7 @@ pub async fn cmd_local_recover_from_mnemonic(
     .map_err(map_err)
 }
 
-/// Recover a multisig or Liana wallet where one of the cosigner slots
+/// Recover a multisig or timelocked-policy wallet where one of the cosigner slots
 /// is a hot key (QBL-230). The user supplies their mnemonic + the
 /// wallet's descriptor pair + which policy type it is. The backend
 /// derives the master fingerprint from the mnemonic and verifies that
@@ -322,7 +322,7 @@ pub struct RecoverCosignerRequest {
     pub encrypt_passphrase: String,
     pub external_descriptor: String,
     pub internal_descriptor: String,
-    /// Either `"multisig"` or `"liana"`.
+    /// Either `"multisig"` or `"timelocked"`.
     pub policy_type: String,
 }
 
@@ -400,27 +400,27 @@ pub async fn cmd_local_create_multisig(
         .map_err(map_err)
 }
 
-/// Create a Liana timelocked-policy wallet (QBL-225). Primary path is
+/// Create a timelocked-policy wallet (QBL-225). Primary path is
 /// spendable immediately; each recovery path becomes spendable after its
 /// block-count timelock elapses. The primary path can be either a
 /// user-driven key set or an unspendable NUMS-derived sentinel
 /// (QBL-235) for recovery-only wallets.
 #[tauri::command]
-pub async fn cmd_local_create_liana(
+pub async fn cmd_local_create_timelocked(
     app: AppHandle,
     app_state: State<'_, ApplicationState>,
-    request: CreateLianaWalletRequest,
+    request: CreateTimelockedWalletRequest,
 ) -> Result<WalletId, String> {
     app_state.require_local_mode().await?;
     let network = parse_network(&request.network)?;
     let mgr = manager_for(&app, &app_state)?;
 
-    fn map_path(dto: LianaSpendingPathDto) -> LianaSpendingPath {
-        LianaSpendingPath {
+    fn map_path(dto: TimelockedSpendingPathDto) -> TimelockedSpendingPath {
+        TimelockedSpendingPath {
             keys: dto
                 .keys
                 .into_iter()
-                .map(|k| LianaKeyInput {
+                .map(|k| TimelockedKeyInput {
                     fingerprint: k.fingerprint,
                     xpub: k.xpub,
                     derivation_path: k.derivation_path,
@@ -431,26 +431,28 @@ pub async fn cmd_local_create_liana(
     }
 
     let primary = match request.primary {
-        LianaPrimaryDto::Keys { path } => super::manager::LianaPrimary::Keys(map_path(path)),
-        LianaPrimaryDto::Unspendable => super::manager::LianaPrimary::Unspendable,
+        TimelockedPrimaryDto::Keys { path } => {
+            super::manager::TimelockedPrimary::Keys(map_path(path))
+        }
+        TimelockedPrimaryDto::Unspendable => super::manager::TimelockedPrimary::Unspendable,
     };
-    let recoveries: Vec<LianaRecoveryPath> = request
+    let recoveries: Vec<TimelockedRecoveryPath> = request
         .recoveries
         .into_iter()
-        .map(|r| LianaRecoveryPath {
+        .map(|r| TimelockedRecoveryPath {
             timelock_blocks: r.timelock_blocks,
             path: map_path(r.path),
         })
         .collect();
 
-    mgr.create_liana(&request.name, network, primary, recoveries)
+    mgr.create_timelocked(&request.name, network, primary, recoveries)
         .await
         .map_err(map_err)
 }
 
 /// Create a watch-only wallet from descriptor strings the user pasted
 /// (QBL-226). Useful for monitoring an external wallet without holding
-/// the keys — e.g. an existing Sparrow or Liana setup imported here so
+/// the keys — e.g. an existing Sparrow / Liana / Specter setup imported here so
 /// you can see balance and history. Cannot sign.
 #[tauri::command]
 pub async fn cmd_local_create_watch_only(
@@ -772,9 +774,9 @@ pub async fn cmd_local_get_wallet_details(
 // ---------- Spending-path enumeration (QBL-234) ----------
 //
 // Surfaces the available spending paths for a wallet so the SendWizard
-// can present a path picker for multi-path descriptors (Liana primary
-// vs recovery, taproot multi-leaf). Single-path wallets get one entry
-// the wizard auto-selects.
+// can present a path picker for multi-path descriptors (timelocked
+// primary vs recovery, taproot multi-leaf). Single-path wallets get
+// one entry the wizard auto-selects.
 
 /// Wire form of `wallet_runtime::SpendingPath`. The `policy_path` map
 /// is encoded as a `BTreeMap<String, Vec<u32>>` (instead of `usize`) so
@@ -813,7 +815,7 @@ impl From<SpendingPath> for SpendingPathDto {
 /// Enumerate the spending paths available for a wallet. Returns an
 /// empty list for watch-only wallets (which cannot spend) and a
 /// single-entry list for single-sig / multisig (which have one path).
-/// Liana wallets surface one path per branch (primary + each recovery
+/// Timelocked-policy wallets surface one path per branch (primary + each recovery
 /// in ascending-timelock order). The wallet must be unlocked — the
 /// command needs BDK's external-policy id to populate `policy_path`
 /// for multi-branch descriptors.
@@ -830,7 +832,7 @@ pub async fn cmd_local_list_spending_paths(
     let meta = mgr.read_metadata(&id).map_err(map_err)?;
 
     // BDK's external policy id is needed to construct `policy_path`
-    // entries for Liana branches (TxBuilder::policy_path keys on it).
+    // entries for timelocked branches (TxBuilder::policy_path keys on it).
     // Singlesig / multisig don't need it, but reading it is cheap and
     // keeps the code path uniform.
     let handle = app_state
@@ -889,7 +891,7 @@ pub struct BuildPsbtRequest {
     /// is the safe direction).
     pub fee_rate_sat_vb: f32,
     /// Optional `TxBuilder::policy_path` map — required for multi-branch
-    /// descriptors (Liana primary vs recovery, taproot multi-leaf) so
+    /// descriptors (timelocked primary vs recovery, taproot multi-leaf) so
     /// BDK knows which spending condition to satisfy. Single-path
     /// descriptors (singlesig, multisig) ignore this — leaving it
     /// empty selects the only available path. Sourced from
@@ -965,11 +967,11 @@ pub async fn cmd_local_build_psbt(
         builder.fee_rate(fee_rate);
 
         // Inject the chosen spending path for multi-branch descriptors
-        // (Liana primary vs recovery, taproot multi-leaf). The same map
-        // is applied to both keychains so change addresses go through
-        // the matching path — for Liana this means change inherits the
-        // primary's selection, which is what the user expects (you
-        // wouldn't want recovery-only change).
+        // (timelocked primary vs recovery, taproot multi-leaf). The same
+        // map is applied to both keychains so change addresses go through
+        // the matching path — for timelocked wallets this means change
+        // inherits the primary's selection, which is what the user
+        // expects (you wouldn't want recovery-only change).
         if let Some(pp) = &request.policy_path {
             let pp_usize: std::collections::BTreeMap<String, Vec<usize>> = pp
                 .iter()
@@ -1078,7 +1080,7 @@ pub async fn cmd_local_sign_psbt_software(
     let analysis = analyze_for_signing(&guard.wallet, &psbt, &fingerprint);
     // Trust the analysis's `signer_kind` rather than hardcoding
     // SegwitV0 — that picks up Taproot key-path / script-path
-    // automatically for Liana wallets where the device fingerprint
+    // automatically for timelocked-policy wallets where the device fingerprint
     // appears in `tap_key_origins` (QBL-230 enables this code path
     // by routing cosigner recovery through `derivation_path`).
     let signer_kind = analysis.signer_kind;
