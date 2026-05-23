@@ -628,7 +628,7 @@ version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
 dependencies = [
- "bitcoin_hashes 0.13.1",
+ "bitcoin_hashes 0.14.1",
  "serde",
  "unicode-normalization",
 ]
@@ -3517,7 +3517,7 @@ dependencies = [
 [[package]]
 name = "liana"
 version = "12.0.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#b543b85cd09d8461d038af529e68c20c5b6780ea"
+source = "git+https://github.com/n1rna/walletrs.git?branch=main#25195b73e136500b2206ea3bd1b6806ca4953d9e"
 dependencies = [
  "bdk_coin_select",
  "bip39",
@@ -4724,7 +4724,7 @@ dependencies = [
 [[package]]
 name = "policy-core"
 version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#b543b85cd09d8461d038af529e68c20c5b6780ea"
+source = "git+https://github.com/n1rna/walletrs.git?branch=main#25195b73e136500b2206ea3bd1b6806ca4953d9e"
 dependencies = [
  "bdk_wallet",
  "hex",
@@ -5919,7 +5919,7 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "bitcoin_hashes 0.13.1",
+ "bitcoin_hashes 0.14.1",
  "rand 0.8.5",
  "secp256k1-sys",
  "serde",
@@ -7922,7 +7922,7 @@ dependencies = [
 [[package]]
 name = "wallet-runtime"
 version = "0.1.0"
-source = "git+https://github.com/n1rna/walletrs.git?branch=main#b543b85cd09d8461d038af529e68c20c5b6780ea"
+source = "git+https://github.com/n1rna/walletrs.git?branch=main#25195b73e136500b2206ea3bd1b6806ca4953d9e"
 dependencies = [
  "bdk_electrum",
  "bdk_file_store",

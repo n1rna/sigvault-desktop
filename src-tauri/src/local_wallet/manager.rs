@@ -1040,7 +1040,10 @@ fn now_unix_seconds() -> i64 {
         .unwrap_or(0)
 }
 
-fn validate_timelocked_path(path: &TimelockedSpendingPath, label: &str) -> Result<(), ManagerError> {
+fn validate_timelocked_path(
+    path: &TimelockedSpendingPath,
+    label: &str,
+) -> Result<(), ManagerError> {
     if path.keys.is_empty() {
         return Err(ManagerError::Runtime(format!(
             "{label} path requires at least one key"
@@ -1079,7 +1082,8 @@ fn build_core_policy_path(path: &TimelockedSpendingPath) -> Result<CorePolicyPat
 fn key_input_to_descriptor_public_key(
     k: &TimelockedKeyInput,
 ) -> Result<DescriptorPublicKey, ManagerError> {
-    let formatted = KeyUtils::format_key_for_descriptor(&k.fingerprint, &k.derivation_path, &k.xpub);
+    let formatted =
+        KeyUtils::format_key_for_descriptor(&k.fingerprint, &k.derivation_path, &k.xpub);
     DescriptorPublicKey::from_str(&formatted).map_err(|e| {
         ManagerError::Runtime(format!(
             "invalid xpub for fingerprint {}: {}",

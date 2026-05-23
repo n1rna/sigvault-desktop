@@ -56,7 +56,8 @@ use bitcoin::{Address, Amount, FeeRate, Network, Psbt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sigvault_desktop_lib::local_wallet::manager::{
-    derive_account_at_path, derive_master_xpriv, TimelockedPrimary, LocalWalletManager, MultisigCosigner,
+    derive_account_at_path, derive_master_xpriv, LocalWalletManager, MultisigCosigner,
+    TimelockedPrimary,
 };
 use sigvault_desktop_lib::local_wallet::state::{LocalWalletState, UnlockedHandle};
 use sigvault_desktop_lib::local_wallet::storage::{read_seed_file, WalletDirLayout, WalletId};

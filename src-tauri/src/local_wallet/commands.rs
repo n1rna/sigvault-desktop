@@ -22,8 +22,8 @@ use wallet_runtime::{
 };
 
 use super::manager::{
-    derive_account_at_path, derive_master_xpriv, TimelockedKeyInput, TimelockedRecoveryPath,
-    TimelockedSpendingPath, LocalWalletManager, ManagerError, WalletSummary,
+    derive_account_at_path, derive_master_xpriv, LocalWalletManager, ManagerError,
+    TimelockedKeyInput, TimelockedRecoveryPath, TimelockedSpendingPath, WalletSummary,
 };
 use policy_core::KeyUtils;
 
@@ -431,7 +431,9 @@ pub async fn cmd_local_create_timelocked(
     }
 
     let primary = match request.primary {
-        TimelockedPrimaryDto::Keys { path } => super::manager::TimelockedPrimary::Keys(map_path(path)),
+        TimelockedPrimaryDto::Keys { path } => {
+            super::manager::TimelockedPrimary::Keys(map_path(path))
+        }
         TimelockedPrimaryDto::Unspendable => super::manager::TimelockedPrimary::Unspendable,
     };
     let recoveries: Vec<TimelockedRecoveryPath> = request
