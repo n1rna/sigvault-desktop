@@ -18,6 +18,10 @@ mod websocket;
 mod window;
 
 use log::info;
+// `Manager` is only used by the debug-only devtools setup below; importing
+// it unconditionally breaks `-D warnings` release builds where the cfg
+// block is compiled out.
+#[cfg(debug_assertions)]
 use tauri::Manager;
 
 use commands::*;
@@ -124,10 +128,10 @@ pub fn run() {
             cmd_local_sign_psbt_hardware,
             cmd_local_broadcast_psbt,
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(debug_assertions)]
             {
-                if let Some(window) = app.get_webview_window("main") {
+                if let Some(window) = _app.get_webview_window("main") {
                     window.open_devtools();
                 }
             }
