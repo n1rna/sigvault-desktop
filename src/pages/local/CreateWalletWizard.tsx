@@ -10,7 +10,7 @@
 //     via `cmd_local_create_singlesig_hw`. No on-disk seed.
 //   • Watch-only: paste descriptors directly (QBL-226).
 //   • Multisig: M-of-N from pasted cosigner xpubs (QBL-224).
-//   • Liana: timelocked-policy with primary + recovery paths, all
+//   • Timelocked: primary path + recovery paths under timelocks, all
 //     pasted xpubs (QBL-225). Hot primary keys are out of scope for v1
 //     — see QBL-235 for the related "unspendable primary" affordance.
 
@@ -24,7 +24,7 @@ import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalWalletCreateResponse } from "../../types/events";
 import type { DeviceInfo } from "../../types/hardware";
 
-type Method = "generate" | "recover" | "hardware" | "watch_only" | "multisig" | "liana";
+type Method = "generate" | "recover" | "hardware" | "watch_only" | "multisig" | "timelocked";
 
 type Step =
 	| "basics"
@@ -32,7 +32,7 @@ type Step =
 	| "hw"
 	| "watch_only"
 	| "multisig"
-	| "liana"
+	| "timelocked"
 	| "mnemonic"
 	| "done";
 
@@ -190,7 +190,7 @@ export default function CreateWalletWizard() {
 		}
 	};
 
-	const submitLiana = async (input: {
+	const submitTimelocked = async (input: {
 		primary:
 			| { kind: "keys"; key: { fingerprint: string; xpub: string; derivation_path: string } }
 			| { kind: "unspendable" };
@@ -212,7 +212,7 @@ export default function CreateWalletWizard() {
 							kind: "keys",
 							path: { keys: [input.primary.key], threshold: 1 },
 						};
-			const walletId = await invoke<string>("cmd_local_create_liana", {
+			const walletId = await invoke<string>("cmd_local_create_timelocked", {
 				request: {
 					name: basics.name,
 					network: basics.network,
@@ -226,7 +226,7 @@ export default function CreateWalletWizard() {
 			setCreatedId(walletId);
 			setStep("done");
 		} catch (err) {
-			setError(typeof err === "string" ? err : "Failed to create Liana wallet");
+			setError(typeof err === "string" ? err : "Failed to create timelocked wallet");
 		} finally {
 			setSubmitting(false);
 		}
@@ -285,9 +285,9 @@ export default function CreateWalletWizard() {
 			if (step === "done") return 2;
 			return 0;
 		}
-		if (basics.method === "liana") {
+		if (basics.method === "timelocked") {
 			if (step === "basics") return 0;
-			if (step === "liana") return 1;
+			if (step === "timelocked") return 1;
 			if (step === "done") return 2;
 			return 0;
 		}
@@ -345,8 +345,8 @@ export default function CreateWalletWizard() {
 											? "watch_only"
 											: basics.method === "multisig"
 												? "multisig"
-												: basics.method === "liana"
-													? "liana"
+												: basics.method === "timelocked"
+													? "timelocked"
 													: "passphrase",
 								);
 							}}
@@ -378,11 +378,11 @@ export default function CreateWalletWizard() {
 						/>
 					)}
 
-					{step === "liana" && basics.method === "liana" && (
-						<LianaStep
+					{step === "timelocked" && basics.method === "timelocked" && (
+						<TimelockedStep
 							submitting={submitting}
 							onBack={() => setStep("basics")}
-							onSubmit={submitLiana}
+							onSubmit={submitTimelocked}
 						/>
 					)}
 
@@ -443,7 +443,7 @@ function Header({
 					? ["Basics", "Descriptors", "Done", ""]
 					: method === "multisig"
 						? ["Basics", "Cosigners", "Done", ""]
-						: method === "liana"
+						: method === "timelocked"
 							? ["Basics", "Paths", "Done", ""]
 							: ["Basics", "Recovery", "Done", ""];
 	return (
@@ -590,9 +590,9 @@ function BasicsStep({
 						hint="M-of-N watch-only with cosigner xpubs."
 					/>
 					<MethodCard
-						active={value.method === "liana"}
-						onClick={() => onChange({ ...value, method: "liana" })}
-						title="Liana"
+						active={value.method === "timelocked"}
+						onClick={() => onChange({ ...value, method: "timelocked" })}
+						title="Timelocked"
 						hint="Primary path + timelocked recovery."
 					/>
 				</div>
@@ -948,8 +948,8 @@ function DoneStep({ method, onContinue }: { method: Method; onContinue: () => vo
 							? "Watch-only wallet imported."
 							: method === "multisig"
 								? "Multisig wallet created."
-								: method === "liana"
-									? "Liana wallet created."
+								: method === "timelocked"
+									? "Timelocked wallet created."
 									: "Wallet recovered."}
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
@@ -1321,7 +1321,7 @@ const TIMELOCK_PRESETS: { label: string; blocks: number }[] = [
 	{ label: "1 year", blocks: 52560 },
 ];
 
-function LianaStep({
+function TimelockedStep({
 	submitting,
 	onBack,
 	onSubmit,
@@ -1374,7 +1374,7 @@ function LianaStep({
 		<form className="mt-8 space-y-6" onSubmit={submit}>
 			<div className="rounded-md border border-border bg-card/40 px-4 py-3">
 				<p className="text-[12px] leading-relaxed text-muted-foreground">
-					Build a Liana timelocked-recovery wallet. The{" "}
+					Build a timelocked-recovery wallet. The{" "}
 					<span className="font-medium text-foreground">primary</span> key can spend immediately.
 					The <span className="font-medium text-foreground">recovery</span> key unlocks after the
 					timelock elapses (counted from the last on-chain activity for the wallet). Paste each key
@@ -1525,7 +1525,7 @@ function LianaStep({
 					disabled={!ready || submitting}
 					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
-					{submitting ? "Creating…" : "Create Liana wallet"}
+					{submitting ? "Creating…" : "Create timelocked wallet"}
 				</button>
 			</div>
 		</form>
