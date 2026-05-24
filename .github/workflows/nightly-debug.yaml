@@ -1,0 +1,141 @@
+name: Nightly Debug Build (for e2e)
+
+# Builds an unsigned debug binary for each desktop platform every night and
+# publishes it as a GitHub Actions artifact. The sigvault repo's nightly
+# e2e workflow downloads the artifact and drives it via tauri-driver +
+# WebdriverIO. Debug builds include the `SIGVAULT_E2E_AUTH_URL_FILE`
+# test hook in `open_browser` (gated on `debug_assertions`), which the
+# e2e harness uses to intercept the OIDC redirect URL.
+
+on:
+  schedule:
+    # 03:00 UTC — leaves ~1h buffer before the sigvault e2e cron at 04:00.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+          - platform: macos-latest
+            rust_target: aarch64-apple-darwin
+            label: darwin-aarch64
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare build environment
+        uses: n1rna/ee-action@main
+        with:
+          environment: development
+          config_path: .ee.desktop
+          env_file: .env
+          gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
+
+      - name: Export env vars for build
+        shell: bash
+        run: |
+          while IFS='=' read -r key value; do
+            [[ -z "$key" || "$key" =~ ^# ]] && continue
+            value="${value%\"}"
+            value="${value#\"}"
+            echo "${key}=${value}" >> "$GITHUB_ENV"
+          done < .env
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libudev-dev
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: nightly-debug-${{ matrix.label }}
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Build Tauri binary (debug, no bundle)
+        working-directory: src-tauri
+        # Debug profile keeps the `debug_assertions` cfg active, which is
+        # required for the e2e `open_browser` hook to compile in. Skip
+        # bundling — the e2e harness launches the raw binary via
+        # tauri-driver, no installer needed.
+        run: cargo build --target ${{ matrix.rust_target }}
+
+      - name: Stage artifact (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          BIN_DIR="src-tauri/target/${{ matrix.rust_target }}/debug"
+          # Find the actual binary name (Cargo can produce variants like
+          # `sigvault-desktop` or `sigvault_desktop`); pick the first
+          # executable file that isn't a build artifact directory.
+          BIN=$(find "$BIN_DIR" -maxdepth 1 -type f -perm -u+x ! -name "*.d" ! -name "*.rlib" | head -1)
+          if [[ -z "$BIN" ]]; then
+            echo "No binary found under $BIN_DIR" >&2
+            ls -la "$BIN_DIR"
+            exit 1
+          fi
+          cp "$BIN" artifacts/sigvault-desktop
+          ls -lh artifacts/
+
+      - name: Stage artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+          Copy-Item "src-tauri/target/${{ matrix.rust_target }}/debug/sigvault-desktop.exe" artifacts/
+          Get-ChildItem artifacts/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigvault-desktop-debug-${{ matrix.label }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7

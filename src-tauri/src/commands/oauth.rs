@@ -38,7 +38,18 @@ struct CallbackQuery {
 }
 
 /// Launch the user's default browser at `url`. Cross-platform.
+///
+/// In debug builds, an `SIGVAULT_E2E_AUTH_URL_FILE` env var short-circuits
+/// the shell-out and writes the URL to that path instead. The e2e harness
+/// reads the file, drives the auth round-trip in a headless browser it
+/// controls, and lets the loopback callback wake the desktop normally.
+/// Gated on `debug_assertions` so the hook is absent from release builds.
 fn open_browser(url: &str) -> std::io::Result<()> {
+    #[cfg(debug_assertions)]
+    if let Ok(path) = std::env::var("SIGVAULT_E2E_AUTH_URL_FILE") {
+        return std::fs::write(path, url);
+    }
+
     #[cfg(target_os = "linux")]
     {
         // LD_LIBRARY_PATH from an AppImage bundle can break xdg-open.
