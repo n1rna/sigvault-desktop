@@ -95,16 +95,22 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
-      - name: Build frontend
-        run: bun run build
+      - name: Install Tauri CLI
+        # `cargo tauri build --debug --no-bundle` is the only way to get
+        # a debug binary with the frontend embedded. Plain `cargo build`
+        # leaves the binary pointed at the Vite devUrl
+        # (http://localhost:1420), which then surfaces in e2e as
+        # "Could not connect to localhost: Connection refused" because
+        # there's no dev server running in CI.
+        run: cargo install tauri-cli --version "^2.0" --locked
 
       - name: Build Tauri binary (debug, no bundle)
-        working-directory: src-tauri
-        # Debug profile keeps the `debug_assertions` cfg active, which is
-        # required for the e2e `open_browser` hook to compile in. Skip
-        # bundling — the e2e harness launches the raw binary via
-        # tauri-driver, no installer needed.
-        run: cargo build --target ${{ matrix.rust_target }}
+        # `tauri build --debug --no-bundle` runs `bun run build` for the
+        # frontend (via beforeBuildCommand in tauri.conf.json), compiles
+        # Rust with debug_assertions on (so the `open_browser` test hook
+        # stays in), and skips bundling — the e2e harness launches the
+        # raw binary via tauri-driver, no installer needed.
+        run: cargo tauri build --debug --no-bundle --target ${{ matrix.rust_target }}
 
       - name: Stage artifact (Unix)
         if: runner.os != 'Windows'
