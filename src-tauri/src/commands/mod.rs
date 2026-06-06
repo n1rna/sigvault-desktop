@@ -2,6 +2,10 @@
 
 pub mod api_calls;
 pub mod app_mode;
+/// Debug-only software signer for the e2e signing-ceremony test. Absent from
+/// release builds; `hwi.rs` short-circuits to it when active.
+#[cfg(debug_assertions)]
+pub mod e2e_signer;
 pub mod env;
 pub mod hwi;
 pub mod init;
