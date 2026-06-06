@@ -72,6 +72,11 @@ pub async fn cmd_discover_hardware_wallets(
 ) -> Result<CommandResult, String> {
     info!("Starting hardware wallet discovery");
 
+    #[cfg(debug_assertions)]
+    if super::e2e_signer::active() {
+        return Ok(super::e2e_signer::discover_result());
+    }
+
     let config = match wallet_config {
         Some(input) => Some(input.to_wallet_config()?),
         None => None,
@@ -114,6 +119,11 @@ pub async fn cmd_unlock_device(
 ) -> Result<CommandResult, String> {
     info!("Unlocking device: {device_id}");
 
+    #[cfg(debug_assertions)]
+    if super::e2e_signer::active() {
+        return Ok(super::e2e_signer::unlock_result());
+    }
+
     let config = match wallet_config {
         Some(input) => Some(input.to_wallet_config()?),
         None => None,
@@ -153,6 +163,11 @@ pub async fn cmd_get_device_xpub(
     derivation_path: String,
 ) -> Result<CommandResult, String> {
     info!("Extracting xpub for device {fingerprint} at path {derivation_path}");
+
+    #[cfg(debug_assertions)]
+    if super::e2e_signer::active() {
+        return Ok(super::e2e_signer::device_xpub_result());
+    }
 
     let hw_manager = app_state.require_hw_manager().await?;
     match hw_manager
@@ -237,6 +252,11 @@ pub async fn cmd_sign_psbt(
     _wallet_config: Option<WalletConfigInput>,
 ) -> Result<CommandResult, String> {
     info!("Signing PSBT with device {device_id}");
+
+    #[cfg(debug_assertions)]
+    if super::e2e_signer::active() {
+        return Ok(super::e2e_signer::sign_result(&psbt));
+    }
 
     let hw_manager = app_state.require_hw_manager().await?;
     match hw_manager.sign_psbt(&device_id, &psbt).await {
