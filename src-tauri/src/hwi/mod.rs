@@ -102,7 +102,10 @@ impl DiscoveredDevice {
 
 /// Holds a locked device that needs user confirmation
 pub enum LockedDeviceHandle {
-    BitBox02(Box<PairingBitbox02WithLocalCache<runtime::TokioRuntime>>),
+    /// The BitBox02's HID path. Pairing is deferred to `unlock_device`, which
+    /// re-opens the device and pairs + confirms atomically — splitting the two
+    /// across the discovery/unlock UI gap breaks the auto-confirming simulator.
+    BitBox02(std::ffi::CString),
     Jade(Jade<jade::SerialTransport>),
     JadeTcp(Jade<jade::TcpTransport>),
 }
@@ -421,71 +424,30 @@ impl HardwareWalletManager {
                     device_info.vendor_id(),
                     device_info.product_id()
                 );
-                debug!(
-                    "BitBox02 detected at {:?}, attempting to open",
-                    device_info.path()
+                debug!("BitBox02 detected at {:?}", device_info.path());
+
+                // Defer pairing to unlock time. Pairing here (via the noise
+                // handshake) and confirming later on the user's unlock click
+                // leaves a gap the BitBox02 simulator can't tolerate — it
+                // auto-confirms and closes its verification window, so the
+                // delayed confirm fails with "wrong state". Just record the
+                // HID path; `unlock_device` re-opens it and pairs + confirms
+                // atomically.
+                let path = device_info.path().to_owned();
+                locked_devices.insert(id.clone(), LockedDeviceHandle::BitBox02(path));
+
+                devices.push(DiscoveredDevice {
+                    id,
+                    device_type: "BitBox02".to_string(),
+                    model: "BitBox02".to_string(),
+                    state: DeviceState::Locked { pairing_code: None },
+                });
+
+                emit_progress(
+                    "scanning_bitbox02",
+                    "Found BitBox02 device (needs pairing)",
+                    devices.len(),
                 );
-
-                match device_info.open_device(&api) {
-                    Err(e) => {
-                        warn!(
-                            "Failed to open BitBox02 HID device at {:?}: {}",
-                            device_info.path(),
-                            e
-                        );
-                    }
-                    Ok(hid_device) => {
-                        emit_progress(
-                            "bitbox02_connecting",
-                            "BitBox02 detected — enter your device password if prompted",
-                            devices.len(),
-                        );
-                        // bitbox-api uses blocking hidapi I/O inside async fns.
-                        // Run on a dedicated runtime to avoid deadlocking the
-                        // main tokio runtime (which also runs the UHID bridge
-                        // relay tasks for emulated devices).
-                        let connect_result = tokio::task::spawn_blocking(move || {
-                            let rt = tokio::runtime::Builder::new_multi_thread()
-                                .worker_threads(2)
-                                .enable_all()
-                                .build()
-                                .map_err(|e| HWIError::Device(format!("runtime: {e}")))?;
-                            rt.block_on(
-                                PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
-                                    hid_device, None,
-                                ),
-                            )
-                        })
-                        .await
-                        .map_err(|e| HWIError::Device(format!("task: {e}")))?;
-                        match connect_result {
-                            Ok(pairing_device) => {
-                                let pairing_code =
-                                    pairing_device.pairing_code().map(|s| s.replace('\n', " "));
-
-                                // Store the locked device for later unlocking
-                                locked_devices.insert(
-                                    id.clone(),
-                                    LockedDeviceHandle::BitBox02(Box::new(pairing_device)),
-                                );
-
-                                devices.push(DiscoveredDevice {
-                                    id,
-                                    device_type: "BitBox02".to_string(),
-                                    model: "BitBox02".to_string(),
-                                    state: DeviceState::Locked { pairing_code },
-                                });
-
-                                emit_progress(
-                                    "scanning_bitbox02",
-                                    "Found BitBox02 device (needs pairing)",
-                                    devices.len(),
-                                );
-                            }
-                            Err(e) => warn!("BitBox02 pairing connection error: {e:?}"),
-                        }
-                    }
-                }
             }
 
             // Enumerate Coldcard devices
@@ -650,10 +612,56 @@ impl HardwareWalletManager {
             .ok_or_else(|| format!("Device {device_id} not found in locked devices"))?;
 
         match locked_device {
-            LockedDeviceHandle::BitBox02(pairing_bb) => {
-                info!("Waiting for BitBox02 confirmation...");
-                emit_unlock("Confirm pairing code on your BitBox02 device");
-                let (paired_device, _) = pairing_bb.wait_confirm().await?;
+            LockedDeviceHandle::BitBox02(path) => {
+                info!("Pairing + confirming BitBox02...");
+                emit_unlock("Confirm pairing on your BitBox02 device");
+
+                // Re-open the HID device and pair + confirm in a single call.
+                // `connect_and_confirm` keeps `unlock_and_pair` and
+                // `wait_confirm` back to back (the pairing code is surfaced via
+                // the callback, not by pausing between them), which is what the
+                // auto-confirming BitBox02 simulator needs. On real hardware
+                // the confirm still blocks on the device button.
+                let code_window = app_handle.and_then(|h| h.get_webview_window("main"));
+                // bitbox-api uses blocking hidapi I/O inside async fns; run on a
+                // dedicated runtime to avoid deadlocking the main tokio runtime
+                // (which also drives the UHID bridge relay tasks).
+                let pair_result = tokio::task::spawn_blocking(move || {
+                    let rt = tokio::runtime::Builder::new_multi_thread()
+                        .worker_threads(2)
+                        .enable_all()
+                        .build()
+                        .map_err(|e| HWIError::Device(format!("runtime: {e}")))?;
+                    rt.block_on(async move {
+                        let api =
+                            HidApi::new().map_err(|e| HWIError::Device(format!("hidapi: {e}")))?;
+                        let hid_device = api
+                            .open_path(&path)
+                            .map_err(|e| HWIError::Device(format!("open BitBox02: {e}")))?;
+                        PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect_and_confirm(
+                            hid_device,
+                            None,
+                            move |code| {
+                                if let (Some(w), Some(code)) = (&code_window, code) {
+                                    emit_notification(
+                                        w,
+                                        "Device Unlock",
+                                        &format!(
+                                            "Confirm pairing code on your BitBox02: {}",
+                                            code.replace('\n', " ")
+                                        ),
+                                        "info",
+                                    );
+                                }
+                            },
+                        )
+                        .await
+                    })
+                })
+                .await
+                .map_err(|e| HWIError::Device(format!("task: {e}")))?;
+                let (paired_device, _) = pair_result?;
+
                 if let Some(w) = app_handle.and_then(|h| h.get_webview_window("main")) {
                     emit_notification(&w, "Device Unlock", "BitBox02 pairing confirmed", "success");
                 }
