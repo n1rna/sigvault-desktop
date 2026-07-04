@@ -622,7 +622,6 @@ impl HardwareWalletManager {
                 // the callback, not by pausing between them), which is what the
                 // auto-confirming BitBox02 simulator needs. On real hardware
                 // the confirm still blocks on the device button.
-                let code_window = app_handle.and_then(|h| h.get_webview_window("main"));
                 // bitbox-api uses blocking hidapi I/O inside async fns; run on a
                 // dedicated runtime to avoid deadlocking the main tokio runtime
                 // (which also drives the UHID bridge relay tasks).
@@ -641,17 +640,17 @@ impl HardwareWalletManager {
                         PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect_and_confirm(
                             hid_device,
                             None,
-                            move |code| {
-                                if let (Some(w), Some(code)) = (&code_window, code) {
-                                    emit_notification(
-                                        w,
-                                        "Device Unlock",
-                                        &format!(
-                                            "Confirm pairing code on your BitBox02: {}",
-                                            code.replace('\n', " ")
-                                        ),
-                                        "info",
-                                    );
+                            |code| {
+                                // MUST NOT emit to the webview from here: this
+                                // closure runs on the nested spawn_blocking
+                                // runtime's thread, and Tauri's GTK/webview emit
+                                // from an off-main thread deadlocks — which stalls
+                                // wait_confirm and hangs the whole unlock. Just log
+                                // it (thread-safe). The generic "confirm on your
+                                // device" prompt was already emitted before pairing,
+                                // and the code is shown on the device screen.
+                                if let Some(code) = code {
+                                    info!("BitBox02 pairing code: {}", code.replace('\n', " "));
                                 }
                             },
                         )
