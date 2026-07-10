@@ -76,9 +76,7 @@ pub async fn cmd_initialize_app(
             )
             .await
             .map_err(|e| format!("Failed to update state: {e}"))?;
-            return Ok(CommandResult::success(
-                "Initialization complete - welcome",
-            ));
+            return Ok(CommandResult::success("Initialization complete - welcome"));
         }
         Some(AppMode::Local) => {
             // Mirror cmd_set_app_mode: initialize HW manager so HW
