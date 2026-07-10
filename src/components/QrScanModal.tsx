@@ -112,8 +112,8 @@ export default function QrScanModal({
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<div className="mb-4 flex items-center justify-between">
-					<h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-						§ — Scan signed PSBT
+					<h3 className="text-[14px] font-semibold tracking-tight text-foreground">
+						Scan signed PSBT
 					</h3>
 					<button
 						type="button"
@@ -158,10 +158,10 @@ export default function QrScanModal({
 						</div>
 						<canvas ref={canvasRef} className="hidden" />
 
-						<div className="mt-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						<div className="mt-3 flex items-center justify-between text-[12px] text-muted-foreground">
 							<span>{streaming ? "Scanning…" : "Starting camera…"}</span>
 							{progress.expected > 0 && (
-								<span>
+								<span className="tabular-nums">
 									{progress.received} / {progress.expected} parts
 								</span>
 							)}

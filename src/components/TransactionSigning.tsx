@@ -198,21 +198,19 @@ export default function TransactionSigning({
 		<div className="flex flex-col gap-6">
 			{/* ══════════════ Transaction card ══════════════ */}
 			<section className="relative overflow-hidden rounded-lg border border-border bg-card">
-				<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+				{null}
 
 				{/* Header */}
 				<div className="flex items-start justify-between gap-4 border-b border-border/60 px-6 py-5">
 					<div>
-						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-5 bg-primary/60" />§ 01 — Transaction
+						<div className="flex items-center gap-2.5 text-[11px] font-medium text-muted-foreground">
+							Transaction
 						</div>
 						<h2 className="mt-2.5 text-[20px] font-medium tracking-tight text-foreground">
 							Review and approve
 						</h2>
 						{walletName && (
-							<p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-								wallet · {walletName}
-							</p>
+							<p className="mt-1 text-[11px] text-muted-foreground">wallet · {walletName}</p>
 						)}
 					</div>
 
@@ -236,9 +234,7 @@ export default function TransactionSigning({
 
 				{/* Txid */}
 				<div className="px-6 py-5">
-					<div className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-						transaction id
-					</div>
+					<div className="text-[11px] text-muted-foreground">transaction id</div>
 					<div className="mt-2 flex items-center gap-3">
 						<code className="break-all font-mono text-[13px] tabular-nums text-foreground">
 							{shortTxid(transactionData.transaction.txid)}
@@ -254,13 +250,11 @@ export default function TransactionSigning({
 					{/* PSBT */}
 					<div className="mt-5">
 						<div className="flex items-center justify-between">
-							<div className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-								psbt payload
-							</div>
+							<div className="text-[11px] text-muted-foreground">psbt payload</div>
 							<button
 								type="button"
 								onClick={() => setPsbtExpanded((v) => !v)}
-								className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
+								className="text-[11px] text-muted-foreground transition-colors hover:text-foreground"
 							>
 								{psbtExpanded ? "collapse" : "expand"}
 							</button>
@@ -274,10 +268,10 @@ export default function TransactionSigning({
 				{/* Signature slots */}
 				<div className="border-t border-border/60 px-6 pt-5 pb-6">
 					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-5 bg-accent/60" />§ Required signatures
+						<div className="flex items-center gap-2.5 text-[11px] font-medium text-muted-foreground">
+							Required signatures
 						</div>
-						<span className="font-mono text-[10px] uppercase tracking-[0.16em] tabular-nums text-muted-foreground">
+						<span className="text-[11px] tabular-nums text-muted-foreground">
 							{transactionData.signature_slots.length}{" "}
 							{transactionData.signature_slots.length === 1 ? "signer" : "signers"}
 						</span>
@@ -290,10 +284,7 @@ export default function TransactionSigning({
 								className="flex items-center justify-between gap-4 bg-card px-4 py-3"
 							>
 								<div className="flex items-center gap-3">
-									<span className="relative flex h-2 w-2">
-										<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-50" />
-										<span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-									</span>
+									<span className="h-2 w-2 rounded-full bg-primary" />
 									<code className="font-mono text-[13px] font-semibold tracking-[0.08em] tabular-nums text-foreground">
 										{slot.fingerprint}
 									</code>
@@ -331,8 +322,8 @@ export default function TransactionSigning({
 			<section className="relative overflow-hidden rounded-lg border border-border bg-card">
 				<div className="flex items-start justify-between gap-4 border-b border-border/60 px-6 py-5">
 					<div>
-						<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							<span className="h-px w-5 bg-primary/60" />§ 02 — Hardware wallet
+						<div className="flex items-center gap-2.5 text-[11px] font-medium text-muted-foreground">
+							Hardware wallet
 						</div>
 						<h2 className="mt-2.5 text-[20px] font-medium tracking-tight text-foreground">
 							Sign with device
@@ -346,7 +337,7 @@ export default function TransactionSigning({
 						type="button"
 						onClick={handleDiscover}
 						disabled={discovering || signing || submitting}
-						className="flex h-10 shrink-0 items-center gap-2 rounded-md border border-primary/30 bg-primary/[0.06] px-4 font-mono text-[10px] uppercase tracking-[0.16em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.12] disabled:cursor-not-allowed disabled:opacity-60"
+						className="flex h-10 shrink-0 items-center gap-2 rounded-md border border-primary/30 bg-primary/[0.06] px-4 text-[12px] font-medium text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.12] disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						{discovering ? (
 							<>
@@ -469,13 +460,13 @@ export default function TransactionSigning({
 
 				{selectedCanSign && (
 					<div className="relative border-t border-border/60 bg-primary/[0.03] px-6 py-6">
-						<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+						{null}
 						<div className="flex flex-col items-center gap-4">
 							<button
 								type="button"
 								onClick={handleSignTransaction}
 								disabled={signing || submitting}
-								className="group flex h-12 items-center gap-2.5 rounded-md bg-primary px-10 text-[13px] font-medium tracking-[0.02em] text-primary-foreground shadow-md transition-all hover:-translate-y-[1px] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-md"
+								className="group flex h-12 items-center gap-2.5 rounded-md bg-primary px-10 text-[13px] font-medium tracking-[0.02em] text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-md"
 							>
 								{signing ? (
 									<>
@@ -523,7 +514,7 @@ export default function TransactionSigning({
 									</>
 								)}
 							</button>
-							<p className="text-center font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+							<p className="text-center text-[11px] text-muted-foreground">
 								confirm on device display
 							</p>
 						</div>

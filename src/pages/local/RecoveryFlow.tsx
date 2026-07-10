@@ -16,10 +16,8 @@
 import { validateMnemonic } from "@scure/bip39";
 import { wordlist as bip39Wordlist } from "@scure/bip39/wordlists/english.js";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import WindowControls from "../../components/WindowControls";
 
 type Method = "singlesig" | "cosigner" | "descriptor_only";
 type Step = "method" | "details" | "done";
@@ -47,17 +45,6 @@ export default function RecoveryFlow() {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [createdId, setCreatedId] = useState<string | null>(null);
-
-	const onDrag = useCallback((e: React.MouseEvent) => {
-		if (e.buttons === 1 && e.detail === 1) {
-			e.preventDefault();
-			try {
-				getCurrentWindow().startDragging();
-			} catch {
-				// no-op outside Tauri
-			}
-		}
-	}, []);
 
 	const mnemonic = useMemo(
 		() =>
@@ -140,19 +127,8 @@ export default function RecoveryFlow() {
 	const stepIndex = step === "method" ? 0 : step === "details" ? 1 : 2;
 
 	return (
-		<div
-			onMouseDown={onDrag}
-			className="relative flex h-screen w-full select-none flex-col overflow-hidden bg-background"
-		>
-			<WindowControls />
-
-			<div className="pointer-events-none absolute inset-0 bg-grid mask-radial-fade opacity-[0.06]" />
-			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
-
-			<header
-				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 pb-4 pt-10 backdrop-blur-sm"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
+		<div className="flex h-full w-full flex-col overflow-hidden">
+			<header className="flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-6 py-3">
 				<div className="flex items-center gap-3">
 					<button
 						type="button"
@@ -172,20 +148,15 @@ export default function RecoveryFlow() {
 							<path d="m15 18-6-6 6-6" />
 						</svg>
 					</button>
-					<div className="flex flex-col leading-none">
-						<span className="text-[14px] font-medium text-foreground">Recover wallet</span>
-						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-							Restore from a backup
-						</span>
+					<div className="flex items-center gap-2.5">
+						<span className="text-[14px] font-semibold text-foreground">Recover wallet</span>
+						<span className="text-[12px] text-muted-foreground">Restore from a backup</span>
 					</div>
 				</div>
 			</header>
 
-			<div
-				className="relative flex flex-1 items-start justify-center overflow-y-auto px-6 py-10"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
-				<div className="w-full max-w-[640px] space-y-8">
+			<div className="flex-1 overflow-y-auto px-6 py-8">
+				<div className="mx-auto w-full max-w-[640px] space-y-8">
 					<StepIndicator stepIndex={stepIndex} />
 
 					{error && (
@@ -262,9 +233,7 @@ function StepIndicator({ stepIndex }: { stepIndex: number }) {
 	const labels = ["Method", "Details", "Done"];
 	return (
 		<div>
-			<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-				§ — Recover wallet
-			</div>
+			<div className="text-[11px] font-medium text-muted-foreground">Recover wallet</div>
 			<div className="mt-3 flex items-center gap-2">
 				{labels.map((label, i) => {
 					const active = i === stepIndex;
@@ -277,7 +246,7 @@ function StepIndicator({ stepIndex }: { stepIndex: number }) {
 								}`}
 							/>
 							<span
-								className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
+								className={`text-[10px] font-medium ${
 									active || done ? "text-foreground" : "text-muted-foreground/70"
 								}`}
 							>
@@ -342,7 +311,7 @@ function MethodStep({
 			<button
 				type="button"
 				onClick={onNext}
-				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px]"
+				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
 			>
 				Continue
 			</button>
@@ -416,9 +385,7 @@ function DetailsStep({
 			}}
 		>
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Wallet name
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Wallet name</span>
 				<input
 					type="text"
 					value={name}
@@ -429,16 +396,14 @@ function DetailsStep({
 			</label>
 
 			<div>
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Network
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Network</span>
 				<div className="mt-2 grid grid-cols-3 gap-2 rounded-md border border-border bg-card/40 p-1">
 					{NETWORKS.map((n) => (
 						<button
 							key={n}
 							type="button"
 							onClick={() => onChangeNetwork(n)}
-							className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+							className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 								network === n
 									? "bg-primary text-primary-foreground"
 									: "text-muted-foreground hover:text-foreground"
@@ -452,9 +417,7 @@ function DetailsStep({
 
 			<div>
 				<div className="flex items-center justify-between">
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Recovery phrase
-					</span>
+					<span className="text-[12px] font-medium text-muted-foreground">Recovery phrase</span>
 					<div className="flex items-center gap-2">
 						<ChecksumStatus allFilled={allWordsFilled} valid={mnemonicValid} />
 						<div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
@@ -463,7 +426,7 @@ function DetailsStep({
 									key={n}
 									type="button"
 									onClick={() => onChangeRecoveryLength(n)}
-									className={`rounded-sm px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+									className={`rounded-sm px-2 py-1 text-[11px] font-medium transition-colors ${
 										recoveryLength === n
 											? "bg-primary/[0.10] text-foreground"
 											: "text-muted-foreground hover:text-foreground"
@@ -489,14 +452,12 @@ function DetailsStep({
 			{method === "cosigner" && (
 				<>
 					<div>
-						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-							Policy type
-						</span>
+						<span className="text-[12px] font-medium text-muted-foreground">Policy type</span>
 						<div className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-border bg-card/40 p-1">
 							<button
 								type="button"
 								onClick={() => onChangePolicyType("multisig")}
-								className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+								className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 									policyType === "multisig"
 										? "bg-primary text-primary-foreground"
 										: "text-muted-foreground hover:text-foreground"
@@ -507,7 +468,7 @@ function DetailsStep({
 							<button
 								type="button"
 								onClick={() => onChangePolicyType("timelocked")}
-								className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+								className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 									policyType === "timelocked"
 										? "bg-primary text-primary-foreground"
 										: "text-muted-foreground hover:text-foreground"
@@ -518,7 +479,7 @@ function DetailsStep({
 						</div>
 					</div>
 					<label className="block">
-						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						<span className="text-[12px] font-medium text-muted-foreground">
 							External descriptor (receive)
 						</span>
 						<textarea
@@ -532,7 +493,7 @@ function DetailsStep({
 						/>
 					</label>
 					<label className="block">
-						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						<span className="text-[12px] font-medium text-muted-foreground">
 							Internal descriptor (change)
 						</span>
 						<textarea
@@ -549,7 +510,7 @@ function DetailsStep({
 			)}
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+				<span className="text-[12px] font-medium text-muted-foreground">
 					BIP39 passphrase (optional)
 				</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
@@ -568,7 +529,7 @@ function DetailsStep({
 			</label>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+				<span className="text-[12px] font-medium text-muted-foreground">
 					Wallet-encryption passphrase
 				</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
@@ -583,9 +544,7 @@ function DetailsStep({
 			</label>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Confirm passphrase
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Confirm passphrase</span>
 				<input
 					type="password"
 					value={confirmPassphrase}
@@ -593,9 +552,7 @@ function DetailsStep({
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
 				/>
 				{confirmPassphrase.length > 0 && confirmPassphrase !== passphrase && (
-					<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
-						Passphrases don't match
-					</span>
+					<span className="mt-1 block text-[11px] text-destructive">Passphrases don't match</span>
 				)}
 			</label>
 
@@ -604,14 +561,14 @@ function DetailsStep({
 					type="button"
 					onClick={onBack}
 					disabled={submitting}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				<button
 					type="submit"
 					disabled={!ready || submitting}
-					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{submitting ? "Recovering…" : "Recover wallet"}
 				</button>
@@ -623,17 +580,17 @@ function DetailsStep({
 function ChecksumStatus({ allFilled, valid }: { allFilled: boolean; valid: boolean }) {
 	if (!allFilled) {
 		return (
-			<span className="rounded-sm border border-border bg-card px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+			<span className="rounded-sm border border-border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground">
 				Incomplete
 			</span>
 		);
 	}
 	return valid ? (
-		<span className="rounded-sm border border-emerald-500/40 bg-emerald-500/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400">
+		<span className="rounded-sm border border-success/40 bg-success/[0.08] px-1.5 py-0.5 text-[11px] text-success">
 			Valid checksum
 		</span>
 	) : (
-		<span className="rounded-sm border border-destructive/40 bg-destructive/[0.06] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-destructive">
+		<span className="rounded-sm border border-destructive/40 bg-destructive/[0.06] px-1.5 py-0.5 text-[11px] text-destructive">
 			Bad checksum
 		</span>
 	);
@@ -685,7 +642,7 @@ function WordInput({
 					value && !bip39Wordlist.includes(value) ? "border-destructive/50" : "border-border"
 				}`}
 			>
-				<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
+				<span className="text-[10px] text-muted-foreground/70">
 					{String(index + 1).padStart(2, "0")}
 				</span>
 				<input
@@ -749,9 +706,7 @@ function DoneStep({ walletId, onFinish }: { walletId: string; onFinish: () => vo
 	return (
 		<div className="space-y-6">
 			<div className="rounded-md border border-border bg-card/40 px-5 py-6 text-center">
-				<div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Wallet recovered
-				</div>
+				<div className="text-[12px] font-medium text-muted-foreground">Wallet recovered</div>
 				<div className="mt-2 font-mono text-[12px] text-foreground">
 					{walletId.slice(0, 12)}…{walletId.slice(-4)}
 				</div>
@@ -762,7 +717,7 @@ function DoneStep({ walletId, onFinish }: { walletId: string; onFinish: () => vo
 			<button
 				type="button"
 				onClick={onFinish}
-				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px]"
+				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
 			>
 				Open wallet
 			</button>

@@ -7,12 +7,10 @@
 // hook for the visible status indicator.
 
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { SigVaultLogo } from "../../components/SigVaultLogo";
-import SwitchModeButton from "../../components/SwitchModeButton";
-import WindowControls from "../../components/WindowControls";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import type { LocalWalletSummary } from "../../types/events";
 
 type ModalState =
@@ -54,17 +52,6 @@ export default function LocalWalletList() {
 	const [error, setError] = useState<string | null>(null);
 	const [modal, setModal] = useState<ModalState>({ kind: "none" });
 	const navigate = useNavigate();
-
-	const onDrag = useCallback((e: React.MouseEvent) => {
-		if (e.buttons === 1 && e.detail === 1) {
-			e.preventDefault();
-			try {
-				getCurrentWindow().startDragging();
-			} catch {
-				// no-op outside Tauri
-			}
-		}
-	}, []);
 
 	const loadWallets = useCallback(async () => {
 		setLoading(true);
@@ -115,48 +102,30 @@ export default function LocalWalletList() {
 	};
 
 	return (
-		<div
-			onMouseDown={onDrag}
-			className="relative flex h-screen w-full select-none overflow-hidden bg-background"
-		>
-			<WindowControls />
-
-			<div className="pointer-events-none absolute inset-0 bg-grid mask-radial-fade opacity-[0.06]" />
-			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
-			<div className="pointer-events-none absolute left-1/2 top-1/3 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-primary/[0.06] blur-[140px]" />
-
-			<main className="relative flex flex-1 flex-col overflow-hidden">
+		<div className="h-full w-full overflow-y-auto">
+			<div className="mx-auto flex max-w-3xl flex-col gap-6 px-10 py-9">
 				{/* ── Header ── */}
-				<header className="flex shrink-0 items-end justify-between px-12 pt-10 pb-8">
-					<div onMouseDown={(e) => e.stopPropagation()}>
-						<div className="flex items-center gap-3">
-							<SigVaultLogo className="h-9 w-9 text-foreground" />
-							<div className="flex flex-col leading-none">
-								<span className="font-mono text-[13px] font-bold tracking-[0.22em] text-foreground">
-									SIGVAULT
-								</span>
-								<span className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-									local · standalone
-								</span>
-							</div>
-						</div>
-						<div className="mt-8 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-							§ — Wallets
-						</div>
-						<h1 className="mt-3 text-[26px] font-medium leading-[1.15] tracking-[-0.015em] text-foreground">
-							Your local wallets.
+				<div
+					className="flex items-start justify-between gap-4"
+					onMouseDown={(e) => e.stopPropagation()}
+				>
+					<div>
+						<h1 className="text-[20px] font-semibold tracking-tight text-foreground">
+							Local wallets
 						</h1>
+						<p className="mt-1 text-[13px] text-muted-foreground">
+							On-device wallets. Your seed never leaves this machine.
+						</p>
 					</div>
 
-					<div className="flex items-center gap-3" onMouseDown={(e) => e.stopPropagation()}>
-						<button
-							type="button"
+					<div className="flex shrink-0 items-center gap-2">
+						<Button
+							variant="outline"
+							size="icon"
 							onClick={() => navigate("/local/settings")}
 							title="Settings"
-							className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:text-foreground"
 						>
 							<svg
-								className="h-3.5 w-3.5"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
@@ -167,29 +136,15 @@ export default function LocalWalletList() {
 								<circle cx="12" cy="12" r="3" />
 								<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
 							</svg>
-						</button>
-						<button
-							type="button"
-							onClick={loadWallets}
-							disabled={loading}
-							className="flex h-9 items-center rounded-md border border-border bg-background px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-						>
-							↻ Refresh
-						</button>
-						<button
-							type="button"
-							onClick={() => navigate("/local/wallets/recover")}
-							className="flex h-9 items-center rounded-md border border-border bg-background px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
-						>
+						</Button>
+						<Button variant="outline" size="sm" onClick={loadWallets} disabled={loading}>
+							Refresh
+						</Button>
+						<Button variant="outline" size="sm" onClick={() => navigate("/local/wallets/recover")}>
 							Recover
-						</button>
-						<button
-							type="button"
-							onClick={() => navigate("/local/wallets/new")}
-							className="group flex h-9 items-center gap-2 rounded-md bg-primary px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px]"
-						>
+						</Button>
+						<Button size="sm" onClick={() => navigate("/local/wallets/new")}>
 							<svg
-								className="h-3 w-3"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
@@ -199,17 +154,14 @@ export default function LocalWalletList() {
 								<path d="M12 5v14M5 12h14" />
 							</svg>
 							New wallet
-						</button>
+						</Button>
 					</div>
-				</header>
+				</div>
 
 				{/* ── Body ── */}
-				<div
-					className="relative flex-1 overflow-y-auto px-12 pb-12"
-					onMouseDown={(e) => e.stopPropagation()}
-				>
+				<div onMouseDown={(e) => e.stopPropagation()}>
 					{error && (
-						<div className="mb-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
+						<div className="mb-4 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
 							<svg
 								className="mt-0.5 h-3.5 w-3.5 shrink-0"
 								viewBox="0 0 24 24"
@@ -228,13 +180,13 @@ export default function LocalWalletList() {
 					)}
 
 					{loading ? (
-						<div className="rounded-md border border-border bg-card px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+						<div className="rounded-lg border border-border bg-card px-4 py-3 text-[13px] text-muted-foreground">
 							Loading wallets…
 						</div>
 					) : wallets.length === 0 ? (
 						<EmptyState onCreate={() => navigate("/local/wallets/new")} />
 					) : (
-						<ul className="grid gap-3">
+						<ul className="flex flex-col gap-2.5">
 							{wallets.map((w) => (
 								<WalletCard
 									key={w.id}
@@ -246,12 +198,8 @@ export default function LocalWalletList() {
 							))}
 						</ul>
 					)}
-
-					<div className="mt-10 flex items-center justify-center">
-						<SwitchModeButton />
-					</div>
 				</div>
-			</main>
+			</div>
 
 			{modal.kind === "unlock" && (
 				<UnlockModal
@@ -297,20 +245,15 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 					<path d="M3 9V7a2 2 0 0 1 2-2h12" />
 				</svg>
 			</div>
-			<h2 className="mt-5 text-[16px] font-medium tracking-[-0.01em] text-foreground">
-				No wallets yet.
+			<h2 className="mt-5 text-[16px] font-semibold tracking-tight text-foreground">
+				No wallets yet
 			</h2>
 			<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
 				Create your first local wallet to start receiving and signing transactions on-device. Your
 				seed never leaves this machine.
 			</p>
-			<button
-				type="button"
-				onClick={onCreate}
-				className="mt-6 flex h-10 items-center gap-2 rounded-md bg-primary px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px]"
-			>
+			<Button className="mt-6" onClick={onCreate}>
 				<svg
-					className="h-3 w-3"
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
@@ -320,7 +263,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 					<path d="M12 5v14M5 12h14" />
 				</svg>
 				Create wallet
-			</button>
+			</Button>
 		</div>
 	);
 }
@@ -338,13 +281,13 @@ function WalletCard({
 }) {
 	const fp = wallet.fingerprints[0];
 	return (
-		<li className="group relative rounded-md border border-border bg-card transition-colors hover:border-primary/60 hover:bg-primary/[0.03]">
+		<li className="group relative rounded-lg border border-border bg-card transition-colors hover:border-primary/50">
 			<button
 				type="button"
 				onClick={onOpen}
-				className="flex w-full items-center justify-between px-5 py-4 text-left"
+				className="flex w-full items-center justify-between px-4 py-3.5 text-left"
 			>
-				<div className="flex items-center gap-4">
+				<div className="flex items-center gap-3.5">
 					<div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background">
 						{wallet.locked ? (
 							<svg
@@ -375,23 +318,17 @@ function WalletCard({
 						)}
 					</div>
 					<div className="flex flex-col">
-						<div className="flex items-center gap-3">
+						<div className="flex items-center gap-2">
 							<span className="text-[14px] font-medium text-foreground">{wallet.name}</span>
-							<span className="rounded-sm border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
-								{formatNetwork(wallet.network)}
-							</span>
-							{wallet.recovery_only && (
-								<span className="rounded-sm border border-amber-500/40 bg-amber-500/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
-									Recovery-only
-								</span>
-							)}
+							<Badge variant="outline">{formatNetwork(wallet.network)}</Badge>
+							{wallet.recovery_only && <Badge variant="warning">Recovery-only</Badge>}
 						</div>
-						<div className="mt-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+						<div className="mt-1 flex items-center gap-2 text-[12px] text-muted-foreground">
 							<span>{formatPolicyType(wallet.policy_type)}</span>
 							{fp && (
 								<>
 									<span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
-									<span>fp · {fp}</span>
+									<span className="font-mono">{fp}</span>
 								</>
 							)}
 							<span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
@@ -411,7 +348,7 @@ function WalletCard({
 					<path d="m9 18 6-6-6-6" />
 				</svg>
 			</button>
-			<div className="absolute right-12 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100">
+			<div className="absolute right-11 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100">
 				<div className="flex items-center gap-1">
 					{!wallet.locked && (
 						<button
@@ -499,9 +436,7 @@ function UnlockModal({
 		<ModalShell title="Unlock wallet" subtitle={wallet.name} onClose={onClose}>
 			<form onSubmit={submit} className="space-y-4">
 				<label className="block">
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Passphrase
-					</span>
+					<span className="text-[12px] font-medium text-muted-foreground">Passphrase</span>
 					<input
 						type="password"
 						value={passphrase}
@@ -514,13 +449,9 @@ function UnlockModal({
 						{error}
 					</div>
 				)}
-				<button
-					type="submit"
-					disabled={submitting || !passphrase}
-					className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-				>
+				<Button type="submit" size="lg" disabled={submitting || !passphrase} className="w-full">
 					{submitting ? "Unlocking…" : "Unlock"}
-				</button>
+				</Button>
 			</form>
 		</ModalShell>
 	);
@@ -569,9 +500,7 @@ function DeleteModal({
 					requires the original BIP39 mnemonic. Type the wallet name to confirm.
 				</p>
 				<label className="block">
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Confirm name
-					</span>
+					<span className="text-[12px] font-medium text-muted-foreground">Confirm name</span>
 					<input
 						type="text"
 						value={confirmName}
@@ -582,9 +511,7 @@ function DeleteModal({
 				</label>
 				{requirePassphrase && (
 					<label className="block">
-						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-							Passphrase
-						</span>
+						<span className="text-[12px] font-medium text-muted-foreground">Passphrase</span>
 						<input
 							type="password"
 							value={passphrase}
@@ -598,13 +525,15 @@ function DeleteModal({
 						{error}
 					</div>
 				)}
-				<button
+				<Button
 					type="submit"
+					variant="destructive"
+					size="lg"
 					disabled={submitting || !ready}
-					className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-destructive text-[13px] font-medium text-destructive-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="w-full"
 				>
 					{submitting ? "Deleting…" : "Delete wallet"}
-				</button>
+				</Button>
 			</form>
 		</ModalShell>
 	);
@@ -632,12 +561,8 @@ function ModalShell({
 			>
 				<div className="mb-5 flex items-start justify-between">
 					<div>
-						<h2 className="text-[16px] font-medium tracking-[-0.01em] text-foreground">{title}</h2>
-						{subtitle && (
-							<p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-								{subtitle}
-							</p>
-						)}
+						<h2 className="text-[16px] font-semibold tracking-tight text-foreground">{title}</h2>
+						{subtitle && <p className="mt-1 text-[12px] text-muted-foreground">{subtitle}</p>}
 					</div>
 					<button
 						type="button"

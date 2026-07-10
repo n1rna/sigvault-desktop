@@ -106,7 +106,7 @@ describe("Event types", () => {
 	it("WindowApplicationRoute covers all routes", () => {
 		const routes: WindowApplicationRoute[] = [
 			"Loading",
-			"ModeChooser",
+			"Welcome",
 			"SelectEnv",
 			"Login",
 			"MainPage",

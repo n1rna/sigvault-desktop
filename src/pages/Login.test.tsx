@@ -4,10 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Login } from "./Login";
 
-vi.mock("../components/WindowControls", () => ({
-	default: () => <div data-testid="window-controls" />,
-}));
-
 const EMPTY_ENV_RESPONSE = { environments: [], selected_id: null };
 
 type AuthBehavior =
@@ -42,7 +38,7 @@ describe("Login", () => {
 
 	it("renders login page with heading and button", () => {
 		render(<Login />);
-		expect(screen.getByText("Welcome back.")).toBeInTheDocument();
+		expect(screen.getByText("Welcome back")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: /Continue with SigVault/i })).toBeInTheDocument();
 	});
 

@@ -5,6 +5,7 @@ import type { CommandResult } from "../types/events";
 import type { DeviceInfo, DiscoveredDevice, WalletConfig } from "../types/hardware";
 import { getDeviceFingerprint, isDeviceSupported } from "../types/hardware";
 import DeviceList from "./DeviceList";
+import { Button } from "./ui/button";
 
 interface DeviceDiscoveryProps {
 	network?: string;
@@ -124,23 +125,18 @@ export default function DeviceDiscovery({
 		<div className="flex flex-col gap-6 rounded-lg border border-border bg-card p-6">
 			<div className="flex items-center justify-between gap-4">
 				<div>
-					<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-						§ Hardware Discovery
-					</div>
-					<h2 className="mt-1 text-lg font-medium tracking-tight text-foreground">
-						Hardware Wallet
+					<h2 className="text-[15px] font-semibold tracking-tight text-foreground">
+						Hardware wallet
 					</h2>
+					<p className="mt-0.5 text-[12px] text-muted-foreground">
+						Connect and unlock your device, then discover it.
+					</p>
 				</div>
-				<button
-					type="button"
-					onClick={handleDiscover}
-					disabled={discovering}
-					className="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-				>
+				<Button onClick={handleDiscover} disabled={discovering}>
 					{discovering ? (
-						<span className="flex items-center gap-2">
+						<>
 							<svg
-								className="h-3.5 w-3.5 animate-spin"
+								className="animate-spin"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
@@ -149,11 +145,11 @@ export default function DeviceDiscovery({
 								<path d="M21 12a9 9 0 1 1-6.219-8.56" />
 							</svg>
 							Scanning…
-						</span>
+						</>
 					) : (
-						"Discover Devices"
+						"Discover devices"
 					)}
-				</button>
+				</Button>
 			</div>
 
 			{error && (
@@ -174,16 +170,9 @@ export default function DeviceDiscovery({
 					/>
 
 					{canExtract && (
-						<div className="flex flex-col gap-4 rounded-md bg-accent p-6">
-							<button
-								type="button"
-								onClick={handleExtractInfo}
-								disabled={extracting}
-								className="rounded-md bg-primary px-6 py-3 text-[0.9375rem] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								{extracting ? "Extracting Device Info…" : "Continue with Selected Device"}
-							</button>
-						</div>
+						<Button size="lg" className="w-full" onClick={handleExtractInfo} disabled={extracting}>
+							{extracting ? "Extracting device info…" : "Continue with selected device"}
+						</Button>
 					)}
 				</>
 			)}

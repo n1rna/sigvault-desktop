@@ -38,7 +38,7 @@ pub async fn cmd_initialize_app(
         update_state(
             &window,
             StateUpdateEvent::builder()
-                .route(WindowApplicationRoute::ModeChooser)
+                .route(WindowApplicationRoute::Welcome)
                 .build(),
         )
         .await
@@ -71,13 +71,13 @@ pub async fn cmd_initialize_app(
             update_state(
                 &window,
                 StateUpdateEvent::builder()
-                    .route(WindowApplicationRoute::ModeChooser)
+                    .route(WindowApplicationRoute::Welcome)
                     .build(),
             )
             .await
             .map_err(|e| format!("Failed to update state: {e}"))?;
             return Ok(CommandResult::success(
-                "Initialization complete - mode chooser",
+                "Initialization complete - welcome",
             ));
         }
         Some(AppMode::Local) => {
