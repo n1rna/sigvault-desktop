@@ -3,10 +3,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import Navbar from "./components/Navbar";
+import TopBar from "./components/TopBar";
 import UpdateBanner from "./components/UpdateBanner";
 import { AppStateProvider, useAppState } from "./contexts/AppStateContext";
-import Dashboard from "./pages/Dashboard";
 import Loading from "./pages/Loading";
 import { Login } from "./pages/Login";
 import CreateWalletWizard from "./pages/local/CreateWalletWizard";
@@ -17,15 +16,18 @@ import RecoveryFlow from "./pages/local/RecoveryFlow";
 import SendScreen from "./pages/local/SendScreen";
 import WalletDashboard from "./pages/local/WalletDashboard";
 import MachineRegistration from "./pages/MachineRegistration";
-import ModeChooser from "./pages/ModeChooser";
 import RemoteSessions from "./pages/RemoteSessions";
 import SelectEnv from "./pages/SelectEnv";
 import SessionDetails from "./pages/SessionDetails";
+import Welcome from "./pages/Welcome";
 
-function AuthenticatedLayout() {
+// Global chrome wrapping every route: the top bar owns window controls +
+// the context switcher and adapts its contents to auth/mode state, so it
+// renders on all pages (including pre-context ones like Welcome/Loading).
+function GlobalLayout() {
 	return (
 		<div className="flex h-full flex-col">
-			<Navbar />
+			<TopBar />
 			<div className="flex-1 overflow-hidden">
 				<Outlet />
 			</div>
@@ -46,10 +48,10 @@ interface RouteSpec {
 
 const ROUTE_PATHS: Record<string, RouteSpec> = {
 	Loading: { target: "/" },
-	ModeChooser: { target: "/mode-chooser" },
+	Welcome: { target: "/welcome" },
 	SelectEnv: { target: "/select-env" },
 	Login: { target: "/login" },
-	MainPage: { target: "/dashboard" },
+	MainPage: { target: "/sessions" },
 	MachineRegistration: { target: "/register" },
 	RemoteSessions: { target: "/sessions" },
 	SessionDetails: { target: "/session-details" },
@@ -86,19 +88,18 @@ function AppRouter() {
 
 	return (
 		<Routes>
-			<Route path="/" element={<Loading />} />
-			<Route path="/mode-chooser" element={<ModeChooser />} />
-			<Route path="/select-env" element={<SelectEnv />} />
-			<Route path="/login" element={<Login />} />
-			<Route path="/local/wallets" element={<LocalWalletList />} />
-			<Route path="/local/wallets/new" element={<CreateWalletWizard />} />
-			<Route path="/local/wallets/recover" element={<RecoveryFlow />} />
-			<Route path="/local/wallets/:walletId" element={<WalletDashboard />} />
-			<Route path="/local/wallets/:walletId/receive" element={<ReceiveScreen />} />
-			<Route path="/local/wallets/:walletId/send" element={<SendScreen />} />
-			<Route path="/local/settings" element={<LocalSettings />} />
-			<Route element={<AuthenticatedLayout />}>
-				<Route path="/dashboard" element={<Dashboard />} />
+			<Route element={<GlobalLayout />}>
+				<Route path="/" element={<Loading />} />
+				<Route path="/welcome" element={<Welcome />} />
+				<Route path="/select-env" element={<SelectEnv />} />
+				<Route path="/login" element={<Login />} />
+				<Route path="/local/wallets" element={<LocalWalletList />} />
+				<Route path="/local/wallets/new" element={<CreateWalletWizard />} />
+				<Route path="/local/wallets/recover" element={<RecoveryFlow />} />
+				<Route path="/local/wallets/:walletId" element={<WalletDashboard />} />
+				<Route path="/local/wallets/:walletId/receive" element={<ReceiveScreen />} />
+				<Route path="/local/wallets/:walletId/send" element={<SendScreen />} />
+				<Route path="/local/settings" element={<LocalSettings />} />
 				<Route path="/register" element={<MachineRegistration />} />
 				<Route path="/sessions" element={<RemoteSessions />} />
 				<Route path="/session-details" element={<SessionDetails />} />

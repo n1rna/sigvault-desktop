@@ -80,7 +80,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             cmd_initialize_app,
             cmd_set_app_mode,
-            cmd_clear_app_mode,
             cmd_list_environments,
             cmd_set_environment,
             cmd_clear_environment,

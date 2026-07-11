@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { Button } from "../components/ui/button";
 import type { CommandResult } from "../types/events";
+
+const VALUE_POINTS = [
+	"Recognizable across multiple machines",
+	"Bound to this device's identifier",
+	"Editable later in the web dashboard",
+];
 
 export default function MachineRegistration() {
 	const [machineName, setMachineName] = useState("");
@@ -43,40 +50,30 @@ export default function MachineRegistration() {
 	};
 
 	return (
-		<div className="relative flex h-full w-full overflow-hidden">
-			{/* ── Ambient background ── */}
-			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.06]" />
-			<div className="pointer-events-none absolute -left-40 top-1/4 h-[420px] w-[420px] rounded-full bg-primary/[0.05] blur-[140px]" />
-			<div className="pointer-events-none absolute -right-32 bottom-0 h-[320px] w-[320px] rounded-full bg-accent/[0.05] blur-[120px]" />
-
-			{/* ═══ Left column: hero ═══ */}
-			<section className="relative flex flex-1 flex-col justify-center px-12 py-10">
-				<div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-					<span className="h-px w-6 bg-primary/60" />§ 01 — Register machine
-				</div>
-
-				<h1 className="mt-5 max-w-[440px] text-[36px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground">
-					Give this device
-					<br />
-					<span className="text-primary">a name you'll recognize.</span>
+		<div className="flex h-full w-full overflow-hidden">
+			{/* ═══ Left column: intro ═══ */}
+			<section className="hidden flex-1 flex-col justify-center px-12 py-10 sm:flex">
+				<h1 className="max-w-[440px] text-[28px] font-semibold leading-tight tracking-tight text-foreground text-balance">
+					Give this device a name you'll recognize
 				</h1>
-
-				<p className="mt-5 max-w-[420px] text-[13px] leading-relaxed text-muted-foreground">
+				<p className="mt-4 max-w-[420px] text-[13px] leading-relaxed text-muted-foreground">
 					SigVault ties signing privileges to the physical machine running the desktop app.
 					Registering this one unlocks the remote signing workflow for your account.
 				</p>
-
-				<ul className="mt-8 space-y-3">
-					{[
-						"Recognizable across multiple machines",
-						"Bound to this device's identifier",
-						"Editable later in web dashboard",
-					].map((label) => (
-						<li
-							key={label}
-							className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
-						>
-							<span className="h-px w-5 bg-primary/50" />
+				<ul className="mt-7 space-y-2.5">
+					{VALUE_POINTS.map((label) => (
+						<li key={label} className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
+							<svg
+								className="h-3.5 w-3.5 shrink-0 text-primary"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<path d="M20 6 9 17l-5-5" />
+							</svg>
 							{label}
 						</li>
 					))}
@@ -84,13 +81,8 @@ export default function MachineRegistration() {
 			</section>
 
 			{/* ═══ Right column: form ═══ */}
-			<aside className="relative flex w-[460px] flex-col justify-center border-l border-border/80 bg-card/40 px-10 py-10 backdrop-blur-sm">
-				<div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-border to-transparent" />
-
-				<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-					§ Form
-				</div>
-				<h2 className="mt-3 text-[20px] font-medium tracking-tight text-foreground">
+			<aside className="flex w-full flex-col justify-center border-l border-border bg-card/40 px-10 py-10 sm:w-[460px]">
+				<h2 className="text-[18px] font-semibold tracking-tight text-foreground">
 					Machine details
 				</h2>
 
@@ -115,26 +107,30 @@ export default function MachineRegistration() {
 
 				<form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
 					<div>
-						<label className="mb-2 block font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+						<label
+							htmlFor="machine-name"
+							className="mb-2 block text-[12px] font-medium text-muted-foreground"
+						>
 							Machine name
 						</label>
 						<input
+							id="machine-name"
 							type="text"
 							placeholder="e.g. Nima's MacBook Pro"
 							value={machineName}
 							onChange={(e) => setMachineName(e.target.value)}
 							disabled={loading}
 							required
-							className="h-11 w-full rounded-md border border-border bg-background px-3.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 transition-colors focus:border-primary/60 focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+							className="h-11 w-full rounded-md border border-border bg-background px-3.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:opacity-50"
 						/>
 					</div>
 
 					{machineId && (
 						<div>
-							<label className="mb-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+							<div className="mb-2 flex items-center justify-between text-[12px] font-medium text-muted-foreground">
 								<span>Machine ID</span>
 								<span className="text-muted-foreground/50">read-only</span>
-							</label>
+							</div>
 							<div className="flex h-11 w-full items-center rounded-md border border-border bg-muted/30 px-3.5 font-mono text-[11px] tabular-nums text-muted-foreground">
 								{machineId}
 							</div>
@@ -143,25 +139,26 @@ export default function MachineRegistration() {
 
 					{machineType && (
 						<div>
-							<label className="mb-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+							<div className="mb-2 flex items-center justify-between text-[12px] font-medium text-muted-foreground">
 								<span>Machine type</span>
 								<span className="text-muted-foreground/50">detected</span>
-							</label>
+							</div>
 							<div className="flex h-11 w-full items-center rounded-md border border-border bg-muted/30 px-3.5 font-mono text-[11px] text-muted-foreground">
 								{machineType}
 							</div>
 						</div>
 					)}
 
-					<button
+					<Button
 						type="submit"
+						size="lg"
+						className="mt-2 h-12 w-full"
 						disabled={loading || !machineName}
-						className="group mt-2 flex h-12 w-full items-center justify-center gap-2.5 rounded-md bg-primary text-[13px] font-medium tracking-[0.02em] text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-md"
 					>
 						{loading ? (
 							<>
 								<svg
-									className="h-4 w-4 animate-spin"
+									className="animate-spin"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
@@ -176,7 +173,6 @@ export default function MachineRegistration() {
 							<>
 								Register machine
 								<svg
-									className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
@@ -189,10 +185,10 @@ export default function MachineRegistration() {
 								</svg>
 							</>
 						)}
-					</button>
+					</Button>
 
-					<p className="text-center font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground/70">
-						you can rename this later
+					<p className="text-center text-[12px] text-muted-foreground/70">
+						You can rename this later
 					</p>
 				</form>
 			</aside>

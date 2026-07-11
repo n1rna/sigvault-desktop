@@ -13,10 +13,10 @@
 // UX nicety.
 
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import WindowControls from "../../components/WindowControls";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalSettings as LocalSettingsType } from "../../types/events";
 
@@ -46,17 +46,6 @@ export default function LocalSettings() {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [savedFlash, setSavedFlash] = useState(false);
-
-	const onDrag = useCallback((e: React.MouseEvent) => {
-		if (e.buttons === 1 && e.detail === 1) {
-			e.preventDefault();
-			try {
-				getCurrentWindow().startDragging();
-			} catch {
-				// no-op outside Tauri
-			}
-		}
-	}, []);
 
 	useEffect(() => {
 		(async () => {
@@ -107,55 +96,34 @@ export default function LocalSettings() {
 	};
 
 	return (
-		<div
-			onMouseDown={onDrag}
-			className="relative flex h-screen w-full select-none flex-col overflow-hidden bg-background"
-		>
-			<WindowControls />
-
-			<div className="pointer-events-none absolute inset-0 bg-grid mask-radial-fade opacity-[0.06]" />
-			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
-
-			{/* Header bar — pt-10 keeps clicks below WindowControls overlay */}
-			<header
-				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 pb-4 pt-10 backdrop-blur-sm"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
-				<div className="flex items-center gap-3">
-					<button
-						type="button"
-						onClick={() => navigate("/local/wallets")}
-						className="flex h-8 w-8 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-						title="Back to wallets"
+		<div className="flex h-full w-full flex-col overflow-hidden">
+			{/* Header bar */}
+			<header className="flex shrink-0 items-center gap-3 border-b border-border bg-card/60 px-6 py-3">
+				<button
+					type="button"
+					onClick={() => navigate("/local/wallets")}
+					className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					title="Back to wallets"
+				>
+					<svg
+						className="h-4 w-4"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
 					>
-						<svg
-							className="h-4 w-4"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-						>
-							<path d="m15 18-6-6 6-6" />
-						</svg>
-					</button>
-					<div className="flex flex-col leading-none">
-						<span className="text-[14px] font-medium text-foreground">Settings</span>
-						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-							local · electrs endpoints
-						</span>
-					</div>
-				</div>
+						<path d="m15 18-6-6 6-6" />
+					</svg>
+				</button>
+				<span className="text-[14px] font-semibold text-foreground">Settings</span>
 			</header>
 
-			<div
-				className="relative flex-1 overflow-y-auto px-8 py-8"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
+			<div className="flex-1 overflow-y-auto px-6 py-7">
 				<div className="mx-auto max-w-2xl space-y-8">
 					{loading && (
-						<div className="rounded-md border border-border bg-card px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+						<div className="rounded-md border border-border bg-card px-4 py-3 text-[13px] text-muted-foreground">
 							Loading settings…
 						</div>
 					)}
@@ -182,10 +150,8 @@ export default function LocalSettings() {
 					{settings && (
 						<>
 							<section>
-								<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-									§ — Default network
-								</div>
-								<p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+								<h2 className="text-[13px] font-semibold text-foreground">Default network</h2>
+								<p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
 									Pre-selected on the wallet creation wizard. Mainnet is not available in v1.
 								</p>
 								<div className="mt-4 grid grid-cols-3 gap-2">
@@ -199,13 +165,11 @@ export default function LocalSettings() {
 												className={`flex flex-col items-start rounded-md border px-3 py-2.5 text-left transition-colors ${
 													selected
 														? "border-primary bg-primary/[0.06]"
-														: "border-border bg-card hover:border-primary/60"
+														: "border-border bg-card hover:border-primary/50"
 												}`}
 											>
 												<span className="text-[12px] font-medium text-foreground">{n.label}</span>
-												<span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
-													{n.hint}
-												</span>
+												<span className="mt-0.5 text-[11px] text-muted-foreground">{n.hint}</span>
 											</button>
 										);
 									})}
@@ -213,10 +177,8 @@ export default function LocalSettings() {
 							</section>
 
 							<section>
-								<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-									§ — Electrs endpoints
-								</div>
-								<p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+								<h2 className="text-[13px] font-semibold text-foreground">Electrs endpoints</h2>
+								<p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
 									URLs the wallet connects to for sync and broadcast. Accepts
 									<span className="mx-1 font-mono text-[11px] text-foreground">
 										ssl://host:port
@@ -225,7 +187,7 @@ export default function LocalSettings() {
 									<span className="mx-1 font-mono text-[11px] text-foreground">
 										tcp://host:port
 									</span>
-									, or bare
+									, or bare{" "}
 									<span className="mx-1 font-mono text-[11px] text-foreground">host:port</span>.
 									Leave blank if you haven't set up that network yet.
 								</p>
@@ -238,13 +200,11 @@ export default function LocalSettings() {
 												<div className="flex items-baseline justify-between">
 													<label
 														htmlFor={`electrs-${n.id}`}
-														className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground"
+														className="text-[12px] font-medium text-muted-foreground"
 													>
 														{n.label}
 													</label>
-													<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
-														{n.id}
-													</span>
+													<Badge variant="outline">{n.id}</Badge>
 												</div>
 												<input
 													id={`electrs-${n.id}`}
@@ -264,9 +224,7 @@ export default function LocalSettings() {
 													}`}
 												/>
 												{fieldError && (
-													<div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
-														{fieldError}
-													</div>
+													<div className="mt-1.5 text-[11px] text-destructive">{fieldError}</div>
 												)}
 											</div>
 										);
@@ -275,21 +233,14 @@ export default function LocalSettings() {
 							</section>
 
 							<div className="flex items-center gap-3">
-								<button
-									type="button"
-									onClick={save}
-									disabled={saving || hasErrors}
-									className="flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-6 text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-								>
+								<Button size="lg" onClick={save} disabled={saving || hasErrors}>
 									{saving ? "Saving…" : "Save settings"}
-								</button>
+								</Button>
 								{savedFlash && (
-									<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-success">
-										✓ Saved
-									</span>
+									<span className="text-[12px] font-medium text-success">✓ Saved</span>
 								)}
 								{hasErrors && !saving && (
-									<span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+									<span className="text-[12px] text-muted-foreground">
 										Fix the highlighted URLs to enable save
 									</span>
 								)}

@@ -13,13 +13,11 @@
 // signed PSBT.
 
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AnimatedQrModal from "../../components/AnimatedQrModal";
 import DeviceDiscovery from "../../components/DeviceDiscovery";
 import QrScanModal from "../../components/QrScanModal";
-import WindowControls from "../../components/WindowControls";
 import { loadPsbtFromFile, savePsbtToFile } from "../../lib/psbtFile";
 import type {
 	LocalBalance,
@@ -113,17 +111,6 @@ export default function SendScreen() {
 	// reassembles a signed PSBT for broadcast.
 	const [showQr, setShowQr] = useState(false);
 	const [scanQr, setScanQr] = useState(false);
-
-	const onDrag = useCallback((e: React.MouseEvent) => {
-		if (e.buttons === 1 && e.detail === 1) {
-			e.preventDefault();
-			try {
-				getCurrentWindow().startDragging();
-			} catch {
-				// no-op outside Tauri
-			}
-		}
-	}, []);
 
 	useEffect(() => {
 		if (!walletId) return;
@@ -353,19 +340,8 @@ export default function SendScreen() {
 	const sat = btcToSat(amountBtc);
 
 	return (
-		<div
-			onMouseDown={onDrag}
-			className="relative flex h-screen w-full select-none flex-col overflow-hidden bg-background"
-		>
-			<WindowControls />
-
-			<div className="pointer-events-none absolute inset-0 bg-grid mask-radial-fade opacity-[0.06]" />
-			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
-
-			<header
-				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 pb-4 pt-10 backdrop-blur-sm"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
+		<div className="flex h-full w-full flex-col overflow-hidden">
+			<header className="flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-6 py-3">
 				<div className="flex items-center gap-3">
 					<button
 						type="button"
@@ -387,18 +363,15 @@ export default function SendScreen() {
 					</button>
 					<div className="flex flex-col leading-none">
 						<span className="text-[14px] font-medium text-foreground">Send</span>
-						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+						<span className="mt-1 text-[12px] font-medium text-muted-foreground">
 							{wallet ? `${wallet.name} · ${wallet.network}` : "—"}
 						</span>
 					</div>
 				</div>
 			</header>
 
-			<div
-				className="relative flex flex-1 items-start justify-center overflow-y-auto px-6 py-10"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
-				<div className="w-full max-w-[520px] space-y-8">
+			<div className="flex-1 overflow-y-auto px-6 py-8">
+				<div className="mx-auto w-full max-w-[520px] space-y-8">
 					<StepIndicator stepIndex={stepIndex} showPathStep={showPathStep} />
 
 					{error && (
@@ -521,9 +494,7 @@ function StepIndicator({ stepIndex, showPathStep }: { stepIndex: number; showPat
 		: ["Compose", "Confirm", "Done"];
 	return (
 		<div>
-			<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-				§ — Send transaction
-			</div>
+			<div className="text-[11px] font-medium text-muted-foreground">Send bitcoin</div>
 			<div className="mt-3 flex items-center gap-2">
 				{labels.map((label, i) => {
 					const active = i === stepIndex;
@@ -536,7 +507,7 @@ function StepIndicator({ stepIndex, showPathStep }: { stepIndex: number; showPat
 								}`}
 							/>
 							<span
-								className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
+								className={`text-[10px] font-medium ${
 									active || done ? "text-foreground" : "text-muted-foreground/70"
 								}`}
 							>
@@ -586,9 +557,7 @@ function ComposeStep({
 			}}
 		>
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Recipient address
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Recipient address</span>
 				<input
 					type="text"
 					value={recipient}
@@ -602,9 +571,7 @@ function ComposeStep({
 			</label>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Amount (BTC)
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Amount (BTC)</span>
 				<input
 					type="text"
 					inputMode="decimal"
@@ -613,21 +580,17 @@ function ComposeStep({
 					placeholder="0.001"
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 font-mono text-[14px] text-foreground outline-none transition-colors focus:border-primary"
 				/>
-				<div className="mt-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+				<div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
 					<span>{sat !== null ? `${sat.toLocaleString()} sat` : "—"}</span>
 					{balance && <span>balance {formatBtc(balance.confirmed_sat)} BTC</span>}
 				</div>
 				{exceedsBalance && (
-					<div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
-						Amount exceeds confirmed balance
-					</div>
+					<div className="mt-1 text-[11px] text-destructive">Amount exceeds confirmed balance</div>
 				)}
 			</label>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Fee rate (sat/vbyte)
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Fee rate (sat/vbyte)</span>
 				<input
 					type="text"
 					inputMode="decimal"
@@ -636,7 +599,7 @@ function ComposeStep({
 					placeholder="2"
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 font-mono text-[13px] text-foreground outline-none transition-colors focus:border-primary"
 				/>
-				<p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
+				<p className="mt-1 text-[11px] text-muted-foreground/70">
 					Rounded up to the nearest sat/vbyte
 				</p>
 			</label>
@@ -644,7 +607,7 @@ function ComposeStep({
 			<button
 				type="submit"
 				disabled={!ready || busy}
-				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 			>
 				{busy ? (
 					<>
@@ -725,7 +688,7 @@ function PathStep({
 						>
 							<div className="flex items-baseline justify-between gap-3">
 								<span className="text-[13px] font-medium text-foreground">{p.label}</span>
-								<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+								<span className="text-[12px] font-medium text-muted-foreground">
 									{p.fingerprints.length === 0 ? "—" : `${p.threshold}-of-${p.fingerprints.length}`}
 								</span>
 							</div>
@@ -756,7 +719,7 @@ function PathStep({
 					type="button"
 					onClick={onBack}
 					disabled={busy}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
@@ -764,7 +727,7 @@ function PathStep({
 					type="button"
 					onClick={onSubmit}
 					disabled={!selectedId || busy}
-					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{busy ? "Building…" : "Build transaction"}
 				</button>
@@ -801,9 +764,7 @@ function ConfirmStep({
 			}}
 		>
 			<div className="rounded-md border border-border bg-card px-4 py-4">
-				<div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Review
-				</div>
+				<div className="text-[12px] font-medium text-muted-foreground">Review</div>
 				<dl className="mt-3 space-y-2 text-[12px]">
 					<SummaryRow label="To">
 						<span className="break-all font-mono text-foreground">{recipient}</span>
@@ -821,9 +782,7 @@ function ConfirmStep({
 			</div>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Passphrase
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Passphrase</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
 					Re-enter the wallet passphrase to authorize signing. The seed is decrypted only for this
 					transaction.
@@ -841,14 +800,14 @@ function ConfirmStep({
 					type="button"
 					onClick={onBack}
 					disabled={busy}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				<button
 					type="submit"
 					disabled={!passphrase || busy}
-					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{busy ? (
 						<>
@@ -876,9 +835,7 @@ function ConfirmStep({
 function SummaryRow({ label, children }: { label: string; children: React.ReactNode }) {
 	return (
 		<div className="flex flex-col gap-0.5">
-			<dt className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground/80">
-				{label}
-			</dt>
+			<dt className="text-[11px] font-medium text-muted-foreground/80">{label}</dt>
 			<dd>{children}</dd>
 		</div>
 	);
@@ -926,16 +883,14 @@ function DoneStep({
 			>
 				<div className="flex items-center justify-between gap-3">
 					<span className="break-all">{txid}</span>
-					<span className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
-						{copied ? "✓ Copied" : "Copy"}
-					</span>
+					<span className="text-[12px] text-muted-foreground">{copied ? "✓ Copied" : "Copy"}</span>
 				</div>
 			</button>
 
 			<button
 				type="button"
 				onClick={onFinish}
-				className="mt-8 flex h-11 items-center gap-2 rounded-md bg-primary px-6 text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px]"
+				className="mt-8 flex h-11 items-center gap-2 rounded-md bg-primary px-6 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
 			>
 				Back to wallet
 				<svg
@@ -991,9 +946,7 @@ function HardwareConfirmStep({
 	return (
 		<div className="space-y-6">
 			<div className="rounded-md border border-border bg-card px-4 py-4">
-				<div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Review
-				</div>
+				<div className="text-[12px] font-medium text-muted-foreground">Review</div>
 				<dl className="mt-3 space-y-2 text-[12px]">
 					<SummaryRow label="To">
 						<span className="break-all font-mono text-foreground">{recipient}</span>
@@ -1014,7 +967,7 @@ function HardwareConfirmStep({
 				<button
 					type="button"
 					onClick={() => setSignMode("connected")}
-					className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+					className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 						signMode === "connected"
 							? "bg-primary text-primary-foreground"
 							: "text-muted-foreground hover:text-foreground"
@@ -1025,7 +978,7 @@ function HardwareConfirmStep({
 				<button
 					type="button"
 					onClick={() => setSignMode("external")}
-					className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+					className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 						signMode === "external"
 							? "bg-primary text-primary-foreground"
 							: "text-muted-foreground hover:text-foreground"
@@ -1065,15 +1018,13 @@ function HardwareConfirmStep({
 					</div>
 
 					<div>
-						<div className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-							Send PSBT to signer
-						</div>
+						<div className="text-[12px] font-medium text-muted-foreground">Send PSBT to signer</div>
 						<div className="mt-2 grid grid-cols-2 gap-3">
 							<button
 								type="button"
 								onClick={() => void onExportPsbt()}
 								disabled={busy}
-								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
+								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-[12px] font-medium text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
 							>
 								Save .psbt
 							</button>
@@ -1081,7 +1032,7 @@ function HardwareConfirmStep({
 								type="button"
 								onClick={onShowQr}
 								disabled={busy}
-								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
+								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-[12px] font-medium text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
 							>
 								Show QR
 							</button>
@@ -1089,15 +1040,13 @@ function HardwareConfirmStep({
 					</div>
 
 					<div>
-						<div className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-							Receive signed PSBT
-						</div>
+						<div className="text-[12px] font-medium text-muted-foreground">Receive signed PSBT</div>
 						<div className="mt-2 grid grid-cols-2 gap-3">
 							<button
 								type="button"
 								onClick={() => void onImportSignedPsbt()}
 								disabled={busy}
-								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
+								className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-[12px] font-medium text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04] disabled:opacity-50"
 							>
 								Import .psbt
 							</button>
@@ -1105,7 +1054,7 @@ function HardwareConfirmStep({
 								type="button"
 								onClick={onScanQr}
 								disabled={busy}
-								className="flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground transition-all hover:shadow-md disabled:opacity-50"
+								className="flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 text-[12px] font-medium text-primary-foreground transition-all hover:shadow-md disabled:opacity-50"
 							>
 								Scan QR
 							</button>
@@ -1119,12 +1068,12 @@ function HardwareConfirmStep({
 					type="button"
 					onClick={onBack}
 					disabled={busy}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				{busy && (
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+					<span className="text-[12px] font-medium text-muted-foreground">
 						{signMode === "connected" ? "Signing & broadcasting…" : "Working…"}
 					</span>
 				)}

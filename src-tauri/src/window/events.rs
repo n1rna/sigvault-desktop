@@ -23,9 +23,9 @@ pub struct StateUpdateEvent {
     pub remote_sessions: Option<Vec<RemoteSession>>,
     /// Top-level mode. `Some(Cloud)` / `Some(Local)` carries an explicit
     /// update; `None` here just means "no change" — the frontend keeps
-    /// whatever it had. To clear the mode (return to chooser), the backend
-    /// sends a `route: ModeChooser` update; the frontend resets `appMode`
-    /// to null when it sees that route.
+    /// whatever it had. The mode is switched directly via `cmd_set_app_mode`
+    /// (from the topbar switcher or the Welcome page); there is no longer a
+    /// "clear mode" path.
     pub app_mode: Option<AppMode>,
 }
 

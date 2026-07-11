@@ -4,7 +4,7 @@ export type AppMode = "cloud" | "local";
 
 export type WindowApplicationRoute =
 	| "Loading"
-	| "ModeChooser"
+	| "Welcome"
 	| "SelectEnv"
 	| "Login"
 	| "MainPage"

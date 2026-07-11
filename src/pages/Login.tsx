@@ -1,10 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { SigVaultLogo } from "../components/SigVaultLogo";
-import SwitchModeButton from "../components/SwitchModeButton";
-import WindowControls from "../components/WindowControls";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import type { EnvironmentConfig, EnvironmentsResponse } from "../types/events";
+
+const VALUE_POINTS = [
+	"Ledger, Trezor, BitBox, Coldcard",
+	"Remote signing ceremonies",
+	"Non-custodial by design",
+];
 
 export function Login() {
 	const [isLoading, setIsLoading] = useState(false);
@@ -47,17 +52,6 @@ export function Login() {
 		}
 	};
 
-	const onDrag = useCallback((e: React.MouseEvent) => {
-		if (e.buttons === 1 && e.detail === 1) {
-			e.preventDefault();
-			try {
-				getCurrentWindow().startDragging();
-			} catch {
-				// no-op outside Tauri (e.g. tests)
-			}
-		}
-	}, []);
-
 	const handleLogin = async () => {
 		try {
 			setIsLoading(true);
@@ -71,117 +65,74 @@ export function Login() {
 	};
 
 	return (
-		<div
-			onMouseDown={onDrag}
-			className="relative flex h-screen w-full select-none overflow-hidden bg-background"
-		>
-			<WindowControls />
-
+		<div className="flex h-full w-full overflow-hidden">
 			{/* ═══ Left brand panel ═══ */}
-			<aside className="relative flex w-[44%] flex-col justify-between overflow-hidden border-r border-border bg-primary/[0.04]">
-				{/* Background texture */}
-				<div className="pointer-events-none absolute inset-0 bg-grid opacity-[0.05]" />
-				<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.12]" />
-				<div className="pointer-events-none absolute -left-32 top-1/3 h-[420px] w-[420px] rounded-full bg-primary/[0.08] blur-[120px]" />
-				<div className="pointer-events-none absolute -right-24 bottom-0 h-[320px] w-[320px] rounded-full bg-accent/[0.08] blur-[100px]" />
-
-				{/* Brand lockup */}
-				<div className="relative z-10 flex items-center gap-3 p-10">
-					<SigVaultLogo className="h-9 w-9 text-foreground" />
-					<div className="flex flex-col leading-none">
-						<span className="font-mono text-[13px] font-bold tracking-[0.22em] text-foreground">
-							SIGVAULT
-						</span>
-						<span className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-							desktop
-						</span>
-					</div>
+			<aside className="hidden w-[44%] flex-col justify-between border-r border-border bg-muted/20 p-10 sm:flex">
+				<div className="flex items-center gap-2.5">
+					<SigVaultLogo className="h-7 w-7 text-foreground" />
+					<span className="text-[15px] font-semibold tracking-tight text-foreground">SigVault</span>
 				</div>
 
-				{/* Hero copy */}
-				<div className="relative z-10 px-10 pb-10">
-					<div className="font-mono text-[10px] uppercase tracking-[0.24em] text-accent">
-						§ Self-custody
-					</div>
-					<h2 className="mt-4 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground">
-						Multisig Bitcoin,
-						<br />
-						<span className="text-primary">done right.</span>
+				<div>
+					<h2 className="text-[26px] font-semibold leading-tight tracking-tight text-foreground text-balance">
+						Multisig Bitcoin, done right.
 					</h2>
-					<p className="mt-5 max-w-[340px] text-[13px] leading-relaxed text-muted-foreground">
+					<p className="mt-4 max-w-[340px] text-[13px] leading-relaxed text-muted-foreground">
 						Coordinate hardware wallets across signers. Your keys never leave your devices —
 						SigVault is the conductor, not the custodian.
 					</p>
 
-					{/* Feature bullets */}
-					<ul className="mt-8 space-y-3">
-						{[
-							"Ledger, Trezor, BitBox, Coldcard",
-							"Remote signing ceremonies",
-							"Non-custodial by design",
-						].map((label) => (
+					<ul className="mt-7 space-y-2.5">
+						{VALUE_POINTS.map((label) => (
 							<li
 								key={label}
-								className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+								className="flex items-center gap-2.5 text-[13px] text-muted-foreground"
 							>
-								<span className="h-px w-5 bg-primary/50" />
+								<svg
+									className="h-3.5 w-3.5 shrink-0 text-primary"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2.5"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="M20 6 9 17l-5-5" />
+								</svg>
 								{label}
 							</li>
 						))}
 					</ul>
 				</div>
-
-				{/* Footer hairline */}
-				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 			</aside>
 
 			{/* ═══ Right form column ═══ */}
-			<main className="relative flex flex-1 items-center justify-center">
-				{/* Subtle dot texture */}
-				<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.08]" />
-
-				<div
-					className="relative w-full max-w-[400px] px-10"
-					onMouseDown={(e) => e.stopPropagation()}
-				>
-					{/* Section label */}
-					<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-						§ 01 — Authentication
-					</div>
-
-					<h1 className="mt-4 text-[28px] font-medium leading-[1.15] tracking-[-0.015em] text-foreground">
-						Welcome back.
-					</h1>
-					<p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
+			<main className="flex flex-1 items-center justify-center overflow-y-auto">
+				<div className="w-full max-w-[400px] px-10">
+					<h1 className="text-[26px] font-semibold tracking-tight text-foreground">Welcome back</h1>
+					<p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
 						Sign in with your SigVault account to join sessions and coordinate with other signers.
 					</p>
 
-					{/* Active environment badge */}
+					{/* Active environment */}
 					<div className="mt-6 flex items-center justify-between rounded-md border border-border bg-card px-3.5 py-2.5">
 						<div className="flex flex-col">
-							<span className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-								Connecting to
-							</span>
-							<span className="mt-0.5 text-[12px] font-medium text-foreground">
+							<span className="text-[11px] text-muted-foreground">Connecting to</span>
+							<span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-medium text-foreground">
 								{currentEnv ? currentEnv.name : "—"}
-								{currentEnv && (
-									<span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-										· {currentEnv.network}
-									</span>
-								)}
+								{currentEnv && <Badge variant="outline">{currentEnv.network}</Badge>}
 							</span>
 						</div>
-						<button
-							type="button"
+						<Button
+							variant="outline"
+							size="sm"
 							onClick={handleChangeEnv}
 							disabled={changingEnv || isLoading}
-							className="rounded-sm border border-border bg-background px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:opacity-50"
 						>
 							{changingEnv ? "…" : "Change"}
-						</button>
+						</Button>
 					</div>
 
-					{/* Error */}
 					{error && (
 						<div className="mt-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
 							<svg
@@ -201,16 +152,11 @@ export function Login() {
 						</div>
 					)}
 
-					{/* Primary CTA */}
-					<button
-						onClick={handleLogin}
-						disabled={isLoading}
-						className="group mt-8 flex h-12 w-full items-center justify-center gap-2.5 rounded-md bg-primary text-[13px] font-medium tracking-[0.02em] text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-md"
-					>
+					<Button size="lg" className="mt-8 h-12 w-full" onClick={handleLogin} disabled={isLoading}>
 						{isLoading ? (
 							<>
 								<svg
-									className="h-4 w-4 animate-spin"
+									className="animate-spin"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
@@ -225,7 +171,6 @@ export function Login() {
 							<>
 								Continue with SigVault
 								<svg
-									className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
@@ -238,31 +183,11 @@ export function Login() {
 								</svg>
 							</>
 						)}
-					</button>
+					</Button>
 
-					<p className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/80">
-						opens your browser · single sign-on
+					<p className="mt-4 text-center text-[12px] text-muted-foreground/80">
+						Opens your browser · single sign-on
 					</p>
-
-					{/* Divider */}
-					<div className="mt-10 flex items-center gap-4">
-						<div className="h-px flex-1 bg-border" />
-						<span className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60">
-							secure by design
-						</span>
-						<div className="h-px flex-1 bg-border" />
-					</div>
-
-					{/* Footer links */}
-					<div className="mt-6 flex items-center justify-center gap-5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">
-						<span>no keys stored</span>
-						<span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
-						<span>end-to-end signed</span>
-					</div>
-
-					<div className="mt-6 flex justify-center">
-						<SwitchModeButton />
-					</div>
 				</div>
 			</main>
 		</div>
