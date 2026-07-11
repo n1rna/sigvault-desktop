@@ -7,10 +7,10 @@
 // graph stays whole during the transition.
 
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import WindowControls from "../../components/WindowControls";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { useLocalWalletSync } from "../../hooks/useLocalWalletSync";
 import type { LocalBalance, LocalWalletSummary } from "../../types/events";
 
@@ -64,17 +64,6 @@ export default function WalletDashboard() {
 	const [syncing, setSyncing] = useState(false);
 	const [copiedTxid, setCopiedTxid] = useState<string | null>(null);
 	const sync = useLocalWalletSync(walletId ?? null);
-
-	const onDrag = useCallback((e: React.MouseEvent) => {
-		if (e.buttons === 1 && e.detail === 1) {
-			e.preventDefault();
-			try {
-				getCurrentWindow().startDragging();
-			} catch {
-				// no-op outside Tauri
-			}
-		}
-	}, []);
 
 	const loadAll = useCallback(async () => {
 		if (!walletId) return;
@@ -143,38 +132,21 @@ export default function WalletDashboard() {
 
 	if (loading) {
 		return (
-			<div className="flex h-screen items-center justify-center bg-background">
-				<WindowControls />
-				<div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Loading wallet…
-				</div>
+			<div className="flex h-full items-center justify-center">
+				<div className="text-[13px] text-muted-foreground">Loading wallet…</div>
 			</div>
 		);
 	}
 
 	return (
-		<div
-			onMouseDown={onDrag}
-			className="relative flex h-screen w-full select-none flex-col overflow-hidden bg-background"
-		>
-			<WindowControls />
-
-			<div className="pointer-events-none absolute inset-0 bg-grid mask-radial-fade opacity-[0.06]" />
-			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
-
+		<div className="flex h-full w-full flex-col overflow-hidden">
 			{/* ── Header bar ── */}
-			{/* pt-10 keeps content below the WindowControls overlay
-			    (fixed top-0 h-8 z-50) so the right-side buttons don't sit
-			    under its drag region and steal clicks. */}
-			<header
-				className="relative flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-8 pb-4 pt-10 backdrop-blur-sm"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
+			<header className="flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-6 py-3">
 				<div className="flex items-center gap-3">
 					<button
 						type="button"
 						onClick={() => navigate("/local/wallets")}
-						className="flex h-8 w-8 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+						className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 						title="Back to wallets"
 					>
 						<svg
@@ -189,25 +161,23 @@ export default function WalletDashboard() {
 							<path d="m15 18-6-6 6-6" />
 						</svg>
 					</button>
-					<div className="flex flex-col leading-none">
-						<span className="text-[14px] font-medium text-foreground">
+					<div className="flex items-center gap-2.5">
+						<span className="text-[14px] font-semibold text-foreground">
 							{wallet?.name ?? "Wallet"}
 						</span>
-						<span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-							{wallet ? `${wallet.network} · ${wallet.policy_type}` : "—"}
-						</span>
+						{wallet && (
+							<>
+								<Badge variant="outline">{wallet.network.toUpperCase()}</Badge>
+								<span className="text-[12px] text-muted-foreground">{wallet.policy_type}</span>
+							</>
+						)}
 					</div>
 				</div>
 
 				<div className="flex items-center gap-2">
 					<SyncIndicator sync={sync} syncing={syncing} onSync={triggerSync} />
-					<button
-						type="button"
-						onClick={lockAndExit}
-						className="flex h-8 items-center gap-2 rounded-sm border border-border bg-background px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
-					>
+					<Button variant="outline" size="sm" onClick={lockAndExit}>
 						<svg
-							className="h-3 w-3"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
@@ -219,15 +189,12 @@ export default function WalletDashboard() {
 							<path d="M7 11V7a5 5 0 0 1 10 0v4" />
 						</svg>
 						Lock
-					</button>
+					</Button>
 				</div>
 			</header>
 
 			{/* ── Body ── */}
-			<div
-				className="relative flex-1 overflow-y-auto px-8 py-8"
-				onMouseDown={(e) => e.stopPropagation()}
-			>
+			<div className="flex-1 overflow-y-auto px-6 py-7">
 				<div className="mx-auto max-w-3xl space-y-6">
 					{error && (
 						<div className="flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
@@ -251,9 +218,9 @@ export default function WalletDashboard() {
 					<BalanceCard balance={balance} />
 
 					{wallet?.recovery_only && (
-						<div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/[0.05] px-3.5 py-3 text-[12px] text-foreground">
+						<div className="flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning/[0.05] px-3.5 py-3 text-[12px] text-foreground">
 							<svg
-								className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+								className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
@@ -266,7 +233,7 @@ export default function WalletDashboard() {
 								<circle cx="12" cy="12" r="10" />
 							</svg>
 							<div className="leading-snug">
-								<div className="font-medium">Recovery-only wallet.</div>
+								<div className="font-medium">Recovery-only wallet</div>
 								<div className="mt-0.5 text-muted-foreground">
 									The primary path is unspendable. Funds can only be moved via the recovery key
 									after the timelock elapses.
@@ -280,13 +247,12 @@ export default function WalletDashboard() {
 							wallet?.policy_type === "watch_only" ? "grid grid-cols-1" : "grid grid-cols-2 gap-3"
 						}
 					>
-						<button
-							type="button"
+						<Button
+							variant="outline"
+							className="h-12"
 							onClick={() => navigate(`/local/wallets/${walletId}/receive`)}
-							className="flex h-12 items-center justify-center gap-2 rounded-md border border-border bg-card font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04]"
 						>
 							<svg
-								className="h-4 w-4"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
@@ -298,15 +264,14 @@ export default function WalletDashboard() {
 								<path d="m12 19-7-7 7-7" />
 							</svg>
 							Receive
-						</button>
+						</Button>
 						{wallet?.policy_type !== "watch_only" && (
-							<button
-								type="button"
+							<Button
+								variant="outline"
+								className="h-12"
 								onClick={() => navigate(`/local/wallets/${walletId}/send`)}
-								className="flex h-12 items-center justify-center gap-2 rounded-md border border-border bg-card font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.04]"
 							>
 								<svg
-									className="h-4 w-4"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
@@ -318,7 +283,7 @@ export default function WalletDashboard() {
 									<path d="m12 5 7 7-7 7" />
 								</svg>
 								Send
-							</button>
+							</Button>
 						)}
 					</div>
 
@@ -334,24 +299,22 @@ function BalanceCard({ balance }: { balance: LocalBalance | null }) {
 	const pending = balance?.unconfirmed_sat ?? 0;
 	return (
 		<div className="rounded-lg border border-border bg-card px-6 py-6">
-			<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-				Balance
-			</div>
-			<div className="mt-3 flex items-baseline gap-3">
-				<div className="font-mono text-[36px] font-medium leading-none tracking-tight text-foreground">
+			<div className="text-[12px] font-medium text-muted-foreground">Balance</div>
+			<div className="mt-2 flex items-baseline gap-2.5">
+				<div className="font-mono text-[36px] font-medium leading-none tracking-tight tabular-nums text-foreground">
 					{formatBtc(confirmed)}
 				</div>
-				<span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-					BTC
-				</span>
+				<span className="text-[13px] text-muted-foreground">BTC</span>
 			</div>
-			<div className="mt-2 font-mono text-[11px] text-muted-foreground">
+			<div className="mt-2 font-mono text-[11px] tabular-nums text-muted-foreground">
 				{confirmed.toLocaleString()} sat
 			</div>
 			{pending > 0 && (
-				<div className="mt-3 flex items-center gap-2 font-mono text-[11px] text-warning">
-					<span className="inline-flex h-1.5 w-1.5 rounded-full bg-warning" />+ {formatBtc(pending)}{" "}
-					BTC pending
+				<div className="mt-3 flex items-center gap-2 text-[12px] text-warning">
+					<span className="inline-flex h-1.5 w-1.5 rounded-full bg-warning" />
+					<span>
+						+<span className="font-mono tabular-nums">{formatBtc(pending)}</span> BTC pending
+					</span>
 				</div>
 			)}
 		</div>
@@ -374,16 +337,16 @@ function SyncIndicator({
 			? "Synced"
 			: "Sync";
 	return (
-		<button
-			type="button"
+		<Button
+			variant="ghost"
+			size="sm"
 			onClick={onSync}
 			disabled={active}
-			className="flex h-8 items-center gap-2 rounded-sm border border-border bg-background px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-70"
 			title={active ? `${sync.phase ?? ""} (${sync.percent}%)` : "Run an Electrum sync"}
 		>
 			{active ? (
 				<svg
-					className="h-3 w-3 animate-spin"
+					className="animate-spin"
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
@@ -394,7 +357,6 @@ function SyncIndicator({
 				</svg>
 			) : (
 				<svg
-					className="h-3 w-3"
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
@@ -409,7 +371,7 @@ function SyncIndicator({
 				</svg>
 			)}
 			{label}
-		</button>
+		</Button>
 	);
 }
 
@@ -425,22 +387,18 @@ function HistoryList({
 	return (
 		<section>
 			<div className="mb-3 flex items-center justify-between">
-				<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-					Transactions
-				</div>
-				<div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
-					{history.length} total
-				</div>
+				<div className="text-[13px] font-semibold text-foreground">Transactions</div>
+				<div className="text-[12px] tabular-nums text-muted-foreground">{history.length} total</div>
 			</div>
 			{history.length === 0 ? (
-				<div className="rounded-md border border-dashed border-border bg-card/40 px-5 py-10 text-center">
-					<p className="text-[13px] text-foreground">No transactions yet.</p>
+				<div className="rounded-lg border border-dashed border-border bg-card/40 px-5 py-10 text-center">
+					<p className="text-[13px] text-foreground">No transactions yet</p>
 					<p className="mt-1 text-[12px] text-muted-foreground">
 						Use Receive to fund this wallet, then run a sync.
 					</p>
 				</div>
 			) : (
-				<ul className="divide-y divide-border rounded-md border border-border bg-card">
+				<ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
 					{history.map((tx) => (
 						<TxRow
 							key={tx.txid}
@@ -496,7 +454,7 @@ function TxRow({ tx, copied, onCopy }: { tx: LocalTxRecord; copied: boolean; onC
 					>
 						{copied ? "✓ Copied" : shortTxid(tx.txid)}
 					</button>
-					<div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+					<div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted-foreground">
 						<span>{formatRelative(tx.block_time)}</span>
 						{tx.confirmed ? (
 							<>
@@ -518,15 +476,13 @@ function TxRow({ tx, copied, onCopy }: { tx: LocalTxRecord; copied: boolean; onC
 					</div>
 				</div>
 				<div
-					className={`text-right font-mono text-[13px] font-medium ${
+					className={`text-right font-mono text-[13px] font-medium tabular-nums ${
 						incoming ? "text-success" : "text-foreground"
 					}`}
 				>
 					{incoming ? "+" : ""}
 					{formatBtc(tx.net_sat)}
-					<div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
-						BTC
-					</div>
+					<div className="mt-0.5 text-[10px] font-normal text-muted-foreground/70">BTC</div>
 				</div>
 			</div>
 		</li>

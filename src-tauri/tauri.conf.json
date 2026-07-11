@@ -14,9 +14,9 @@
     "windows": [
       {
         "title": "SigVault",
-        "width": 1120,
+        "width": 900,
         "height": 720,
-        "minWidth": 1120,
+        "minWidth": 900,
         "minHeight": 720,
         "resizable": false,
         "decorations": false,

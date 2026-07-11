@@ -71,8 +71,8 @@ export default function AnimatedQrModal({
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<div className="mb-4 flex items-center justify-between">
-					<h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-						§ — Sign on another machine
+					<h3 className="text-[14px] font-semibold tracking-tight text-foreground">
+						Sign on another machine
 					</h3>
 					<button
 						type="button"
@@ -99,7 +99,7 @@ export default function AnimatedQrModal({
 					<button
 						type="button"
 						onClick={() => setFormat("bbqr")}
-						className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+						className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 							format === "bbqr"
 								? "bg-primary text-primary-foreground"
 								: "text-muted-foreground hover:text-foreground"
@@ -110,7 +110,7 @@ export default function AnimatedQrModal({
 					<button
 						type="button"
 						onClick={() => setFormat("ur")}
-						className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+						className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 							format === "ur"
 								? "bg-primary text-primary-foreground"
 								: "text-muted-foreground hover:text-foreground"
@@ -148,7 +148,7 @@ export default function AnimatedQrModal({
 							)}
 						</div>
 
-						<div className="mt-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+						<div className="mt-3 flex items-center justify-between text-[12px] tabular-nums text-muted-foreground">
 							<span>
 								Frame {frameIdx + 1} / {frames.length}
 							</span>

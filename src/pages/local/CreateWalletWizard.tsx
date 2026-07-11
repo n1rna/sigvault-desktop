@@ -15,11 +15,9 @@
 //     — see QBL-235 for the related "unspendable primary" affordance.
 
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DeviceDiscovery from "../../components/DeviceDiscovery";
-import WindowControls from "../../components/WindowControls";
 import { SUPPORTED_NETWORKS } from "../../constants/networks";
 import type { LocalWalletCreateResponse } from "../../types/events";
 import type { DeviceInfo } from "../../types/hardware";
@@ -67,17 +65,6 @@ export default function CreateWalletWizard() {
 	const [backedUp, setBackedUp] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-
-	const onDrag = useCallback((e: React.MouseEvent) => {
-		if (e.buttons === 1 && e.detail === 1) {
-			e.preventDefault();
-			try {
-				getCurrentWindow().startDragging();
-			} catch {
-				// no-op outside Tauri
-			}
-		}
-	}, []);
 
 	const cancel = () => navigate("/local/wallets");
 
@@ -299,128 +286,117 @@ export default function CreateWalletWizard() {
 	})();
 
 	return (
-		<div
-			onMouseDown={onDrag}
-			className="relative flex h-screen w-full select-none overflow-hidden bg-background"
-		>
-			<WindowControls />
+		<div className="h-full w-full overflow-y-auto">
+			<div className="mx-auto w-full max-w-[520px] px-6 py-10">
+				<Header stepIndex={stepIndex} onCancel={cancel} method={basics.method} />
 
-			<div className="pointer-events-none absolute inset-0 bg-grid mask-radial-fade opacity-[0.06]" />
-			<div className="pointer-events-none absolute inset-0 bg-dots mask-radial-fade opacity-[0.10]" />
-			<div className="pointer-events-none absolute left-1/2 top-1/3 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-primary/[0.06] blur-[140px]" />
+				{error && (
+					<div className="mt-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
+						<svg
+							className="mt-0.5 h-3.5 w-3.5 shrink-0"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
+							<circle cx="12" cy="12" r="10" />
+							<line x1="12" y1="8" x2="12" y2="12" />
+							<line x1="12" y1="16" x2="12.01" y2="16" />
+						</svg>
+						<span className="leading-snug">{error}</span>
+					</div>
+				)}
 
-			<main className="relative flex flex-1 items-start justify-center overflow-y-auto px-6 py-10">
-				<div className="relative w-full max-w-[520px]" onMouseDown={(e) => e.stopPropagation()}>
-					<Header stepIndex={stepIndex} onCancel={cancel} method={basics.method} />
+				{step === "basics" && (
+					<BasicsStep
+						value={basics}
+						onChange={setBasics}
+						onNext={() => {
+							setError(null);
+							setStep(
+								basics.method === "hardware"
+									? "hw"
+									: basics.method === "watch_only"
+										? "watch_only"
+										: basics.method === "multisig"
+											? "multisig"
+											: basics.method === "timelocked"
+												? "timelocked"
+												: "passphrase",
+							);
+						}}
+					/>
+				)}
 
-					{error && (
-						<div className="mt-6 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/[0.06] px-3.5 py-3 text-[12px] text-destructive">
-							<svg
-								className="mt-0.5 h-3.5 w-3.5 shrink-0"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							>
-								<circle cx="12" cy="12" r="10" />
-								<line x1="12" y1="8" x2="12" y2="12" />
-								<line x1="12" y1="16" x2="12.01" y2="16" />
-							</svg>
-							<span className="leading-snug">{error}</span>
-						</div>
-					)}
+				{step === "hw" && basics.method === "hardware" && (
+					<HardwareStep
+						network={basics.network}
+						submitting={submitting}
+						onBack={() => setStep("basics")}
+						onDeviceSelected={submitHardware}
+					/>
+				)}
 
-					{step === "basics" && (
-						<BasicsStep
-							value={basics}
-							onChange={setBasics}
-							onNext={() => {
-								setError(null);
-								setStep(
-									basics.method === "hardware"
-										? "hw"
-										: basics.method === "watch_only"
-											? "watch_only"
-											: basics.method === "multisig"
-												? "multisig"
-												: basics.method === "timelocked"
-													? "timelocked"
-													: "passphrase",
-								);
-							}}
-						/>
-					)}
+				{step === "watch_only" && basics.method === "watch_only" && (
+					<WatchOnlyStep
+						submitting={submitting}
+						onBack={() => setStep("basics")}
+						onSubmit={submitWatchOnly}
+					/>
+				)}
 
-					{step === "hw" && basics.method === "hardware" && (
-						<HardwareStep
-							network={basics.network}
-							submitting={submitting}
-							onBack={() => setStep("basics")}
-							onDeviceSelected={submitHardware}
-						/>
-					)}
+				{step === "multisig" && basics.method === "multisig" && (
+					<MultisigStep
+						submitting={submitting}
+						onBack={() => setStep("basics")}
+						onSubmit={submitMultisig}
+					/>
+				)}
 
-					{step === "watch_only" && basics.method === "watch_only" && (
-						<WatchOnlyStep
-							submitting={submitting}
-							onBack={() => setStep("basics")}
-							onSubmit={submitWatchOnly}
-						/>
-					)}
+				{step === "timelocked" && basics.method === "timelocked" && (
+					<TimelockedStep
+						submitting={submitting}
+						onBack={() => setStep("basics")}
+						onSubmit={submitTimelocked}
+					/>
+				)}
 
-					{step === "multisig" && basics.method === "multisig" && (
-						<MultisigStep
-							submitting={submitting}
-							onBack={() => setStep("basics")}
-							onSubmit={submitMultisig}
-						/>
-					)}
+				{step === "passphrase" && (
+					<PassphraseStep
+						passphrase={passphrase}
+						confirmPassphrase={confirmPassphrase}
+						onChangePassphrase={setPassphrase}
+						onChangeConfirm={setConfirmPassphrase}
+						method={basics.method}
+						recoveryLength={recoveryLength}
+						onChangeRecoveryLength={setRecoveryLength}
+						recoveryWords={recoveryWords}
+						onChangeRecoveryWord={(i, v) =>
+							setRecoveryWords((prev) => {
+								const next = [...prev];
+								next[i] = v;
+								return next;
+							})
+						}
+						onBack={() => setStep("basics")}
+						onSubmit={submitCreate}
+						submitting={submitting}
+					/>
+				)}
 
-					{step === "timelocked" && basics.method === "timelocked" && (
-						<TimelockedStep
-							submitting={submitting}
-							onBack={() => setStep("basics")}
-							onSubmit={submitTimelocked}
-						/>
-					)}
+				{step === "mnemonic" && basics.method === "generate" && (
+					<MnemonicDisplayStep
+						words={generatedWords}
+						backedUp={backedUp}
+						onToggleBackedUp={setBackedUp}
+						onContinue={() => setStep("done")}
+					/>
+				)}
 
-					{step === "passphrase" && (
-						<PassphraseStep
-							passphrase={passphrase}
-							confirmPassphrase={confirmPassphrase}
-							onChangePassphrase={setPassphrase}
-							onChangeConfirm={setConfirmPassphrase}
-							method={basics.method}
-							recoveryLength={recoveryLength}
-							onChangeRecoveryLength={setRecoveryLength}
-							recoveryWords={recoveryWords}
-							onChangeRecoveryWord={(i, v) =>
-								setRecoveryWords((prev) => {
-									const next = [...prev];
-									next[i] = v;
-									return next;
-								})
-							}
-							onBack={() => setStep("basics")}
-							onSubmit={submitCreate}
-							submitting={submitting}
-						/>
-					)}
-
-					{step === "mnemonic" && basics.method === "generate" && (
-						<MnemonicDisplayStep
-							words={generatedWords}
-							backedUp={backedUp}
-							onToggleBackedUp={setBackedUp}
-							onContinue={() => setStep("done")}
-						/>
-					)}
-
-					{step === "done" && <DoneStep method={basics.method} onContinue={finish} />}
-				</div>
-			</main>
+				{step === "done" && <DoneStep method={basics.method} onContinue={finish} />}
+			</div>
 		</div>
 	);
 }
@@ -449,19 +425,17 @@ function Header({
 	return (
 		<div>
 			<div className="flex items-center justify-between">
-				<div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-					§ — New wallet
-				</div>
+				<div className="text-[11px] font-medium text-muted-foreground">New wallet</div>
 				<button
 					type="button"
 					onClick={onCancel}
-					className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
+					className="text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
 				>
 					Cancel
 				</button>
 			</div>
-			<h1 className="mt-3 text-[26px] font-medium leading-[1.15] tracking-[-0.015em] text-foreground">
-				Create a singlesig wallet.
+			<h1 className="mt-3 text-[22px] font-semibold tracking-tight text-foreground">
+				Create a wallet
 			</h1>
 
 			<div className="mt-7 flex items-center gap-2">
@@ -478,7 +452,7 @@ function Header({
 									}`}
 								/>
 								<span
-									className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
+									className={`text-[10px] font-medium ${
 										active || done ? "text-foreground" : "text-muted-foreground/70"
 									}`}
 								>
@@ -511,9 +485,7 @@ function BasicsStep({
 			}}
 		>
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Wallet name
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Wallet name</span>
 				<input
 					type="text"
 					value={value.name}
@@ -524,9 +496,7 @@ function BasicsStep({
 			</label>
 
 			<div>
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Network
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Network</span>
 				<div className="mt-2 grid grid-cols-3 gap-2">
 					{SUPPORTED_NETWORKS.map((n) => {
 						const selected = value.network === n.id;
@@ -542,22 +512,18 @@ function BasicsStep({
 								}`}
 							>
 								<span className="text-[12px] font-medium text-foreground">{n.label}</span>
-								<span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
-									{n.hint}
-								</span>
+								<span className="mt-0.5 text-[11px] text-muted-foreground">{n.hint}</span>
 							</button>
 						);
 					})}
 				</div>
-				<p className="mt-2 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
+				<p className="mt-2 font-mono text-[10px] text-muted-foreground/70">
 					Mainnet not available in v1
 				</p>
 			</div>
 
 			<div>
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Method
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Method</span>
 				<div className="mt-2 grid grid-cols-2 gap-2">
 					<MethodCard
 						active={value.method === "generate"}
@@ -601,7 +567,7 @@ function BasicsStep({
 			<button
 				type="submit"
 				disabled={!ready}
-				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 			>
 				Continue
 				<svg
@@ -692,16 +658,14 @@ function PassphraseStep({
 			{method === "recover" && (
 				<div>
 					<div className="flex items-center justify-between">
-						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-							Recovery phrase
-						</span>
+						<span className="text-[12px] font-medium text-muted-foreground">Recovery phrase</span>
 						<div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
 							{([12, 24] as const).map((n) => (
 								<button
 									key={n}
 									type="button"
 									onClick={() => onChangeRecoveryLength(n)}
-									className={`rounded-sm px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
+									className={`rounded-sm px-2.5 py-1 text-[11px] font-medium transition-colors ${
 										recoveryLength === n
 											? "bg-primary/[0.10] text-foreground"
 											: "text-muted-foreground hover:text-foreground"
@@ -721,7 +685,7 @@ function PassphraseStep({
 								key={i}
 								className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5"
 							>
-								<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
+								<span className="font-mono text-[10px] text-muted-foreground/70">
 									{String(i + 1).padStart(2, "0")}
 								</span>
 								<input
@@ -740,9 +704,7 @@ function PassphraseStep({
 			)}
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Passphrase
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Passphrase</span>
 				<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
 					Encrypts the seed on disk. You'll need this to unlock the wallet. At least 8 characters.
 				</p>
@@ -755,9 +717,7 @@ function PassphraseStep({
 			</label>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Confirm passphrase
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Confirm passphrase</span>
 				<input
 					type="password"
 					value={confirmPassphrase}
@@ -765,9 +725,7 @@ function PassphraseStep({
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2.5 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
 				/>
 				{confirmPassphrase.length > 0 && passphrase !== confirmPassphrase && (
-					<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
-						Passphrases do not match
-					</span>
+					<span className="mt-1 block text-[11px] text-destructive">Passphrases do not match</span>
 				)}
 			</label>
 
@@ -776,14 +734,14 @@ function PassphraseStep({
 					type="button"
 					onClick={onBack}
 					disabled={submitting}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				<button
 					type="submit"
 					disabled={!ready || submitting}
-					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{submitting ? (
 						<>
@@ -870,7 +828,7 @@ function MnemonicDisplayStep({
 						key={i}
 						className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2"
 					>
-						<span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
+						<span className="font-mono text-[10px] text-muted-foreground/70">
 							{String(i + 1).padStart(2, "0")}
 						</span>
 						<span className="flex-1 font-mono text-[12px] text-foreground">{w}</span>
@@ -881,7 +839,7 @@ function MnemonicDisplayStep({
 			<button
 				type="button"
 				onClick={copy}
-				className="w-full font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
+				className="w-full text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
 			>
 				{copied ? "✓ Copied" : "Copy to clipboard"}
 			</button>
@@ -903,7 +861,7 @@ function MnemonicDisplayStep({
 				type="button"
 				onClick={onContinue}
 				disabled={!backedUp}
-				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+				className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 			>
 				Continue
 				<svg
@@ -958,7 +916,7 @@ function DoneStep({ method, onContinue }: { method: Method; onContinue: () => vo
 			<button
 				type="button"
 				onClick={onContinue}
-				className="mt-8 flex h-11 items-center gap-2 rounded-md bg-primary px-6 text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px]"
+				className="mt-8 flex h-11 items-center gap-2 rounded-md bg-primary px-6 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
 			>
 				Open wallet
 				<svg
@@ -1014,14 +972,12 @@ function HardwareStep({
 					type="button"
 					onClick={onBack}
 					disabled={submitting}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				{submitting && (
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Creating wallet…
-					</span>
+					<span className="text-[12px] font-medium text-muted-foreground">Creating wallet…</span>
 				)}
 			</div>
 		</div>
@@ -1086,7 +1042,7 @@ function WatchOnlyStep({
 			</div>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+				<span className="text-[12px] font-medium text-muted-foreground">
 					External descriptor (receive)
 				</span>
 				<textarea
@@ -1102,7 +1058,7 @@ function WatchOnlyStep({
 			</label>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+				<span className="text-[12px] font-medium text-muted-foreground">
 					Internal descriptor (change)
 				</span>
 				<textarea
@@ -1141,14 +1097,14 @@ function WatchOnlyStep({
 					type="button"
 					onClick={onBack}
 					disabled={submitting}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				<button
 					type="submit"
 					disabled={!ready || submitting}
-					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{submitting ? "Importing…" : "Import wallet"}
 				</button>
@@ -1215,9 +1171,7 @@ function MultisigStep({
 
 			<div className="grid grid-cols-2 gap-4">
 				<label className="block">
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Threshold (M)
-					</span>
+					<span className="text-[12px] font-medium text-muted-foreground">Threshold (M)</span>
 					<input
 						type="number"
 						min={1}
@@ -1228,9 +1182,7 @@ function MultisigStep({
 					/>
 				</label>
 				<label className="block">
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Cosigners (N)
-					</span>
+					<span className="text-[12px] font-medium text-muted-foreground">Cosigners (N)</span>
 					<input
 						type="number"
 						min={2}
@@ -1247,12 +1199,10 @@ function MultisigStep({
 			</div>
 
 			<div className="space-y-3">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Cosigner keys
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Cosigner keys</span>
 				{visibleKeys.map((value, i) => (
 					<div key={i}>
-						<div className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground/70">
+						<div className="text-[10px] text-muted-foreground/70">
 							Cosigner {String(i + 1).padStart(2, "0")}
 						</div>
 						<textarea
@@ -1274,14 +1224,14 @@ function MultisigStep({
 					type="button"
 					onClick={onBack}
 					disabled={submitting}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				<button
 					type="submit"
 					disabled={!ready || submitting}
-					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{submitting ? "Creating…" : `Create ${threshold}-of-${n} multisig`}
 				</button>
@@ -1386,14 +1336,12 @@ function TimelockedStep({
 			</div>
 
 			<div>
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Primary path
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Primary path</span>
 				<div className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-border bg-card/40 p-1">
 					<button
 						type="button"
 						onClick={() => setPrimaryMode("keys")}
-						className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+						className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 							primaryMode === "keys"
 								? "bg-primary text-primary-foreground"
 								: "text-muted-foreground hover:text-foreground"
@@ -1404,7 +1352,7 @@ function TimelockedStep({
 					<button
 						type="button"
 						onClick={() => setPrimaryMode("unspendable")}
-						className={`h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+						className={`h-9 rounded-sm text-[12px] font-medium transition-colors ${
 							primaryMode === "unspendable"
 								? "bg-primary text-primary-foreground"
 								: "text-muted-foreground hover:text-foreground"
@@ -1417,9 +1365,7 @@ function TimelockedStep({
 
 			{primaryMode === "keys" && (
 				<label className="block">
-					<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-						Primary key
-					</span>
+					<span className="text-[12px] font-medium text-muted-foreground">Primary key</span>
 					<textarea
 						value={primaryRaw}
 						onChange={(e) => setPrimaryRaw(e.target.value)}
@@ -1431,7 +1377,7 @@ function TimelockedStep({
 						className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
 					/>
 					{primaryRaw.trim().length > 0 && primaryParsed === null && (
-						<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
+						<span className="mt-1 block text-[11px] text-destructive">
 							Expected [fingerprint/path]xpub...
 						</span>
 					)}
@@ -1439,7 +1385,7 @@ function TimelockedStep({
 			)}
 
 			{primaryMode === "unspendable" && (
-				<div className="rounded-md border border-amber-500/30 bg-amber-500/[0.05] px-4 py-3 text-[12px] leading-relaxed text-foreground">
+				<div className="rounded-md border border-warning/30 bg-warning/[0.05] px-4 py-3 text-[12px] leading-relaxed text-foreground">
 					<div className="font-medium">Recovery-only wallet</div>
 					<p className="mt-1 text-muted-foreground">
 						The primary path will be locked with a provably-unspendable NUMS-derived key. Funds can{" "}
@@ -1451,9 +1397,7 @@ function TimelockedStep({
 			)}
 
 			<div>
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Recovery timelock
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Recovery timelock</span>
 				<div className="mt-2 flex flex-wrap items-center gap-2">
 					{TIMELOCK_PRESETS.map((preset) => {
 						const active = timelockBlocks === preset.blocks;
@@ -1484,16 +1428,14 @@ function TimelockedStep({
 						}
 						className="w-32 rounded-md border border-border bg-background px-3 py-2 text-[13px] text-foreground outline-none transition-colors focus:border-primary"
 					/>
-					<span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+					<span className="text-[11px] text-muted-foreground">
 						blocks ≈ {(timelockBlocks / 144).toFixed(1)} days
 					</span>
 				</div>
 			</div>
 
 			<label className="block">
-				<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-					Recovery key
-				</span>
+				<span className="text-[12px] font-medium text-muted-foreground">Recovery key</span>
 				<textarea
 					value={recoveryRaw}
 					onChange={(e) => setRecoveryRaw(e.target.value)}
@@ -1505,7 +1447,7 @@ function TimelockedStep({
 					className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground outline-none transition-colors focus:border-primary"
 				/>
 				{recoveryRaw.trim().length > 0 && recoveryParsed === null && (
-					<span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-destructive">
+					<span className="mt-1 block text-[11px] text-destructive">
 						Expected [fingerprint/path]xpub...
 					</span>
 				)}
@@ -1516,14 +1458,14 @@ function TimelockedStep({
 					type="button"
 					onClick={onBack}
 					disabled={submitting}
-					className="flex h-11 items-center rounded-md border border-border bg-background px-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+					className="flex h-11 items-center rounded-md border border-border bg-background px-5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
 				>
 					← Back
 				</button>
 				<button
 					type="submit"
 					disabled={!ready || submitting}
-					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground shadow-md transition-all hover:shadow-lg hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+					className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
 				>
 					{submitting ? "Creating…" : "Create timelocked wallet"}
 				</button>

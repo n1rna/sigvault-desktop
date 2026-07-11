@@ -81,7 +81,7 @@ pub async fn cmd_navigate(
     // Parse the route string to WindowApplicationRoute
     let app_route = match route.as_str() {
         "Loading" => WindowApplicationRoute::Loading,
-        "ModeChooser" => WindowApplicationRoute::ModeChooser,
+        "Welcome" => WindowApplicationRoute::Welcome,
         "SelectEnv" => WindowApplicationRoute::SelectEnv,
         "Login" => WindowApplicationRoute::Login,
         "MainPage" => WindowApplicationRoute::MainPage,

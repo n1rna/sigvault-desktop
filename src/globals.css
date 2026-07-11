@@ -1,4 +1,3 @@
-@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,900&display=swap");
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
@@ -21,7 +20,8 @@
 	}
 
 	html {
-		font-feature-settings: "ss01", "cv11";
+		/* Inter stylistic sets: cv11 = single-story a, cv05 = tailed l, ss03 = curved r */
+		font-feature-settings: "cv05", "cv11", "ss03";
 	}
 
 	html, body {
@@ -29,8 +29,9 @@
 		color: var(--color-foreground);
 		font-family: var(--font-sans);
 		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
 		text-rendering: optimizeLegibility;
-		font-size: 14px;
+		font-size: 15px;
 		line-height: 1.5;
 		overflow: hidden;
 		margin: 0;
@@ -108,9 +109,9 @@
 	--chart-4: oklch(0.82 0.075 88);
 	--chart-5: oklch(0.48 0.14 250);
 
-	--font-sans: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-	--font-serif: "Satoshi", ui-sans-serif, system-ui, sans-serif;
-	--font-mono: "Geist Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+	--font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	--font-serif: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", "Menlo", monospace;
 
 	--radius: 0.5rem;
 	--tracking-normal: -0.005em;
