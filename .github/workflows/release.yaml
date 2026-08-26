@@ -37,8 +37,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ENV_VARS_DESKTOP is a bundled KEY=VALUE secret on the `development`
+      # GitHub environment of this repo. It is not maintained by hand — the
+      # private `sigvault-secrets` repo owns the values
+      # (projects/desktop/development.env) and pushes them here from its
+      # sync-secrets workflow. `.ee.desktop` in this repo is the schema only.
+      #
+      # The Tauri updater signing keys are the only build-time inputs left;
+      # everything else the app needs is per-environment and resolved at
+      # runtime (`BUILTIN_OAUTH_CLIENTS` in src-tauri/src/env_config/mod.rs).
       - name: Prepare build environment
-        uses: n1rna/ee-action/hydrate@main
+        uses: n1rna/ee-action/hydrate@v1
         with:
           environment: development
           config_path: .ee.desktop
@@ -83,8 +92,27 @@ jobs:
             [[ -z "$key" || "$key" =~ ^# ]] && continue
             value="${value%\"}"
             value="${value#\"}"
+            # GitHub only masks ENV_VARS_DESKTOP as one blob, so a single
+            # unbundled value could still reach the log verbatim. Register
+            # each one before it goes anywhere near a build tool.
+            [[ -n "$value" ]] && echo "::add-mask::${value}"
             echo "${key}=${value}" >> "$GITHUB_ENV"
           done < .env
+
+      - name: Verify updater signing key is present
+        shell: bash
+        run: |
+          # tauri.conf.json sets `plugins.updater.pubkey`, so the bundler will
+          # try to sign updater artifacts. An *unset* key aborts with a clear
+          # message, but an empty one — what `ee hydrate` writes when the sheet
+          # is missing the value, since both signing vars are optional in the
+          # schema — only fails later as "failed to decode secret key". Fail
+          # here, where the cause is obvious.
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is empty. Check ENV_VARS_DESKTOP on this repo's 'development' environment; sigvault-secrets (projects/desktop/development.env) is the source of truth."
+            exit 1
+          fi
+          echo "Updater signing key present (${#TAURI_SIGNING_PRIVATE_KEY} chars)."
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'

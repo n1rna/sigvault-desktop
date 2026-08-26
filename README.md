@@ -70,31 +70,34 @@ The app includes built-in auto-update support. When a new release is available, 
    cd sigvault-desktop
    ```
 
-2. **Set up environment variables**
-
-   Copy the example env file and adjust values for your environment:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Install frontend dependencies**
+2. **Install frontend dependencies**
 
    ```bash
    bun install
    ```
 
-4. **Run in development mode**
+3. **Run in development mode**
 
    ```bash
    bun run tauri dev
    ```
+
+No `.env` is needed. The app fetches the list of available deployments from
+[`sigvault.org/environments.json`](https://sigvault.org/environments.json) at
+boot and lets you pick one on the login screen; the OAuth client ID and token
+URL for each are built into the binary (`BUILTIN_OAUTH_CLIENTS` in
+`src-tauri/src/env_config/mod.rs`), so a dev build can sign in to regtest,
+signet, or testnet without rebuilding.
 
 ## Building for Production
 
 ```bash
 bun run tauri build
 ```
+
+To produce *signed* updater artifacts you also need the Tauri signing key
+exported in your shell — see `.env.example`. Release CI takes it from the
+`ENV_VARS_DESKTOP` secret, which the private `sigvault-secrets` repo owns.
 
 Build artifacts are placed in `src-tauri/target/release/bundle/`.
 

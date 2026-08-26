@@ -11,40 +11,25 @@
 	},
 	"schema": {
 		"variables": {
-			"OAUTH2_CLIENT_ID": {
-				"name": "OAUTH2_CLIENT_ID",
-				"title": "OAuth2 client ID (Zitadel)",
-				"type": "string",
-				"default": "346819126007796376",
-				"required": true
-			},
-			"OAUTH2_TOKEN_URL": {
-				"name": "OAUTH2_TOKEN_URL",
-				"title": "OAuth2 token exchange URL",
-				"type": "string",
-				"default": "https://sigvault-jsyfl0.us1.zitadel.cloud/oauth/v2/token",
-				"required": true
-			},
 			"TAURI_SIGNING_PRIVATE_KEY": {
 				"name": "TAURI_SIGNING_PRIVATE_KEY",
 				"title": "Tauri updater signing private key (Ed25519)",
 				"type": "string",
-				"required": false
+				"required": false,
+				"secret": true
 			},
 			"TAURI_SIGNING_PRIVATE_KEY_PASSWORD": {
 				"name": "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
 				"title": "Tauri updater signing key password",
 				"type": "string",
-				"required": false
+				"required": false,
+				"secret": true
 			}
 		}
 	},
 	"environments": {
 		"development": {
-			"sources": [".env.desktop.development"]
-		},
-		"production": {
-			"sources": [".env.desktop.production"]
+			"sheets": []
 		}
 	}
 }
