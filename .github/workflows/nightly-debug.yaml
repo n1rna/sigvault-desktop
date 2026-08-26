@@ -43,24 +43,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare build environment
-        uses: n1rna/ee-action/hydrate@main
-        with:
-          environment: development
-          config_path: .ee.desktop
-          env_file: .env
-          gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
-
-      - name: Export env vars for build
-        shell: bash
-        run: |
-          while IFS='=' read -r key value; do
-            [[ -z "$key" || "$key" =~ ^# ]] && continue
-            value="${value%\"}"
-            value="${value#\"}"
-            echo "${key}=${value}" >> "$GITHUB_ENV"
-          done < .env
-
+      # No env hydration here on purpose. The only build-time variables left
+      # are the Tauri updater signing keys, and `--no-bundle` skips the
+      # bundle step entirely (tauri-cli only signs updater artifacts from
+      # inside the bundler), so this job needs no secrets at all. OAuth
+      # client IDs are per-environment constants in the binary — see
+      # `BUILTIN_OAUTH_CLIENTS` in `src-tauri/src/env_config/mod.rs`.
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
