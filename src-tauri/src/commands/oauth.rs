@@ -142,12 +142,14 @@ pub async fn cmd_authenticate(
     // with a token pinned to no backend.
     let env = app_state.require_env().await?;
 
-    // Build a fresh OAuth flow for this attempt: new PKCE + CSRF, and an
-    // auth URL pointing at the currently selected environment.
+    // Build a fresh OAuth flow for this attempt: new PKCE + CSRF, and a
+    // client ID / auth URL / token URL all pointing at the currently
+    // selected environment. Each network runs its own Zitadel, so all
+    // three are per-env — none of them can be compile-time constants.
     let new_flow = OAuthState::new(
-        env!("OAUTH2_CLIENT_ID").to_string(),
+        env.resolved_client_id()?,
         env.resolved_auth_url(),
-        env!("OAUTH2_TOKEN_URL").to_string(),
+        env.resolved_token_url()?,
     )
     .map_err(|e| format!("Failed to build OAuth flow: {e}"))?;
 
