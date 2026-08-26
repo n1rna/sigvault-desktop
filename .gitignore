@@ -1,12 +1,12 @@
-# Environment files
+# Environment files.
+#
+# The real values live in the private `sigvault-secrets` repo
+# (projects/desktop/*.env) and reach CI as the ENV_VARS_DESKTOP secret.
+# Nothing under .env* is ever committed here. `.ee.desktop` IS committed —
+# it is the schema, not a value sheet.
 .env
-.env.local
-.env.*.local
-.env.*.development
-.env.*.production
-
-# Project config (hydrated locally)
-.ee.desktop
+.env.*
+!.env.example
 
 # Logs
 logs

@@ -23,9 +23,12 @@ Thank you for your interest in contributing to SigVault Desktop! This guide will
 ### Getting Started
 
 1. Fork and clone the repository
-2. Copy `.env.example` to `.env` and configure for your environment
-3. Install dependencies: `bun install`
-4. Start development: `bun run tauri dev`
+2. Install dependencies: `bun install`
+3. Start development: `bun run tauri dev`
+
+No `.env` or secrets are needed to run the app — pick a deployment (regtest,
+signet, testnet) on the login screen. Only signed release builds need the
+Tauri updater signing key; see `.env.example`.
 
 ### Running Tests
 
