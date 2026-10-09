@@ -11,6 +11,22 @@ fn descriptor_to_multipath(desc: &str) -> String {
 fn descriptor_for_bitbox(desc: &str) -> String {
     descriptor_to_multipath(desc).replace("sortedmulti", "multi")
 }
+
+/// True for a descriptor that spends with one key and no script: `wpkh(K)`,
+/// `sh(wpkh(K))`, `pkh(K)`, or a key-path-only `tr(K)`.
+///
+/// A BitBox02 has no policy to register for these. It signs them from the
+/// key origins in the PSBT, and rejects an attempt to register one as a
+/// policy with "invalid input" — which used to fail the unlock, so a
+/// single-sig wallet could never be signed on a BitBox02.
+fn is_single_key_descriptor(desc: &str) -> bool {
+    let desc = desc.split('#').next().unwrap_or(desc).trim();
+    let inner = ["sh(wpkh(", "wpkh(", "pkh(", "tr("]
+        .iter()
+        .find_map(|prefix| desc.strip_prefix(prefix));
+    // More than one key, or a taproot script tree, shows up as a comma.
+    matches!(inner, Some(rest) if !rest.contains(','))
+}
 use tokio::sync::Mutex;
 
 use async_hwi::{
@@ -674,7 +690,9 @@ impl HardwareWalletManager {
                 if let Some(config) = wallet_config {
                     if let Some(ref desc) = config.descriptor {
                         let bb_desc = descriptor_for_bitbox(desc);
-                        {
+                        if is_single_key_descriptor(&bb_desc) {
+                            debug!("Single-key descriptor, no BitBox02 policy to register");
+                        } else {
                             bitbox = bitbox.with_policy(&bb_desc).map_err(|e| {
                                 HWIError::Device(format!("Failed to set BitBox02 policy: {e}"))
                             })?;
@@ -727,7 +745,7 @@ impl HardwareWalletManager {
                             }
 
                             debug!("BitBox02 policy registration status: {registered:?}");
-                        } // close else (non-multisig policy path)
+                        }
                     } else {
                         debug!("No descriptor provided for BitBox02, skipping policy check");
                     }
@@ -1376,5 +1394,34 @@ pub fn finalize_psbt(psbt: &mut Psbt) {
             psbt.inputs[i].tap_scripts.clear();
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod descriptor_tests {
+    use super::is_single_key_descriptor;
+
+    const KEY: &str = "[4c00739d/84'/1'/0']tpubDCYNsKenq7Cuuf4fHsu2fsWA7Wb5cTD2qRUrw6uHbNNYQoNkEoJk4hgNhxbnGss5gnEe2MpqN2qbRVqWJGmuofAWmwFFi4CZ9Tg1LHKJDhF/<0;1>/*";
+    const KEY2: &str = "[d093c7a2/48'/1'/0'/2']tpubDEvZxV86Br8Knbm9tWcr5Hvmg5cYTYsg92vinqH6Bie6U8ix8CsoN9W11NQygqTSkNCj6UmcE4DBXZ8Nxp6RzBzBQUuUqmrqQ8mnBpBNZLx/<0;1>/*";
+
+    #[test]
+    fn single_key_descriptors_need_no_policy() {
+        assert!(is_single_key_descriptor(&format!("wpkh({KEY})")));
+        assert!(is_single_key_descriptor(&format!("sh(wpkh({KEY}))")));
+        assert!(is_single_key_descriptor(&format!("pkh({KEY})")));
+        assert!(is_single_key_descriptor(&format!("tr({KEY})")));
+        assert!(is_single_key_descriptor(&format!("wpkh({KEY})#abcd1234")));
+    }
+
+    #[test]
+    fn multi_key_and_script_descriptors_are_policies() {
+        assert!(!is_single_key_descriptor(&format!(
+            "wsh(multi(2,{KEY},{KEY2}))"
+        )));
+        assert!(!is_single_key_descriptor(&format!(
+            "tr({KEY},and_v(v:pk({KEY2}),older(10)))"
+        )));
+        assert!(!is_single_key_descriptor(&format!("wsh(pk({KEY}))")));
+        assert!(!is_single_key_descriptor(""));
     }
 }
