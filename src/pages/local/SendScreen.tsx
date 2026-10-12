@@ -47,6 +47,7 @@ type WalletDetails = {
 	policy_type: string;
 	external_descriptor: string;
 	internal_descriptor: string;
+	multipath_descriptor: string | null;
 	fingerprints: string[];
 	has_hot_keys: boolean;
 };
@@ -145,7 +146,7 @@ export default function SendScreen() {
 	const walletConfig: WalletConfig | undefined = details
 		? {
 				name: details.name,
-				descriptor: details.external_descriptor,
+				descriptor: details.multipath_descriptor ?? details.external_descriptor,
 			}
 		: undefined;
 

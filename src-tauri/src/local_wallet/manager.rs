@@ -24,7 +24,10 @@ use std::str::FromStr;
 use bdk_wallet::bitcoin::bip32::Xpriv;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::keys::bip39::{Language, Mnemonic};
-use bdk_wallet::miniscript::descriptor::DescriptorPublicKey;
+use bdk_wallet::miniscript::descriptor::{DerivPaths, DescriptorMultiXKey, DescriptorPublicKey};
+use bdk_wallet::miniscript::{
+    translate_hash_clone, Descriptor, TranslateErr, TranslatePk, Translator,
+};
 use bdk_wallet::KeychainKind;
 use policy_core::{
     build_descriptor, unspendable_primary_xpub, KeyUtils, PolicyPath as CorePolicyPath,
@@ -728,6 +731,17 @@ impl LocalWalletManager {
                 )));
             }
             validate_timelocked_path(&rec.path, &format!("recovery {idx}"))?;
+            // The descriptor keys recovery paths by timelock; a duplicate
+            // would silently drop one of them.
+            if let Some(dup) = recoveries[..idx]
+                .iter()
+                .position(|r| r.timelock_blocks == rec.timelock_blocks)
+            {
+                return Err(ManagerError::Runtime(format!(
+                    "recovery paths {dup} and {idx} share the {}-block timelock; each recovery needs its own",
+                    rec.timelock_blocks
+                )));
+            }
         }
 
         // Resolve the primary path. The `Keys` arm is the user-driven
@@ -958,6 +972,93 @@ pub fn derive_account_at_path(
     master
         .derive_priv(&secp, &dp)
         .map_err(|e| ManagerError::Runtime(format!("derive at '{path}': {e}")))
+}
+
+/// Rebuild the multipath descriptor (`…/<0;1>/*`) from a wallet's receive
+/// and change descriptors, which is the only form the metadata stores.
+/// Every key must be the same in both, apart from its derivation path.
+pub fn multipath_descriptor(external: &str, internal: &str) -> Result<String, ManagerError> {
+    let parse = |descriptor: &str| {
+        Descriptor::<DescriptorPublicKey>::from_str(descriptor)
+            .map_err(|e| ManagerError::Runtime(format!("parse descriptor: {e}")))
+    };
+    let receive = parse(external)?;
+    let change = parse(internal)?;
+
+    let mut merge = MergeChangeKeys {
+        change: Vec::new(),
+        collecting: true,
+    };
+    let translate_err = |e: TranslateErr<ManagerError>| match e {
+        TranslateErr::TranslatorErr(e) => e,
+        TranslateErr::OuterError(e) => ManagerError::Runtime(format!("multipath descriptor: {e}")),
+    };
+    change.translate_pk(&mut merge).map_err(translate_err)?;
+    merge.change.reverse();
+    merge.collecting = false;
+    let merged = receive.translate_pk(&mut merge).map_err(translate_err)?;
+
+    // The merge is only right if it splits back into the two inputs.
+    if merged.is_multipath() {
+        let split = merged
+            .clone()
+            .into_single_descriptors()
+            .map_err(|e| ManagerError::Runtime(format!("multipath descriptor: {e}")))?;
+        if split != [receive, change] {
+            return Err(ManagerError::Runtime(
+                "receive and change descriptors do not form one multipath descriptor".to_string(),
+            ));
+        }
+    } else if receive != change {
+        return Err(ManagerError::Runtime(
+            "receive and change descriptors differ in more than their keys' paths".to_string(),
+        ));
+    }
+    Ok(merged.to_string())
+}
+
+/// Visits the change descriptor's keys, then pairs them, in the same
+/// order, with the receive descriptor's keys.
+struct MergeChangeKeys {
+    /// Change keys still to be paired, last one first.
+    change: Vec<DescriptorPublicKey>,
+    collecting: bool,
+}
+
+impl Translator<DescriptorPublicKey, DescriptorPublicKey, ManagerError> for MergeChangeKeys {
+    fn pk(&mut self, key: &DescriptorPublicKey) -> Result<DescriptorPublicKey, ManagerError> {
+        if self.collecting {
+            self.change.push(key.clone());
+            return Ok(key.clone());
+        }
+        let mismatch = || {
+            ManagerError::Runtime(
+                "receive and change descriptors do not hold the same keys".to_string(),
+            )
+        };
+        let change = self.change.pop().ok_or_else(mismatch)?;
+        if *key == change {
+            return Ok(change);
+        }
+        match (key, change) {
+            (DescriptorPublicKey::XPub(receive), DescriptorPublicKey::XPub(change))
+                if receive.origin == change.origin
+                    && receive.xkey == change.xkey
+                    && receive.wildcard == change.wildcard =>
+            {
+                let paths = vec![receive.derivation_path.clone(), change.derivation_path];
+                Ok(DescriptorPublicKey::MultiXPub(DescriptorMultiXKey {
+                    origin: receive.origin.clone(),
+                    xkey: receive.xkey,
+                    derivation_paths: DerivPaths::new(paths).ok_or_else(mismatch)?,
+                    wildcard: receive.wildcard,
+                }))
+            }
+            _ => Err(mismatch()),
+        }
+    }
+
+    translate_hash_clone!(DescriptorPublicKey, DescriptorPublicKey, ManagerError);
 }
 
 /// Scan every origin block in a descriptor and collect the
@@ -1244,6 +1345,87 @@ mod tests {
             .await
             .expect("peek");
         assert!(addr.starts_with("bcrt1q"));
+    }
+
+    /// `[fp/48'/1'/0'/2']xpub` for a seed, without a derivation step.
+    fn origin_key(mnemonic: &str) -> String {
+        let path = "48'/1'/0'/2'";
+        let secp = bdk_wallet::bitcoin::secp256k1::Secp256k1::new();
+        let master = derive_master_xpriv(Network::Regtest, mnemonic, "").unwrap();
+        let account = derive_account_at_path(Network::Regtest, mnemonic, "", path).unwrap();
+        let xpub = bdk_wallet::bitcoin::bip32::Xpub::from_priv(&secp, &account);
+        format!("[{}/{}]{}", master.fingerprint(&secp), path, xpub)
+    }
+
+    fn origin_keys() -> (String, String) {
+        (
+            origin_key("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"),
+            origin_key("legal winner thank year wave sausage worth useful legal winner thank yellow"),
+        )
+    }
+
+    fn without_checksum(descriptor: &str) -> &str {
+        descriptor.split('#').next().unwrap()
+    }
+
+    #[test]
+    fn multipath_descriptor_merges_each_key() {
+        let (a, b) = origin_keys();
+        let merged = multipath_descriptor(
+            &format!("wsh(sortedmulti(2,{a}/0/*,{b}/0/*))"),
+            &format!("wsh(sortedmulti(2,{a}/1/*,{b}/1/*))"),
+        )
+        .unwrap();
+        assert_eq!(
+            without_checksum(&merged),
+            format!("wsh(sortedmulti(2,{a}/<0;1>/*,{b}/<0;1>/*))")
+        );
+    }
+
+    #[test]
+    fn multipath_descriptor_keeps_whole_steps_and_drops_checksums() {
+        // `/10/*` + `/11/*` share a leading digit; a key may also sit at
+        // a later step pair than its neighbour.
+        let (a, _) = origin_keys();
+        let receive = Descriptor::<DescriptorPublicKey>::from_str(&format!(
+            "tr({a}/0/*,and_v(v:pk({a}/10/*),older(10)))"
+        ))
+        .unwrap()
+        .to_string();
+        let change = Descriptor::<DescriptorPublicKey>::from_str(&format!(
+            "tr({a}/1/*,and_v(v:pk({a}/11/*),older(10)))"
+        ))
+        .unwrap()
+        .to_string();
+        assert!(receive.contains('#') && change.contains('#'));
+
+        let merged = multipath_descriptor(&receive, &change).unwrap();
+        assert_eq!(
+            without_checksum(&merged),
+            format!("tr({a}/<0;1>/*,and_v(v:pk({a}/<10;11>/*),older(10)))")
+        );
+    }
+
+    #[test]
+    fn multipath_descriptor_refuses_unrelated_descriptors() {
+        let (a, b) = origin_keys();
+        let refused = |receive: String, change: String| {
+            Descriptor::<DescriptorPublicKey>::from_str(&receive).expect("valid receive");
+            Descriptor::<DescriptorPublicKey>::from_str(&change).expect("valid change");
+            assert!(multipath_descriptor(&receive, &change).is_err());
+        };
+        // Another key.
+        refused(format!("wpkh({a}/0/*)"), format!("wpkh({b}/1/*)"));
+        // Same keys, another script.
+        refused(
+            format!("wsh(sortedmulti(1,{a}/0/*,{b}/0/*))"),
+            format!("wsh(sortedmulti(2,{a}/1/*,{b}/1/*))"),
+        );
+        // Fewer keys on the change side.
+        refused(
+            format!("wsh(sortedmulti(1,{a}/0/*,{b}/0/*))"),
+            format!("wpkh({a}/1/*)"),
+        );
     }
 
     #[test]
