@@ -46,26 +46,31 @@
 //! cosigner, BitBox / Jade / Coldcard signing) stay in the manual
 //! checklist at `docs/qa/standalone-wallet-v1.md`.
 
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use bdk_wallet::miniscript::descriptor::DescriptorPublicKey;
 use bitcoin::bip32::DerivationPath;
+use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::Secp256k1;
-use bitcoin::{Address, Amount, FeeRate, Network, Psbt};
+use bitcoin::{
+    Address, Amount, FeeRate, Network, OutPoint, Psbt, Sequence, Transaction, TxIn, TxOut, Txid,
+};
+use policy_core::{build_descriptor, PolicyPath, RecoveryPath, WalletShape};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sigvault_desktop_lib::local_wallet::commands::{register_software_signers, spending_paths_for};
 use sigvault_desktop_lib::local_wallet::manager::{
     derive_account_at_path, derive_master_xpriv, LocalWalletManager, MultisigCosigner,
-    TimelockedPrimary,
+    TimelockedKeyInput, TimelockedPrimary, TimelockedRecoveryPath, TimelockedSpendingPath,
 };
 use sigvault_desktop_lib::local_wallet::state::{LocalWalletState, UnlockedHandle};
 use sigvault_desktop_lib::local_wallet::storage::{read_seed_file, WalletDirLayout, WalletId};
 use sigvault_desktop_lib::local_wallet::sync::{run_sync, NoopSink};
 use tempfile::TempDir;
-use wallet_runtime::{
-    add_xprv_signer, analyze_for_signing, sign_psbt, ElectrumClient, KeychainKind,
-};
+use wallet_runtime::{sign_psbt, ElectrumClient, KeychainKind, SpendingPath};
 
 // ── Test infrastructure ────────────────────────────────────────────
 
@@ -294,10 +299,38 @@ async fn build_sign_broadcast(
     amount_sat: u64,
     fee_sat_per_vb: u64,
 ) -> Result<String, String> {
+    let psbt = build_and_sign(
+        mgr,
+        wallet_id,
+        encrypt_passphrase,
+        recipient,
+        amount_sat,
+        fee_sat_per_vb,
+        None,
+    )
+    .await?;
+    let tx = psbt.extract_tx().map_err(|e| format!("extract: {e}"))?;
+    let url = electrs_url();
+    let txid = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let client = ElectrumClient::connect(&url).map_err(|e| format!("electrum connect: {e}"))?;
+        client.broadcast(&tx).map_err(|e| format!("broadcast: {e}"))
+    })
+    .await
+    .map_err(|e| format!("spawn: {e}"))??;
+    Ok(txid)
+}
+
+/// Build an unsigned PSBT the way `cmd_local_build_psbt` does.
+async fn build_unsigned(
+    mgr: &LocalWalletManager,
+    wallet_id: &WalletId,
+    recipient: &str,
+    amount_sat: u64,
+    fee_sat_per_vb: u64,
+    policy_path: Option<BTreeMap<String, Vec<usize>>>,
+) -> Result<String, String> {
     let meta = mgr.read_metadata(wallet_id).map_err(|e| e.to_string())?;
     let network = Network::from_str(&meta.network).map_err(|e| format!("network: {e}"))?;
-
-    // Build PSBT.
     let handle = mgr
         .state()
         .get(wallet_id)
@@ -317,13 +350,42 @@ async fn build_sign_broadcast(
             .require_network(network)
             .map_err(|e| e.to_string())?;
         builder.add_recipient(addr.script_pubkey(), Amount::from_sat(amount_sat));
+        if let Some(pp) = policy_path {
+            builder.policy_path(pp.clone(), KeychainKind::External);
+            builder.policy_path(pp, KeychainKind::Internal);
+        }
         let psbt = builder.finish().map_err(|e| format!("build_tx: {e}"))?;
         wallet
             .persist(persister)
             .map_err(|e| format!("persist: {e}"))?;
         psbt.to_string()
     };
-    drop(guard);
+    Ok(psbt_b64)
+}
+
+/// The build + sign + finalize half of `build_sign_broadcast`; needs no
+/// node. `policy_path` selects the branch of a multi-path descriptor.
+async fn build_and_sign(
+    mgr: &LocalWalletManager,
+    wallet_id: &WalletId,
+    encrypt_passphrase: &[u8],
+    recipient: &str,
+    amount_sat: u64,
+    fee_sat_per_vb: u64,
+    policy_path: Option<BTreeMap<String, Vec<usize>>>,
+) -> Result<Psbt, String> {
+    let meta = mgr.read_metadata(wallet_id).map_err(|e| e.to_string())?;
+    let network = Network::from_str(&meta.network).map_err(|e| format!("network: {e}"))?;
+
+    let psbt_b64 = build_unsigned(
+        mgr,
+        wallet_id,
+        recipient,
+        amount_sat,
+        fee_sat_per_vb,
+        policy_path,
+    )
+    .await?;
 
     // Sign — replicates cmd_local_sign_psbt_software's flow.
     let app_data_root = mgr.local_root().parent().unwrap();
@@ -359,29 +421,270 @@ async fn build_sign_broadcast(
         .await
         .ok_or_else(|| "wallet not unlocked (sign)".to_string())?;
     let mut guard = handle.lock().await;
-    let analysis = analyze_for_signing(&guard.wallet, &psbt, &fp);
-    let kind = analysis.signer_kind;
-    for (keychain, index) in &analysis.required_derivations {
-        add_xprv_signer(&mut guard.wallet, &account_xpriv, *keychain, *index, kind)
-            .map_err(|e| format!("add_xprv_signer: {e}"))?;
-    }
+    register_software_signers(&mut guard.wallet, &account_xpriv, &psbt, &fp)?;
     let _ = sign_psbt(&guard.wallet, &mut psbt).map_err(|e| format!("sign: {e}"))?;
     drop(guard);
 
-    // Finalize + broadcast.
     use bdk_wallet::miniscript::psbt::PsbtExt;
     let secp_v = bdk_wallet::bitcoin::secp256k1::Secp256k1::verification_only();
     psbt.finalize_mut(&secp_v)
         .map_err(|e| format!("finalize: {e:?}"))?;
-    let tx = psbt.extract_tx().map_err(|e| format!("extract: {e}"))?;
-    let url = electrs_url();
-    let txid = tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let client = ElectrumClient::connect(&url).map_err(|e| format!("electrum connect: {e}"))?;
-        client.broadcast(&tx).map_err(|e| format!("broadcast: {e}"))
-    })
+    Ok(psbt)
+}
+
+/// Give the unlocked wallet an unconfirmed coin on its first receive
+/// address, so a spend can be built without a node.
+async fn fund_offline(mgr: &LocalWalletManager, wallet_id: &WalletId, amount_sat: u64) {
+    let handle = mgr.state().get(wallet_id).await.expect("unlocked");
+    let mut guard = handle.lock().await;
+    let spk = guard
+        .wallet
+        .reveal_next_address(KeychainKind::External)
+        .address
+        .script_pubkey();
+    let tx = Transaction {
+        version: bitcoin::transaction::Version::TWO,
+        lock_time: bitcoin::absolute::LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: OutPoint::new(Txid::from_byte_array([7u8; 32]), 0),
+            ..Default::default()
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat(amount_sat),
+            script_pubkey: spk,
+        }],
+    };
+    guard.wallet.apply_unconfirmed_txs([(tx, 1)]);
+}
+
+/// Spending paths as `cmd_local_list_spending_paths` returns them.
+async fn listed_paths(mgr: &LocalWalletManager, wallet_id: &WalletId) -> Vec<SpendingPath> {
+    let meta = mgr.read_metadata(wallet_id).expect("meta");
+    let policy_id = {
+        let handle = mgr.state().get(wallet_id).await.expect("unlocked");
+        let guard = handle.lock().await;
+        let policy = guard
+            .wallet
+            .policies(KeychainKind::External)
+            .expect("policy");
+        policy.map(|p| p.id)
+    };
+    spending_paths_for(&meta, policy_id.as_deref()).expect("spending paths")
+}
+
+/// Key of `mnemonic` at account `account`, as the create wizard collects it.
+fn key_input(mnemonic: &str, account: u32) -> TimelockedKeyInput {
+    let path = format!("48'/1'/{account}'/2'");
+    let secp = Secp256k1::new();
+    let master = derive_master_xpriv(Network::Regtest, mnemonic, "").unwrap();
+    let xpriv = derive_account_at_path(Network::Regtest, mnemonic, "", &path).unwrap();
+    TimelockedKeyInput {
+        fingerprint: master.fingerprint(&secp).to_string(),
+        xpub: bitcoin::bip32::Xpub::from_priv(&secp, &xpriv).to_string(),
+        derivation_path: path,
+    }
+}
+
+fn keys_path(threshold: u32, keys: Vec<TimelockedKeyInput>) -> TimelockedSpendingPath {
+    TimelockedSpendingPath { keys, threshold }
+}
+
+/// A timelocked wallet as the create wizard builds it, with recoveries
+/// after 100, 200 and 300 blocks; seed A holds the 200-block one. The
+/// stored descriptors are then recovered with seed A, funded, and:
+/// every listed path must build a PSBT carrying its own timelock, and
+/// seed A must be able to spend through its recovery.
+async fn check_timelocked_wallet_paths(primary: TimelockedPrimary) {
+    let (_tmp, mgr) = fresh_manager();
+    let pass = b"e2e-passphrase";
+    // The listed primary: (threshold, keys). An unspendable one is not listed.
+    let primary_row = match &primary {
+        TimelockedPrimary::Keys(p) => Some((p.threshold, p.keys.len())),
+        TimelockedPrimary::Unspendable => None,
+    };
+    let created = mgr
+        .create_timelocked(
+            "timelocked",
+            Network::Regtest,
+            primary,
+            vec![
+                TimelockedRecoveryPath {
+                    timelock_blocks: 300,
+                    path: keys_path(1, vec![key_input(SEED_B, 1)]),
+                },
+                TimelockedRecoveryPath {
+                    timelock_blocks: 100,
+                    path: keys_path(1, vec![key_input(SEED_C, 1)]),
+                },
+                TimelockedRecoveryPath {
+                    timelock_blocks: 200,
+                    path: keys_path(1, vec![key_input(SEED_A, 0)]),
+                },
+            ],
+        )
+        .await
+        .expect("create timelocked");
+    let created = mgr.read_metadata(&created).expect("meta");
+
+    let id = mgr
+        .recover_descriptor_hot_cosigner(
+            "timelocked-cosigner",
+            Network::Regtest,
+            SEED_A,
+            "",
+            pass,
+            &created.external_descriptor,
+            &created.internal_descriptor,
+            "timelocked",
+        )
+        .await
+        .expect("recover");
+    mgr.unlock_wallet(&id, pass).await.expect("unlock");
+    fund_offline(&mgr, &id, 100_000).await;
+
+    let paths = listed_paths(&mgr, &id).await;
+    let listed: Vec<(&str, u32, usize, Option<u32>)> = paths
+        .iter()
+        .map(|p| {
+            (
+                p.id.as_str(),
+                p.threshold,
+                p.fingerprints.len(),
+                p.timelock_blocks,
+            )
+        })
+        .collect();
+    let mut expected = vec![
+        ("recovery_0", 1, 1, Some(100)),
+        ("recovery_1", 1, 1, Some(200)),
+        ("recovery_2", 1, 1, Some(300)),
+    ];
+    if let Some((threshold, keys)) = primary_row {
+        expected.insert(0, ("primary", threshold, keys, None));
+    }
+    assert_eq!(listed, expected);
+
+    for path in &paths {
+        let psbt_b64 = build_unsigned(
+            &mgr,
+            &id,
+            OFFLINE_RECIPIENT,
+            50_000,
+            2,
+            path.policy_path.clone(),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", path.id));
+        let sequence = Psbt::from_str(&psbt_b64).unwrap().unsigned_tx.input[0].sequence;
+        match path.timelock_blocks {
+            Some(blocks) => assert_eq!(
+                sequence,
+                Sequence::from_height(blocks as u16),
+                "{}",
+                path.id
+            ),
+            None => assert!(!sequence.is_relative_lock_time(), "{}", path.id),
+        }
+    }
+
+    let own = paths.iter().find(|p| p.timelock_blocks == Some(200));
+    let psbt = build_and_sign(
+        &mgr,
+        &id,
+        pass,
+        OFFLINE_RECIPIENT,
+        50_000,
+        2,
+        own.unwrap().policy_path.clone(),
+    )
     .await
-    .map_err(|e| format!("spawn: {e}"))??;
-    Ok(txid)
+    .expect("build + sign + finalize");
+    let witness = psbt.inputs[0].final_script_witness.as_ref().unwrap();
+    assert_eq!(witness.len(), 3, "script-path spend: sig, script, control");
+    assert_eq!(
+        psbt.unsigned_tx.input[0].sequence,
+        Sequence::from_height(200)
+    );
+}
+
+const OFFLINE_RECIPIENT: &str = "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080";
+const SEED_A: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const SEED_B: &str = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+const SEED_C: &str =
+    "letter advice cage absurd amount doctor acoustic avoid letter advice cage above";
+
+/// `[fp/48'/1'/0'/2']xpub/<step;step+1>/*` for a seed.
+fn cosigner_key(mnemonic: &str, step: u32) -> DescriptorPublicKey {
+    let path = "48'/1'/0'/2'";
+    let secp = Secp256k1::new();
+    let master = derive_master_xpriv(Network::Regtest, mnemonic, "").unwrap();
+    let account = derive_account_at_path(Network::Regtest, mnemonic, "", path).unwrap();
+    let xpub = bitcoin::bip32::Xpub::from_priv(&secp, &account);
+    DescriptorPublicKey::from_str(&format!(
+        "[{}/{}]{}/<{};{}>/*",
+        master.fingerprint(&secp),
+        path,
+        xpub,
+        step,
+        step + 1
+    ))
+    .unwrap()
+}
+
+/// Recover seed A as a cosigner of a timelocked policy, fund it, and
+/// spend through the listed path `path_id` with seed A alone.
+async fn spend_timelocked_as_seed_a(
+    primary: PolicyPath,
+    recovery: PolicyPath,
+    path_id: &str,
+) -> Psbt {
+    let pair = build_descriptor(&WalletShape::TimelockedPolicy {
+        primary_id: "primary".to_string(),
+        primary,
+        recoveries: vec![RecoveryPath {
+            id: "recovery_0".to_string(),
+            timelock: 10,
+            path: recovery,
+        }],
+    })
+    .expect("descriptor");
+
+    let (_tmp, mgr) = fresh_manager();
+    let pass = b"e2e-passphrase";
+    let id = mgr
+        .recover_descriptor_hot_cosigner(
+            "cosigner",
+            Network::Regtest,
+            SEED_A,
+            "",
+            pass,
+            &pair.external,
+            &pair.internal,
+            "timelocked",
+        )
+        .await
+        .expect("recover");
+    mgr.unlock_wallet(&id, pass).await.expect("unlock");
+    fund_offline(&mgr, &id, 100_000).await;
+
+    let paths = listed_paths(&mgr, &id).await;
+    let path = paths
+        .into_iter()
+        .find(|p| p.id == path_id)
+        .unwrap_or_else(|| panic!("no spending path '{path_id}'"));
+
+    build_and_sign(
+        &mgr,
+        &id,
+        pass,
+        OFFLINE_RECIPIENT,
+        50_000,
+        2,
+        path.policy_path,
+    )
+    .await
+    .expect("build + sign + finalize")
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -698,6 +1001,117 @@ async fn bip39_passphrase_round_trip() {
 }
 
 #[tokio::test]
+async fn singlesig_hot_signs_offline() {
+    let (_tmp, mgr) = fresh_manager();
+    let pass = b"e2e-passphrase";
+    let (id, _words) = mgr
+        .create_singlesig_hot("singlesig-offline", Network::Regtest, pass)
+        .await
+        .expect("create");
+    mgr.unlock_wallet(&id, pass).await.expect("unlock");
+    fund_offline(&mgr, &id, 100_000).await;
+
+    let psbt = build_and_sign(&mgr, &id, pass, OFFLINE_RECIPIENT, 50_000, 2, None)
+        .await
+        .expect("build + sign + finalize");
+    assert!(psbt.inputs[0].final_script_witness.is_some());
+}
+
+/// The seed holds a key in the primary and, at the `<2;3>` step of the
+/// same xpub, the only key of the recovery. It must be able to spend the
+/// recovery leaf alone.
+#[tokio::test]
+async fn cosigner_signs_recovery_leaf_at_second_multipath_step() {
+    let psbt = spend_timelocked_as_seed_a(
+        PolicyPath::Multi {
+            threshold: 2,
+            keys: vec![cosigner_key(SEED_A, 0), cosigner_key(SEED_B, 0)],
+        },
+        PolicyPath::Single(cosigner_key(SEED_A, 2)),
+        "recovery_0",
+    )
+    .await;
+    let witness = psbt.inputs[0].final_script_witness.as_ref().unwrap();
+    assert_eq!(witness.len(), 3, "script-path spend: sig, script, control");
+    assert_eq!(
+        psbt.unsigned_tx.input[0].sequence,
+        Sequence::from_height(10)
+    );
+}
+
+/// The seed holds the taproot internal key and a key inside a recovery
+/// leaf. The primary must still be signed by key path.
+#[tokio::test]
+async fn cosigner_signs_key_path_while_holding_a_leaf_key() {
+    let psbt = spend_timelocked_as_seed_a(
+        PolicyPath::Single(cosigner_key(SEED_A, 0)),
+        PolicyPath::Multi {
+            threshold: 2,
+            keys: vec![cosigner_key(SEED_A, 2), cosigner_key(SEED_B, 0)],
+        },
+        "primary",
+    )
+    .await;
+    let witness = psbt.inputs[0].final_script_witness.as_ref().unwrap();
+    assert_eq!(witness.len(), 1, "key-path spend: one signature");
+}
+
+#[tokio::test]
+async fn timelocked_single_key_primary_lists_and_spends_its_paths() {
+    check_timelocked_wallet_paths(TimelockedPrimary::Keys(keys_path(
+        1,
+        vec![key_input(SEED_B, 0)],
+    )))
+    .await;
+}
+
+#[tokio::test]
+async fn timelocked_multisig_primary_lists_and_spends_its_paths() {
+    check_timelocked_wallet_paths(TimelockedPrimary::Keys(keys_path(
+        2,
+        vec![key_input(SEED_B, 0), key_input(SEED_C, 0)],
+    )))
+    .await;
+}
+
+#[tokio::test]
+async fn timelocked_unspendable_primary_lists_and_spends_its_recoveries() {
+    check_timelocked_wallet_paths(TimelockedPrimary::Unspendable).await;
+}
+
+#[tokio::test]
+async fn recoveries_sharing_a_timelock_are_refused() {
+    let secp = Secp256k1::new();
+    let path = "48'/1'/0'/2'";
+    let recovery = |mnemonic: &str| {
+        let master = derive_master_xpriv(Network::Regtest, mnemonic, "").unwrap();
+        let account = derive_account_at_path(Network::Regtest, mnemonic, "", path).unwrap();
+        TimelockedRecoveryPath {
+            timelock_blocks: 144,
+            path: TimelockedSpendingPath {
+                keys: vec![TimelockedKeyInput {
+                    fingerprint: master.fingerprint(&secp).to_string(),
+                    xpub: bitcoin::bip32::Xpub::from_priv(&secp, &account).to_string(),
+                    derivation_path: path.to_string(),
+                }],
+                threshold: 1,
+            },
+        }
+    };
+    let (_tmp, mgr) = fresh_manager();
+    let err = mgr
+        .create_timelocked(
+            "same-timelock",
+            Network::Regtest,
+            TimelockedPrimary::Unspendable,
+            vec![recovery(SEED_A), recovery(SEED_B)],
+        )
+        .await
+        .expect_err("two recoveries at 144 blocks");
+    assert!(err.to_string().contains("share the 144-block timelock"));
+}
+
+#[tokio::test]
 async fn unspendable_primary_descriptor_uses_nums() {
     // QBL-235 — confirm the descriptor built from an unspendable
     // primary actually contains the BIP-341 NUMS pubkey at the
@@ -715,9 +1129,6 @@ async fn unspendable_primary_descriptor_uses_nums() {
     let xpub = bitcoin::bip32::Xpub::from_priv(&secp, &xpriv);
     let fp = master.fingerprint(&secp).to_string();
 
-    use sigvault_desktop_lib::local_wallet::manager::{
-        TimelockedKeyInput, TimelockedRecoveryPath, TimelockedSpendingPath,
-    };
     let rec = TimelockedRecoveryPath {
         timelock_blocks: 144,
         path: TimelockedSpendingPath {

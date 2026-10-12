@@ -9,6 +9,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use bdk_wallet::bitcoin::bip32::{Fingerprint, Xpriv};
 use bdk_wallet::bitcoin::secp256k1::Secp256k1;
 use bdk_wallet::bitcoin::{Address, Amount, FeeRate, Network, Psbt};
 use bdk_wallet::chain::ChainPosition;
@@ -17,13 +18,14 @@ use bdk_wallet::KeychainKind;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use wallet_runtime::{
-    add_xprv_signer, analyze_for_signing, list_spending_paths, sign_psbt, ElectrumClient,
-    SpendingPath,
+    add_psbt_signers, add_xprv_signer, analyze_for_signing, list_spending_paths, sign_psbt,
+    ElectrumClient, SpendingPath, Wallet,
 };
 
 use super::manager::{
-    derive_account_at_path, derive_master_xpriv, LocalWalletManager, ManagerError,
-    TimelockedKeyInput, TimelockedRecoveryPath, TimelockedSpendingPath, WalletSummary,
+    derive_account_at_path, derive_master_xpriv, multipath_descriptor, LocalWalletManager,
+    LocalWalletMetadata, ManagerError, TimelockedKeyInput, TimelockedRecoveryPath,
+    TimelockedSpendingPath, WalletSummary,
 };
 use policy_core::KeyUtils;
 
@@ -745,6 +747,10 @@ pub struct WalletDetails {
     pub policy_type: String,
     pub external_descriptor: String,
     pub internal_descriptor: String,
+    /// Receive and change descriptors as one `<0;1>` descriptor, the form
+    /// hardware devices register as a wallet policy. `None` when the two
+    /// do not merge.
+    pub multipath_descriptor: Option<String>,
     pub fingerprints: Vec<String>,
     pub has_hot_keys: bool,
 }
@@ -764,6 +770,11 @@ pub async fn cmd_local_get_wallet_details(
         name: meta.name,
         network: meta.network,
         policy_type: meta.policy_type,
+        multipath_descriptor: multipath_descriptor(
+            &meta.external_descriptor,
+            &meta.internal_descriptor,
+        )
+        .ok(),
         external_descriptor: meta.external_descriptor,
         internal_descriptor: meta.internal_descriptor,
         fingerprints: meta.fingerprints,
@@ -848,15 +859,33 @@ pub async fn cmd_local_list_spending_paths(
         .map(|p| p.id);
     drop(guard);
 
-    let paths = list_spending_paths(
-        &meta.policy_type,
-        &meta.external_descriptor,
-        &meta.fingerprints,
-        policy_id.as_deref(),
-    )
-    .map_err(|e| format!("enumerate spending paths: {e}"))?;
+    let paths = spending_paths_for(&meta, policy_id.as_deref())?;
 
     Ok(paths.into_iter().map(SpendingPathDto::from).collect())
+}
+
+/// The wallet's spending paths. `list_spending_paths` reads a policy
+/// descriptor only in its multipath form, which the metadata does not
+/// store, so it is rebuilt from the receive and change descriptors.
+pub fn spending_paths_for(
+    meta: &LocalWalletMetadata,
+    external_policy_id: Option<&str>,
+) -> Result<Vec<SpendingPath>, String> {
+    let multipath = multipath_descriptor(&meta.external_descriptor, &meta.internal_descriptor);
+    let descriptor = match meta.policy_type.as_str() {
+        "timelocked" => multipath.map_err(map_err)?,
+        // An imported descriptor need not be a policy; the receive
+        // descriptor still yields its single default path.
+        "descriptor" => multipath.unwrap_or_else(|_| meta.external_descriptor.clone()),
+        _ => meta.external_descriptor.clone(),
+    };
+    list_spending_paths(
+        &meta.policy_type,
+        &descriptor,
+        &meta.fingerprints,
+        external_policy_id,
+    )
+    .map_err(|e| format!("enumerate spending paths: {e}"))
 }
 
 // ---------- PSBT pipeline (QBL-219) ----------
@@ -1008,6 +1037,35 @@ pub async fn cmd_local_build_psbt(
     })
 }
 
+/// Register `account_xpriv`'s signers for `psbt` on the wallet: one per
+/// key the PSBT names for `fingerprint`, each as key path / script path /
+/// SegWit v0 by that key's own origin. A PSBT that names no key of this
+/// device falls back to one signer kind for the wallet's own derivations.
+pub fn register_software_signers(
+    wallet: &mut Wallet,
+    account_xpriv: &Xpriv,
+    psbt: &Psbt,
+    fingerprint: &Fingerprint,
+) -> Result<(), String> {
+    let named = add_psbt_signers(wallet, account_xpriv, psbt, fingerprint)
+        .map_err(|e| format!("add_psbt_signers: {}", e))?;
+    if named > 0 {
+        return Ok(());
+    }
+    let analysis = analyze_for_signing(wallet, psbt, fingerprint);
+    for (keychain, index) in &analysis.required_derivations {
+        add_xprv_signer(
+            wallet,
+            account_xpriv,
+            *keychain,
+            *index,
+            analysis.signer_kind,
+        )
+        .map_err(|e| format!("add_xprv_signer: {}", e))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn cmd_local_sign_psbt_software(
     app: AppHandle,
@@ -1041,13 +1099,11 @@ pub async fn cmd_local_sign_psbt_software(
     // persist the path their descriptor's origin block specified
     // (e.g. `48'/1'/0'/2'` for a BIP48 multisig slot); we derive at
     // exactly that path so the produced xprv matches the slot. The
-    // fingerprint passed to `analyze_for_signing` differs by case
-    // too: the singlesig path returns the account-xpub fingerprint
-    // (which doesn't appear in origin blocks but works via the
-    // spk-match codepath); the cosigner case returns the master
-    // fingerprint, which DOES appear in `bip32_derivation` /
-    // `tap_key_origins` and lets the analysis pick the right
-    // derivations + SignerKind. The BIP39 passphrase (if any) flows
+    // fingerprint the signers are matched on differs by case too: the
+    // singlesig descriptor has no origin block, so its PSBT key origins
+    // carry the account-xpub fingerprint; the cosigner case uses the
+    // master fingerprint, which is what `bip32_derivation` /
+    // `tap_key_origins` name. The BIP39 passphrase (if any) flows
     // through derive_master_xpriv / derive_account_at_path so the
     // 25th-word case Just Works™.
     let (account_xpriv, fingerprint) = if let Some(path) = meta.derivation_path.as_deref() {
@@ -1077,23 +1133,7 @@ pub async fn cmd_local_sign_psbt_software(
         .ok_or_else(|| ManagerError::NotUnlocked(id.to_string()).to_string())?;
     let mut guard = handle.lock().await;
 
-    let analysis = analyze_for_signing(&guard.wallet, &psbt, &fingerprint);
-    // Trust the analysis's `signer_kind` rather than hardcoding
-    // SegwitV0 — that picks up Taproot key-path / script-path
-    // automatically for timelocked-policy wallets where the device fingerprint
-    // appears in `tap_key_origins` (QBL-230 enables this code path
-    // by routing cosigner recovery through `derivation_path`).
-    let signer_kind = analysis.signer_kind;
-    for (keychain, index) in &analysis.required_derivations {
-        add_xprv_signer(
-            &mut guard.wallet,
-            &account_xpriv,
-            *keychain,
-            *index,
-            signer_kind,
-        )
-        .map_err(|e| format!("add_xprv_signer: {}", e))?;
-    }
+    register_software_signers(&mut guard.wallet, &account_xpriv, &psbt, &fingerprint)?;
 
     // wallet_runtime::sign_psbt hardcodes try_finalize: false, and BDK
     // 1.x's wallet.sign() returns Ok(false) unconditionally in that
