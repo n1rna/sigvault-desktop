@@ -9,7 +9,7 @@ use gpui::{
     Window,
 };
 
-use crate::theme::{alpha, theme, FONT_MONO};
+use crate::theme::{alpha, theme, FONT_MONO, RADIUS_CARD, RADIUS_CHIP, RADIUS_CONTROL};
 
 /// A stroked icon from `assets/icons/<name>.svg`. Color follows
 /// `text_color`; default size 16px.
@@ -92,6 +92,7 @@ impl Tone {
 pub fn badge(label: impl Into<SharedString>, tone: Tone) -> Div {
     let t = theme();
     let color = tone.color();
+    // Web `badge.tsx` "-light" variants: pill, tinted border + 10% fill.
     let mut el = div()
         .flex()
         .flex_row()
@@ -99,19 +100,43 @@ pub fn badge(label: impl Into<SharedString>, tone: Tone) -> Div {
         .items_center()
         .gap_1()
         .rounded_full()
-        .px(px(9.))
-        .py(px(3.))
-        .text_size(px(11.))
-        .line_height(px(13.))
+        .border_1()
+        .px(px(8.))
+        .py(px(1.))
+        .text_size(px(12.))
+        .line_height(px(18.))
         .font_weight(gpui::FontWeight::MEDIUM)
         .whitespace_nowrap()
         .text_color(color);
     el = match tone {
-        Tone::Secondary => el.bg(t.muted),
-        Tone::Outline => el.border_1().border_color(t.border),
-        _ => el.bg(alpha(color, 0.14)),
+        Tone::Secondary => el.border_color(t.line).bg(t.inset).text_color(t.ink_2),
+        Tone::Outline => el.border_color(t.line).text_color(t.ink_2),
+        _ => el.border_color(alpha(color, 0.25)).bg(alpha(color, 0.10)),
     };
     el.child(label.into())
+}
+
+/// Neon-style mono chip (web `SwitcherPill`): `PERSONAL`, `REGTEST`, roles.
+pub fn pill(label: impl Into<SharedString>) -> Div {
+    let t = theme();
+    let label: SharedString = label.into();
+    div()
+        .flex()
+        .flex_row()
+        .flex_none()
+        .items_center()
+        .gap(px(6.))
+        .rounded(RADIUS_CHIP)
+        .border_1()
+        .border_color(t.line)
+        .bg(t.inset)
+        .px(px(6.))
+        .py(px(1.))
+        .font_family(FONT_MONO)
+        .text_size(px(10.))
+        .line_height(px(15.))
+        .text_color(t.ink_2)
+        .child(label.to_uppercase())
 }
 
 /// Small coloured status dot.
@@ -119,17 +144,17 @@ pub fn dot(color: Hsla) -> Div {
     div().size(px(6.)).flex_none().rounded_full().bg(color)
 }
 
-/// Bordered card surface (`components/ui/card.tsx`).
+/// Card surface (web `card.tsx`): rounded-card, surface-2, hairline ring.
 pub fn card() -> Div {
     let t = theme();
     div()
         .flex()
         .flex_col()
-        .rounded_lg()
+        .rounded(RADIUS_CARD)
         .border_1()
-        .border_color(t.border)
-        .bg(t.card)
-        .text_color(t.foreground)
+        .border_color(t.line)
+        .bg(t.surface_2)
+        .text_color(t.ink)
 }
 
 /// Inline alert banner: destructive / warning / success / info.
@@ -146,7 +171,7 @@ pub fn alert(tone: Tone, message: impl Into<SharedString>) -> Div {
         .flex_row()
         .items_start()
         .gap(px(10.))
-        .rounded_md()
+        .rounded(RADIUS_CONTROL)
         .border_1()
         .border_color(alpha(color, 0.3))
         .bg(alpha(color, 0.06))
@@ -159,30 +184,93 @@ pub fn alert(tone: Tone, message: impl Into<SharedString>) -> Div {
         .child(div().flex_1().min_w_0().child(message.into()))
 }
 
-/// Uppercase eyebrow / section label.
+/// Mono uppercase eyebrow (web `SectionHead` label / stat labels).
 pub fn eyebrow(text: impl Into<SharedString>) -> Div {
+    let text: SharedString = text.into();
     div()
+        .font_family(FONT_MONO)
         .text_size(px(11.))
-        .font_weight(gpui::FontWeight::MEDIUM)
-        .text_color(alpha(theme().muted_foreground, 0.8))
-        .child(text.into())
+        .line_height(px(16.))
+        .text_color(theme().ink_2)
+        .child(text.to_uppercase())
 }
 
-/// Page title (h1).
+/// Web `SectionHead`: mono uppercase label, a hairline rule, optional trailing.
+pub fn section_head(text: impl Into<SharedString>, trailing: Option<AnyElement>) -> Div {
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_4()
+        .child(eyebrow(text))
+        .child(div().h(px(1.)).flex_1().bg(theme().line))
+        .children(trailing)
+}
+
+/// Web `DashboardStats`: a hairline grid of mono stat cells.
+/// Each entry is (label, value, hint).
+pub fn stat_grid(stats: Vec<(SharedString, SharedString, SharedString)>) -> Div {
+    let t = theme();
+    let n = stats.len();
+    div()
+        .flex()
+        .flex_row()
+        .rounded(RADIUS_CARD)
+        .border_1()
+        .border_color(t.line)
+        .overflow_hidden()
+        .children(stats.into_iter().enumerate().map(move |(i, (label, value, hint))| {
+            div()
+                .flex_1()
+                .flex_basis(px(0.))
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .p_6()
+                .bg(t.page)
+                .when(i + 1 < n, |d| d.border_r_1().border_color(t.line))
+                .child(
+                    div()
+                        .font_family(FONT_MONO)
+                        .text_size(px(10.))
+                        .text_color(t.ink_2)
+                        .child(label.to_uppercase()),
+                )
+                .child(
+                    div()
+                        .font_family(FONT_MONO)
+                        .text_size(px(34.))
+                        .line_height(px(42.))
+                        .text_color(t.ink)
+                        .truncate()
+                        .child(value),
+                )
+                .child(
+                    div()
+                        .font_family(FONT_MONO)
+                        .text_size(px(10.))
+                        .text_color(alpha(t.ink_2, 0.7))
+                        .child(hint.to_uppercase()),
+                )
+        }))
+}
+
+/// Page title (h1, web `PageHeader`).
 pub fn title(text: impl Into<SharedString>) -> Div {
     div()
-        .text_size(px(22.))
-        .line_height(px(28.))
+        .text_size(px(34.))
+        .line_height(px(40.))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme().foreground)
         .child(text.into())
 }
 
-/// Section heading (h2).
+/// Section / card heading (h2/h3, web `tracking-card-title`).
 pub fn heading(text: impl Into<SharedString>) -> Div {
     div()
-        .text_size(px(15.))
-        .line_height(px(20.))
+        .text_size(px(16.))
+        .line_height(px(22.))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme().foreground)
         .child(text.into())
@@ -238,7 +326,7 @@ pub fn field(
 }
 
 pub fn divider() -> Div {
-    div().h(px(1.)).w_full().bg(alpha(theme().border, 0.6))
+    div().h(px(1.)).w_full().bg(theme().line)
 }
 
 /// Key/value row used in detail panels.

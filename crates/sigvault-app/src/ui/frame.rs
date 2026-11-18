@@ -26,16 +26,16 @@ use gpui::{
     div, prelude::*, px, AnyElement, App, ElementId, Pixels, SharedString, Window,
 };
 
-use super::common::icon;
+use super::common::{icon, section_head};
 use crate::router::Page;
 use crate::shell::navigate;
 use crate::theme::{alpha, theme};
 
 /// Max width of page content. Header, body and footer share it so their
 /// left/right edges line up on every page.
-pub const CONTENT_MAX_WIDTH: Pixels = px(1040.);
+pub const CONTENT_MAX_WIDTH: Pixels = px(1120.);
 /// Horizontal page padding.
-pub const PAGE_PADDING_X: Pixels = px(32.);
+pub const PAGE_PADDING_X: Pixels = px(40.);
 /// Narrower column for single-form steps (wizard steps, settings forms).
 /// Use inside the body: `div().max_w(FORM_WIDTH)`.
 pub const FORM_WIDTH: Pixels = px(640.);
@@ -161,36 +161,24 @@ impl ParentElement for Section {
 impl RenderOnce for Section {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let t = theme();
+        // Web `SectionHead`: mono uppercase label + hairline rule + trailing action.
         div()
             .flex()
             .flex_col()
-            .gap_3()
+            .gap_4()
             .child(
                 div()
                     .flex()
-                    .flex_row()
-                    .items_end()
-                    .justify_between()
-                    .gap_3()
-                    .child(
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(section_head(self.title, self.action))
+                    .children(self.description.map(|d| {
                         div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(t.foreground)
-                                    .child(self.title),
-                            )
-                            .children(self.description.map(|d| {
-                                div().text_size(px(12.)).text_color(t.muted_foreground).child(d)
-                            })),
-                    )
-                    .children(self.action),
+                            .text_size(px(13.))
+                            .line_height(px(19.))
+                            .text_color(t.ink_2)
+                            .child(d)
+                    })),
             )
             .children(self.children)
     }
@@ -200,17 +188,17 @@ impl RenderOnce for PageFrame {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let t = theme();
         let n_crumbs = self.crumbs.len();
-        let column = || div().w_full().max_w(CONTENT_MAX_WIDTH);
 
+        // Web NavigationBreadcrumbs: muted links, current page in ink.
         let crumbs = (n_crumbs > 0).then(|| {
             div()
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap_1()
-                .mb(px(6.))
-                .text_size(px(12.))
-                .text_color(t.muted_foreground)
+                .gap(px(6.))
+                .mb_4()
+                .text_size(px(14.))
+                .text_color(t.ink_2)
                 .children(self.crumbs.into_iter().enumerate().map(move |(i, (label, page))| {
                     let last = i + 1 == n_crumbs;
                     let mut el = div()
@@ -218,95 +206,98 @@ impl RenderOnce for PageFrame {
                         .flex()
                         .flex_row()
                         .items_center()
-                        .gap_1()
-                        .when(i > 0, |d| d.child(icon("chevron-right").size(px(12.))))
-                        .child(div().when(last, |d| d.text_color(t.foreground)).child(label));
+                        .gap(px(6.))
+                        .when(i > 0, |d| d.child(icon("chevron-right").size(px(13.)).text_color(t.ink_3)))
+                        .child(
+                            div()
+                                .when(last, |d| d.text_color(t.ink).font_weight(gpui::FontWeight::MEDIUM))
+                                .child(label),
+                        );
                     if let Some(page) = page.filter(|_| !last) {
                         el = el
                             .cursor_pointer()
-                            .hover(move |s| s.text_color(t.foreground))
+                            .hover(move |s| s.text_color(t.ink))
                             .on_click(move |_, _, cx| navigate(page.clone(), cx));
                     }
                     el
                 }))
         });
 
+        // Web PageHeader: big title, description, actions bottom-aligned, rule.
         let header = div()
-            .flex_none()
-            .w_full()
-            .px(PAGE_PADDING_X)
-            .pt(px(6.))
-            .pb(px(18.))
-            .border_b_1()
-            .border_color(alpha(t.border, 0.7))
-            .child(
-                column()
-                    .flex()
-                    .flex_col()
-                    .children(crumbs)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .gap_4()
-                            .min_h(px(36.))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .min_w_0()
-                                    .gap(px(3.))
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .flex_row()
-                                            .items_center()
-                                            .gap_2()
-                                            .children(self.title.map(|title| {
-                                                div()
-                                                    .truncate()
-                                                    .text_size(px(20.))
-                                                    .line_height(px(26.))
-                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                    .text_color(t.foreground)
-                                                    .child(title)
-                                            }))
-                                            .children(self.title_adornment),
-                                    )
-                                    .children(self.subtitle.map(|s| {
-                                        div()
-                                            .text_size(px(13.))
-                                            .line_height(px(18.))
-                                            .text_color(t.muted_foreground)
-                                            .child(s)
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap_2()
-                                    .children(self.actions),
-                            ),
-                    )
-                    .children(self.header_extra.map(|e| div().mt_4().child(e))),
-            );
-
-        let content = column()
             .flex()
             .flex_col()
             .gap_6()
-            .children(self.children);
+            .border_b_1()
+            .border_color(t.line)
+            .pb_8()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_end()
+                    .justify_between()
+                    .gap_6()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .min_w_0()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .gap_3()
+                                    .children(self.title.map(|title| {
+                                        div()
+                                            .truncate()
+                                            .text_size(px(34.))
+                                            .line_height(px(40.))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(t.ink)
+                                            .child(title)
+                                    }))
+                                    .children(self.title_adornment),
+                            )
+                            .children(self.subtitle.map(|s| {
+                                div()
+                                    .text_size(px(14.))
+                                    .line_height(px(20.))
+                                    .text_color(t.ink_2)
+                                    .child(s)
+                            })),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .children(self.actions),
+                    ),
+            )
+            .children(self.header_extra);
+
+        let column = div()
+            .w_full()
+            .max_w(CONTENT_MAX_WIDTH)
+            .flex()
+            .flex_col()
+            .children(crumbs)
+            .child(header)
+            .child(div().pt_8().flex().flex_col().gap_8().children(self.children));
+
         let body_inner = div()
             .w_full()
+            .flex()
+            .justify_center()
             .px(PAGE_PADDING_X)
-            .pt_6()
-            .pb_8()
-            .child(content);
+            .pt_8()
+            .pb_10()
+            .child(column);
         let body = if self.scroll {
             div()
                 .id(self.id)
@@ -323,19 +314,20 @@ impl RenderOnce for PageFrame {
             div()
                 .flex_none()
                 .w_full()
+                .flex()
+                .justify_center()
                 .px(PAGE_PADDING_X)
                 .py(px(12.))
                 .border_t_1()
-                .border_color(alpha(t.border, 0.7))
-                .bg(alpha(t.card, 0.7))
-                .child(column().child(f))
+                .border_color(t.line)
+                .bg(t.canvas)
+                .child(div().w_full().max_w(CONTENT_MAX_WIDTH).child(f))
         });
 
         div()
             .size_full()
             .flex()
             .flex_col()
-            .child(header)
             .child(body)
             .children(footer)
     }

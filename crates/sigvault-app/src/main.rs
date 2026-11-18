@@ -56,6 +56,7 @@ fn main() {
             cx.set_global(Backend::new(host));
             let store = state::init(cx);
             keychain::init(cx);
+            theme::load_fonts(cx);
             #[cfg(debug_assertions)]
             dev_fixtures::install(cx);
             ui::input::bind_keys(cx);
@@ -87,7 +88,7 @@ fn main() {
                         titlebar: Some(TitlebarOptions {
                             title: Some("SigVault".into()),
                             appears_transparent: true,
-                            traffic_light_position: Some(point(px(14.), px(14.))),
+                            traffic_light_position: Some(point(px(16.), px(17.))),
                         }),
                         window_min_size: Some(size(px(880.), px(600.))),
                         app_id: Some(sigvault_core::host::APP_IDENTIFIER.into()),

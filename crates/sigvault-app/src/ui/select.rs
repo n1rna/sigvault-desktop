@@ -3,7 +3,7 @@ use gpui::{
 };
 
 use super::common::icon;
-use crate::theme::{alpha, theme};
+use crate::theme::{alpha, theme, RADIUS_CARD, RADIUS_CONTROL};
 
 #[derive(Clone)]
 pub struct SelectOption {
@@ -114,11 +114,11 @@ impl Render for Select {
                     .w_full()
                     .px_3()
                     .py(px(7.))
-                    .rounded_md()
+                    .rounded(RADIUS_CONTROL)
                     .border_1()
-                    .border_color(if self.open { alpha(t.ring, 0.7) } else { t.input })
-                    .bg(alpha(t.background, 0.6))
-                    .text_size(px(13.))
+                    .border_color(if self.open { t.ring } else { t.line })
+                    .bg(t.inset)
+                    .text_size(px(14.))
                     .line_height(px(20.))
                     .when(disabled, |d| d.opacity(0.55))
                     .when(!disabled, |d| d.cursor_pointer())
@@ -147,10 +147,10 @@ impl Render for Select {
                                 .min_w(px(220.))
                                 .max_h(px(320.))
                                 .overflow_y_scroll()
-                                .rounded_lg()
+                                .rounded(RADIUS_CARD)
                                 .border_1()
-                                .border_color(t.border)
-                                .bg(t.popover)
+                                .border_color(t.line_tertiary)
+                                .bg(t.surface_3)
                                 .shadow_lg()
                                 .py_1()
                                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {

@@ -3,7 +3,7 @@ use gpui::{
 };
 
 use super::common::{icon, spinner_with};
-use crate::theme::{alpha, theme};
+use crate::theme::{alpha, theme, RADIUS_CHIP, RADIUS_CONTROL};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum ButtonVariant {
@@ -133,19 +133,20 @@ impl RenderOnce for Button {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let t = theme();
         let inert = self.disabled || self.loading;
+        // Web `button.tsx`: rounded-control, shadow-btn ring (= 1px line-strong).
         let (bg, fg, hover_bg, border) = match self.variant {
-            ButtonVariant::Primary => (Some(t.primary), t.primary_foreground, Some(alpha(t.primary, 0.9)), None),
-            ButtonVariant::Secondary => (Some(t.secondary), t.foreground, Some(alpha(t.secondary, 0.8)), None),
-            ButtonVariant::Outline => (None, t.foreground, Some(alpha(t.muted, 0.6)), Some(t.border)),
-            ButtonVariant::Ghost => (None, t.muted_foreground, Some(alpha(t.muted, 0.6)), None),
+            ButtonVariant::Primary => (Some(t.brand), t.brand_contrast, Some(alpha(t.brand, 0.9)), None),
+            ButtonVariant::Secondary => (Some(t.inset), t.ink, Some(t.hover_strong), Some(t.line_strong)),
+            ButtonVariant::Outline => (Some(t.surface), t.ink, Some(t.inset), Some(t.line_strong)),
+            ButtonVariant::Ghost => (None, t.ink_2, Some(t.hover_strong), None),
             ButtonVariant::Destructive => (Some(t.destructive), t.destructive_foreground, Some(alpha(t.destructive, 0.9)), None),
-            ButtonVariant::Link => (None, t.primary, None, None),
+            ButtonVariant::Link => (None, t.brand_ink, None, None),
         };
-        let (h, px_, text, icon_size) = match self.size {
-            ButtonSize::Sm => (px(32.), px(12.), px(13.), px(14.)),
-            ButtonSize::Md => (px(36.), px(16.), px(14.), px(16.)),
-            ButtonSize::Lg => (px(40.), px(20.), px(14.), px(16.)),
-            ButtonSize::Icon => (px(36.), px(0.), px(14.), px(16.)),
+        let (h, px_, text, icon_size, radius) = match self.size {
+            ButtonSize::Sm => (px(32.), px(12.), px(12.), px(14.), RADIUS_CHIP),
+            ButtonSize::Md => (px(36.), px(16.), px(14.), px(16.), RADIUS_CONTROL),
+            ButtonSize::Lg => (px(40.), px(28.), px(14.), px(16.), RADIUS_CONTROL),
+            ButtonSize::Icon => (px(36.), px(0.), px(14.), px(16.), RADIUS_CONTROL),
         };
 
         let mut el = div()
@@ -157,7 +158,7 @@ impl RenderOnce for Button {
             .gap_2()
             .h(h)
             .px(px_)
-            .rounded_md()
+            .rounded(radius)
             .text_size(text)
             .font_weight(gpui::FontWeight::MEDIUM)
             .text_color(fg)
@@ -179,12 +180,10 @@ impl RenderOnce for Button {
         } else {
             el = el.cursor_pointer();
             if let Some(hbg) = hover_bg {
-                let is_outline = self.variant == ButtonVariant::Outline;
                 let is_ghost = self.variant == ButtonVariant::Ghost;
                 el = el.hover(move |s| {
                     let s = s.bg(hbg);
-                    let s = if is_outline { s.border_color(alpha(t.primary, 0.5)) } else { s };
-                    if is_ghost { s.text_color(t.foreground) } else { s }
+                    if is_ghost { s.text_color(t.ink) } else { s }
                 });
             } else {
                 el = el.hover(|s| s.underline());

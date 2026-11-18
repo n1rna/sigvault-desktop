@@ -284,7 +284,7 @@ impl Render for CloudSettingsPage {
                     )
                     .child(
                         section("Workspace")
-                            .description("Switch any time from the sidebar (⌘1 / ⌘2).")
+                            .description("Switch any time from the workspace switcher in the top bar (⌘1 / ⌘2).")
                             .child(workspace),
                     )
                     .child(section("About").child(about)),

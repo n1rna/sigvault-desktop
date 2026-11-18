@@ -22,7 +22,7 @@ use gpui::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::theme::{alpha, theme, FONT_MONO};
+use crate::theme::{alpha, theme, FONT_MONO, RADIUS_CONTROL};
 
 actions!(
     text_input,
@@ -773,7 +773,7 @@ impl Element for TextElement {
         let font_size = style.font_size.to_pixels(window.rem_size());
 
         let (display_text, text_color): (SharedString, _) = if content.is_empty() {
-            (input.placeholder.clone(), alpha(t.muted_foreground, 0.55))
+            (input.placeholder.clone(), t.ink_3)
         } else if input.is_masking() {
             (MASK_CHAR.to_string().repeat(content.chars().count()).into(), style.color)
         } else {
@@ -999,9 +999,9 @@ impl Render for TextInput {
         let border = if self.invalid {
             alpha(t.destructive, 0.7)
         } else if focused {
-            alpha(t.ring, 0.7)
+            t.ring
         } else {
-            t.input
+            t.line
         };
         let mut root = div()
             .flex()
@@ -1030,12 +1030,12 @@ impl Render for TextInput {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .w_full()
-            .rounded_md()
+            .rounded(RADIUS_CONTROL)
             .border_1()
             .border_color(border)
-            .bg(alpha(t.background, 0.6))
+            .bg(t.inset)
             .px_3()
-            .text_size(px(13.))
+            .text_size(px(14.))
             .line_height(px(20.))
             .text_color(t.foreground);
         root = if self.multiline.is_some() { root.py_2() } else { root.py(px(7.)) };

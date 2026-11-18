@@ -110,3 +110,22 @@ above both sidebar and content (traffic lights live in it) — pages must not ad
 Cloud pages are now `/cloud/login`, `/cloud/select-env`, `/cloud/sessions`, `/cloud/session`,
 `/cloud/register`, `/cloud/settings`; the same design-system rules apply to them.
 User-facing names: "On this device" (local) and "SigVault Cloud" (cloud) — never "local mode".
+
+# Web-parity design (v4) — current
+
+The desktop app now mirrors the web dashboard (`sigvault/apps/dashboard`):
+- Theme = the web's dark "Instrument" ladder (`theme.rs`: page/canvas/surface/surface_2/
+  surface_3/inset/hover_strong, ink..ink_4, line..line_tertiary, brand/brand_ink). Prefer
+  ladder tokens in new code; shadcn aliases remain for compatibility.
+- Fonts: Manrope (UI, `FONT_SANS`) + Space Mono (numbers, eyebrows, `FONT_MONO`), bundled
+  in assets/fonts (OFL). Radii: RADIUS_CHIP 8 / CONTROL 10 / CARD 12 / PANEL 16.
+- Shell: full-width top bar `sigvault / <workspace> [PILL] ⇕ / <wallet> ⇕ … network | version`
+  — the workspace switcher is the web's org switcher, covering "On this device" and
+  "SigVault Cloud" (⌘1/⌘2). Sidebar on canvas with mono section labels (workspace / create,
+  or vault nav inside a wallet), collapse rail, Documentation, identity card. Content is
+  an inset surface panel with a rounded top-left corner.
+- Page header = web PageHeader (34px title, description, bottom-aligned actions, rule);
+  `section()` heads are mono uppercase with a hairline rule; `stat_grid`, `pill`,
+  `section_head` mirror DashboardStats / SwitcherPill / SectionHead.
+- Dashboards: `/local/home` and `/cloud/home` (stats, mempool.space BTC price chart,
+  getting-started tiles) are each workspace's landing page.

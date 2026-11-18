@@ -222,7 +222,7 @@ impl Render for WelcomePage {
                                         .text_size(px(13.))
                                         .line_height(px(21.))
                                         .text_color(t.muted_foreground)
-                                        .child("Coordinate multisig with your team in SigVault Cloud, or keep a personal wallet on this device with no account. You can use both and switch any time from the sidebar (⌘1 / ⌘2)."),
+                                        .child("Coordinate multisig with your team in SigVault Cloud, or keep a personal wallet on this device with no account. You can use both and switch any time from the workspace switcher in the top bar (⌘1 / ⌘2)."),
                                 ),
                         )
                         .children(self.error.clone().map(|e| {

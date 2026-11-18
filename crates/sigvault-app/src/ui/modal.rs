@@ -1,6 +1,6 @@
 use gpui::{deferred, div, hsla, prelude::*, px, AnyElement, App, ClickEvent, ElementId, Window};
 
-use crate::theme::theme;
+use crate::theme::{theme, RADIUS_CARD};
 
 type DismissHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
@@ -74,10 +74,10 @@ impl RenderOnce for Modal {
                     .flex_col()
                     .gap_4()
                     .p_6()
-                    .rounded_xl()
+                    .rounded(RADIUS_CARD)
                     .border_1()
-                    .border_color(t.border)
-                    .bg(t.popover)
+                    .border_color(t.line_tertiary)
+                    .bg(t.page)
                     .shadow_lg()
                     // Swallow clicks so they don't reach the backdrop.
                     .on_click(|_, _, cx| cx.stop_propagation())

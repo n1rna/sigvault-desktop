@@ -2,6 +2,7 @@
 //! fresh on navigation (see [`build`]).
 
 pub mod cloud;
+pub mod home;
 pub mod loading;
 pub mod local;
 pub mod login;
@@ -22,6 +23,8 @@ pub fn build(page: &Page, window: &mut Window, cx: &mut App) -> AnyView {
         Page::Sessions => cx.new(|cx| cloud::sessions::RemoteSessionsPage::new(window, cx)).into(),
         Page::CloudSettings => cx.new(|cx| cloud::settings::CloudSettingsPage::new(window, cx)).into(),
         Page::SessionDetails => cx.new(|cx| cloud::session_details::SessionDetailsPage::new(window, cx)).into(),
+        Page::LocalHome => cx.new(|cx| home::HomePage::new(sigvault_core::app_mode::AppMode::Local, window, cx)).into(),
+        Page::CloudHome => cx.new(|cx| home::HomePage::new(sigvault_core::app_mode::AppMode::Cloud, window, cx)).into(),
         Page::LocalWallets => cx.new(|cx| local::wallet_list::LocalWalletListPage::new(window, cx)).into(),
         Page::LocalWalletNew => cx.new(|cx| local::create_wizard::CreateWalletWizardPage::new(window, cx)).into(),
         Page::LocalWalletRecover => cx.new(|cx| local::recovery::RecoveryFlowPage::new(window, cx)).into(),

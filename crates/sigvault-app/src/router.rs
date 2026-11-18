@@ -14,6 +14,8 @@ pub enum Page {
     Welcome,
     SelectEnv,
     Login,
+    /// "On this device" dashboard.
+    LocalHome,
     LocalWallets,
     LocalWalletNew,
     LocalWalletRecover,
@@ -32,6 +34,8 @@ pub enum Page {
     SessionDetails,
     /// Cloud space settings: environment, account, about.
     CloudSettings,
+    /// "SigVault Cloud" dashboard.
+    CloudHome,
 }
 
 impl Page {
@@ -41,6 +45,7 @@ impl Page {
             Page::Welcome => "/welcome".into(),
             Page::SelectEnv => "/cloud/select-env".into(),
             Page::Login => "/cloud/login".into(),
+            Page::LocalHome => "/local/home".into(),
             Page::LocalWallets => "/local/wallets".into(),
             Page::LocalWalletNew => "/local/wallets/new".into(),
             Page::LocalWalletRecover => "/local/wallets/recover".into(),
@@ -55,6 +60,7 @@ impl Page {
             Page::Sessions => "/cloud/sessions".into(),
             Page::SessionDetails => "/cloud/session".into(),
             Page::CloudSettings => "/cloud/settings".into(),
+            Page::CloudHome => "/cloud/home".into(),
         }
     }
 }
@@ -72,6 +78,8 @@ impl Page {
             ["cloud", "sessions"] => Page::Sessions,
             ["cloud", "session"] => Page::SessionDetails,
             ["cloud", "settings"] => Page::CloudSettings,
+            ["cloud", "home"] => Page::CloudHome,
+            ["local", "home"] => Page::LocalHome,
             ["local", "wallets"] => Page::LocalWallets,
             ["local", "wallets", "new"] => Page::LocalWalletNew,
             ["local", "wallets", "recover"] => Page::LocalWalletRecover,
@@ -115,11 +123,11 @@ fn spec(route: &R) -> RouteSpec {
         R::SelectEnv => (Page::SelectEnv, None),
         R::Login => (Page::Login, None),
         // Signed in: any /cloud/ page (settings, register) is fine.
-        R::MainPage => (Page::Sessions, Some("/cloud/")),
+        R::MainPage => (Page::CloudHome, Some("/cloud/")),
         R::MachineRegistration => (Page::Register, None),
         R::RemoteSessions => (Page::Sessions, Some("/cloud/")),
         R::SessionDetails => (Page::SessionDetails, None),
-        R::LocalWallets => (Page::LocalWallets, Some("/local/")),
+        R::LocalWallets => (Page::LocalHome, Some("/local/")),
     };
     RouteSpec { target, namespace }
 }
@@ -162,9 +170,9 @@ mod tests {
 
     #[test]
     fn leaving_namespace_snaps_back() {
-        assert_eq!(resolve(&R::LocalWallets, &Page::Sessions), Page::LocalWallets);
+        assert_eq!(resolve(&R::LocalWallets, &Page::Sessions), Page::LocalHome);
         assert_eq!(resolve(&R::Login, &Page::LocalWallets), Page::Login);
-        assert_eq!(resolve(&R::MainPage, &Page::Login), Page::Sessions);
+        assert_eq!(resolve(&R::MainPage, &Page::Login), Page::CloudHome);
         assert_eq!(resolve(&R::MainPage, &Page::CloudSettings), Page::CloudSettings);
         assert_eq!(resolve(&R::Login, &Page::Sessions), Page::Login);
     }

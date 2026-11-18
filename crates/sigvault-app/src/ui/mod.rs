@@ -7,6 +7,7 @@ pub mod common;
 pub mod frame;
 pub mod input;
 pub mod modal;
+pub mod price_chart;
 pub mod qr;
 pub mod select;
 

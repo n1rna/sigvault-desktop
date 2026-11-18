@@ -16,7 +16,7 @@ use gpui::{
 use crate::pages;
 use crate::router::{resolve, Page};
 use crate::state::{store, StoreEvent};
-use crate::theme::{alpha, theme};
+use crate::theme::{theme, FONT_SANS, RADIUS_CARD};
 use crate::ui::icon;
 
 pub use activity::ActivityPanel;
@@ -59,7 +59,11 @@ impl Root {
             current: Page::Loading,
             pending: Some(Page::Loading),
             view: None,
-            sidebar: cx.new(AppSidebar::new),
+            sidebar: {
+                let sb = cx.new(AppSidebar::new);
+                cx.observe(&sb, |_, _, cx| cx.notify()).detach();
+                sb
+            },
             dev_page: if cfg!(debug_assertions) {
                 std::env::var("SIGVAULT_DEV_PAGE").ok().and_then(|p| Page::from_path(&p))
             } else {
@@ -127,40 +131,46 @@ impl Render for Root {
             self.sidebar.update(cx, |s, cx| s.set_current(page.clone(), cx));
             self.current = page;
         }
-        let with_sidebar = self.current.has_sidebar();
+        let with_chrome = self.current.has_sidebar();
         let t = theme();
+
+        // Web shell: canvas floor; full-width top bar; sidebar; content as an
+        // inset `surface` panel with a rounded top-left corner and hairline.
+        let topbar = if with_chrome {
+            self.sidebar.update(cx, |s, cx| s.render_topbar(cx))
+        } else {
+            sidebar::bare_titlebar().into_any_element()
+        };
+        let content = div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .relative()
+            .overflow_hidden()
+            .bg(t.surface)
+            .when(with_chrome, |d| {
+                d.rounded_tl(RADIUS_CARD).border_l_1().border_t_1().border_color(t.line)
+            })
+            .children(self.view.clone());
+
         div()
             .size_full()
             .relative()
             .flex()
             .flex_col()
-            .bg(t.background)
-            .text_color(t.foreground)
+            .bg(if with_chrome { t.canvas } else { t.surface })
+            .font_family(FONT_SANS)
+            .text_color(t.ink)
             .text_size(px(14.))
+            .child(topbar)
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
                     .flex_row()
-                    .when(with_sidebar, |d| d.child(self.sidebar.clone()))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .flex()
-                            .flex_col()
-                            .child(sidebar::chrome_strip("content-chrome"))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_h_0()
-                                    .relative()
-                                    .overflow_hidden()
-                                    .children(self.view.clone()),
-                            ),
-                    ),
+                    .when(with_chrome, |d| d.child(self.sidebar.clone()))
+                    .child(content),
             )
             .child(self.activity.clone())
             .child(self.update.clone())
@@ -182,11 +192,11 @@ impl Render for Root {
                             .py_2()
                             .rounded_full()
                             .border_1()
-                            .border_color(t.border)
-                            .bg(alpha(t.card, 0.97))
+                            .border_color(t.line_tertiary)
+                            .bg(t.surface_3)
                             .shadow_lg()
-                            .text_size(px(12.))
-                            .child(icon("check").size(px(13.)).text_color(t.success))
+                            .text_size(px(13.))
+                            .child(icon("check").size(px(14.)).text_color(t.success))
                             .child(msg),
                     )
             }))
