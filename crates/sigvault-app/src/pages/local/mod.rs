@@ -6,4 +6,7 @@ pub mod receive;
 pub mod recovery;
 pub mod send;
 pub mod settings;
+pub mod setup;
+pub mod sync_status;
 pub mod wallet_list;
+pub mod widgets;

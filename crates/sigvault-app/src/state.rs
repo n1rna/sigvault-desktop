@@ -129,6 +129,7 @@ pub enum StoreEvent {
     AuthChanged,
     ModeChanged,
     SessionUpdated,
+    #[allow(dead_code)] // payload kept for subscribers (toasts, logging)
     Notification(Notification),
     SyncProgress(SyncProgress),
 }
@@ -163,11 +164,6 @@ impl AppStore {
 
     pub fn clear_activity_log(&mut self, cx: &mut Context<Self>) {
         self.activity_log.clear();
-        cx.notify();
-    }
-
-    pub fn set_remote_sessions(&mut self, sessions: Vec<RemoteSession>, cx: &mut Context<Self>) {
-        self.remote_sessions = sessions;
         cx.notify();
     }
 

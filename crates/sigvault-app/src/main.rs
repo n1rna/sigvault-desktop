@@ -7,11 +7,14 @@
 
 mod assets;
 mod pages;
+mod psbt;
 mod router;
 mod runtime;
 mod shell;
 mod state;
+#[allow(dead_code)] // design tokens: not every token is used yet
 mod theme;
+#[allow(dead_code)] // component kit: some primitives are reserved for future pages
 mod ui;
 
 use futures::StreamExt;

@@ -27,3 +27,7 @@ reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tl
 semver = "1"
 base64 = "0.22"
 bip39 = "2"
+ur = "0.5"
+bbqr = { version = "0.6", default-features = false }
+rqrr = { version = "0.11", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }

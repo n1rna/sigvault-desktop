@@ -62,10 +62,6 @@ impl Root {
         }
     }
 
-    pub fn current_page(&self) -> &Page {
-        &self.current
-    }
-
     fn go(&mut self, requested: Page, cx: &mut Context<Self>) {
         let route = store(cx).read(cx).route.clone();
         let page = resolve(&route, &requested);
@@ -102,18 +98,6 @@ pub fn navigate(page: Page, cx: &mut App) {
         return;
     };
     root.update(cx, |root, cx| root.go(page, cx));
-}
-
-/// Force-rebuild the current page (e.g. after a mode switch that keeps
-/// the same page).
-pub fn reload(cx: &mut App) {
-    let Some(root) = cx.try_global::<RootHandle>().and_then(|h| h.0.upgrade()) else {
-        return;
-    };
-    root.update(cx, |root, cx| {
-        root.pending = Some(root.current.clone());
-        cx.notify();
-    });
 }
 
 /// Show a short-lived toast at the bottom of the window.
