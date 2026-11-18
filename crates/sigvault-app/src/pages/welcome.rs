@@ -156,9 +156,9 @@ impl Render for WelcomePage {
             t.primary,
             Tone::Default,
             "Recommended",
-            "Sign in to Cloud",
-            "Coordinate multisig with your team. Sessions, devices, and signing flows mediated by the SigVault server.",
-            ["Remote signing ceremonies", "Hardware wallet across signers", "Cloud-coordinated sessions"],
+            "SigVault Cloud",
+            "Team multisig. SigVault coordinates signing sessions between co-signers — it never holds your keys.",
+            ["Multisig wallets shared with your team", "Signing sessions across hardware wallets", "Requires a SigVault account"],
             "cloud",
             "Continue to sign in",
             cx,
@@ -168,10 +168,10 @@ impl Render for WelcomePage {
             t.accent,
             Tone::Secondary,
             "No account",
-            "Use a local wallet",
-            "Self-custodial Bitcoin wallet running entirely on this device. No account, no cloud, no third party.",
-            ["Encrypted on-disk seed", "Sign and broadcast on-device", "Connects to your own electrs"],
-            "lock",
+            "On this device",
+            "A personal wallet that runs entirely on this computer. No account, no cloud, no third party.",
+            ["Keys encrypted on this computer", "Sign and broadcast on-device", "Connects to your own Electrum server"],
+            "hard-drive",
             "Continue without an account",
             cx,
         );
@@ -212,7 +212,7 @@ impl Render for WelcomePage {
                                     div()
                                         .text_size(px(26.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .child("Sign in to get started"),
+                                        .child("How do you want to use SigVault?"),
                                 )
                                 .child(
                                     div()
@@ -222,7 +222,7 @@ impl Render for WelcomePage {
                                         .text_size(px(13.))
                                         .line_height(px(21.))
                                         .text_color(t.muted_foreground)
-                                        .child("Sign in to SigVault Cloud to coordinate multisig with your team — or use a standalone on-device wallet with no account. You can switch any time from the top bar."),
+                                        .child("Coordinate multisig with your team in SigVault Cloud, or keep a personal wallet on this device with no account. You can use both and switch any time from the sidebar (⌘1 / ⌘2)."),
                                 ),
                         )
                         .children(self.error.clone().map(|e| {

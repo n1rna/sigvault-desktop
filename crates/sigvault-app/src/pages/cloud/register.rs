@@ -9,13 +9,15 @@
 
 use gpui::{div, prelude::*, px, Context, Entity, FontWeight, SharedString, Subscription, Window};
 
-use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, button, icon, InputEvent, TextInput, Tone};
+use super::common::icon_tile;
+use crate::theme::{theme, FONT_MONO};
+use crate::ui::{alert, button, card, field, footer_bar, page_frame, section, InputEvent, TextInput, Tone, FORM_WIDTH};
 
-const VALUE_POINTS: [&str; 3] = [
-    "Recognizable across multiple machines",
-    "Bound to this device's identifier",
-    "Editable later in the web dashboard",
+/// (icon, text) points explaining the registration.
+const VALUE_POINTS: [(&str, &str); 3] = [
+    ("users", "Co-signers see this name when you join their sessions."),
+    ("hard-drive", "Bound to this computer's identifier, not to a wallet."),
+    ("pen", "You can rename it later in the web dashboard."),
 ];
 
 pub struct MachineRegistrationPage {
@@ -55,148 +57,89 @@ impl MachineRegistrationPage {
         cx.notify();
     }
 
-    fn read_only_row(label: &'static str, tag: &'static str, value: String) -> impl IntoElement {
-        let t = theme();
-        div()
-            .child(
-                div()
-                    .mb_2()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(t.muted_foreground)
-                    .child(label)
-                    .child(div().text_color(alpha(t.muted_foreground, 0.5)).child(tag)),
-            )
-            .child(
-                div()
-                    .h(px(44.))
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(t.border)
-                    .bg(alpha(t.muted, 0.3))
-                    .px(px(14.))
-                    .font_family(FONT_MONO)
-                    .text_size(px(11.))
-                    .text_color(t.muted_foreground)
-                    .child(value),
-            )
-    }
 }
 
 impl Render for MachineRegistrationPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let name_empty = self.name_input.read(cx).text().is_empty();
-
-        let intro = div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .justify_center()
-            .px_12()
-            .py_10()
-            .child(
+        let read_only = |label: &'static str, value: String| {
+            field(
+                label,
                 div()
-                    .max_w(px(440.))
-                    .text_size(px(28.))
-                    .line_height(px(34.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(t.foreground)
-                    .child("Give this device a name you'll recognize"),
-            )
-            .child(
-                div()
-                    .mt_4()
-                    .max_w(px(420.))
-                    .text_size(px(13.))
-                    .line_height(px(21.))
+                    .h(px(36.))
+                    .flex()
+                    .items_center()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(t.border)
+                    .bg(t.muted)
+                    .px_3()
+                    .font_family(FONT_MONO)
+                    .text_size(px(12.))
                     .text_color(t.muted_foreground)
+                    .child(value),
+                None,
+            )
+        };
+
+        let footer = footer_bar(
+            vec![],
+            vec![button("register-machine", if self.loading { "Registering…" } else { "Register computer" })
+                .loading(self.loading)
+                .disabled(name_empty)
+                .when(!self.loading, |b| b.icon_right("arrow-right"))
+                .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
+                .into_any_element()],
+        );
+
+        page_frame("register")
+            .title("Register this computer")
+            .subtitle("SigVault ties signing to the computer running the desktop app. Name it so your co-signers recognize it.")
+            .footer(footer)
+            .children(self.error.clone().map(|e| div().max_w(FORM_WIDTH).child(alert(Tone::Destructive, e))))
+            .child(
+                div()
+                    .max_w(FORM_WIDTH)
+                    .flex()
+                    .flex_col()
+                    .gap_6()
                     .child(
-                        "SigVault ties signing privileges to the physical machine running the desktop app. Registering this one unlocks the remote signing workflow for your account.",
+                        section("Computer").child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_4()
+                                .child(field(
+                                    "Name",
+                                    self.name_input.clone(),
+                                    Some("For example the computer's owner and model.".into()),
+                                ))
+                                .when(!self.machine_id.is_empty(), |d| {
+                                    d.child(read_only("Machine ID", self.machine_id.clone()))
+                                })
+                                .when(!self.machine_type.is_empty(), |d| {
+                                    d.child(read_only("Machine type", self.machine_type.clone()))
+                                }),
+                        ),
+                    )
+                    .child(
+                        card().p_4().gap_3().children(VALUE_POINTS.iter().map(|(icon_name, text)| {
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap_3()
+                                .child(icon_tile(icon_name, 28., Some(t.primary)))
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_weight(FontWeight::NORMAL)
+                                        .text_color(t.muted_foreground)
+                                        .child(*text),
+                                )
+                        })),
                     ),
             )
-            .child(div().mt(px(28.)).flex().flex_col().gap(px(10.)).children(VALUE_POINTS.iter().map(|p| {
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(10.))
-                    .text_size(px(13.))
-                    .text_color(t.muted_foreground)
-                    .child(icon("check").size(px(14.)).text_color(t.primary))
-                    .child(*p)
-            })));
-
-        let form = div()
-            .mt_6()
-            .flex()
-            .flex_col()
-            .gap_5()
-            .child(
-                div()
-                    .child(
-                        div()
-                            .mb_2()
-                            .text_size(px(12.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.muted_foreground)
-                            .child("Machine name"),
-                    )
-                    .child(self.name_input.clone()),
-            )
-            .when(!self.machine_id.is_empty(), |d| {
-                d.child(Self::read_only_row("Machine ID", "read-only", self.machine_id.clone()))
-            })
-            .when(!self.machine_type.is_empty(), |d| {
-                d.child(Self::read_only_row("Machine type", "detected", self.machine_type.clone()))
-            })
-            .child(
-                div().mt_2().child(
-                    button("register-machine", if self.loading { "Registering…" } else { "Register machine" })
-                        .large()
-                        .full_width()
-                        .loading(self.loading)
-                        .disabled(name_empty)
-                        .when(!self.loading, |b| b.icon_right("arrow-right"))
-                        .on_click(cx.listener(|this, _, _, cx| this.submit(cx))),
-                ),
-            )
-            .child(
-                div()
-                    .text_center()
-                    .text_size(px(12.))
-                    .text_color(alpha(t.muted_foreground, 0.7))
-                    .child("You can rename this later"),
-            );
-
-        let aside = div()
-            .w(px(460.))
-            .flex_none()
-            .flex()
-            .flex_col()
-            .justify_center()
-            .border_l_1()
-            .border_color(t.border)
-            .bg(alpha(t.card, 0.4))
-            .px_10()
-            .py_10()
-            .child(
-                div()
-                    .text_size(px(18.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(t.foreground)
-                    .child("Machine details"),
-            )
-            .children(self.error.clone().map(|e| div().mt_5().child(alert(Tone::Destructive, e))))
-            .child(form);
-
-        div().size_full().flex().flex_row().overflow_hidden().child(intro).child(aside)
     }
 }

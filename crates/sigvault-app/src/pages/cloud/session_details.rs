@@ -1,27 +1,30 @@
-//! `pages/SessionDetails.tsx` — the active session workflow: header with
-//! connection status and exit, then the DEVICE_REGISTRATION or
-//! TRANSACTION_SIGNING component driven by `activeSession.sessionState`.
+//! `pages/SessionDetails.tsx` — the active session workflow inside the page
+//! frame: crumbs, live/connected badge, Leave session, a stepper and a
+//! footer bar owned by the DEVICE_REGISTRATION or TRANSACTION_SIGNING
+//! component driven by `activeSession.sessionState`.
 
-use gpui::{div, prelude::*, px, Context, Entity, FontWeight, Subscription, Window};
+use gpui::{div, prelude::*, px, AnyElement, Context, Entity, Subscription, Window};
 use serde_json::Value;
 use sigvault_core::commands::cmd_exit_session;
 use sigvault_core::State;
 
-use super::common::{content_skeleton, main_window, short_id, skeleton_pill};
-use super::device_creation::DeviceCreationSession;
-use super::signing::{TransactionSigning, TransactionSigningData};
+use super::common::{
+    main_window, session_blurb, session_title, short_id, skeleton, skeleton_list, status_badge,
+    DEVICE_REGISTRATION, TRANSACTION_SIGNING,
+};
+use super::device_creation::{self, DeviceCreationSession};
+use super::signing::{self, TransactionSigning, TransactionSigningData};
 use crate::runtime::backend;
 use crate::state::{store, ActiveSession};
-use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, badge, button, dot, Tone};
-
-const DEVICE_REGISTRATION: &str = "DEVICE_REGISTRATION";
-const TRANSACTION_SIGNING: &str = "TRANSACTION_SIGNING";
+use crate::theme::{theme, FONT_MONO};
+use crate::ui::{alert, button, footer_bar, page_frame, section, stepper, Tone};
 
 pub struct SessionDetailsPage {
     device_session: Option<Entity<DeviceCreationSession>>,
     signing: Option<Entity<TransactionSigning>>,
+    leaving: bool,
     _subs: Vec<Subscription>,
+    _child_sub: Option<Subscription>,
 }
 
 fn requirement(session: &ActiveSession, key: &str) -> Option<String> {
@@ -57,7 +60,9 @@ impl SessionDetailsPage {
         let mut this = Self {
             device_session: None,
             signing: None,
+            leaving: false,
             _subs: vec![observe, release],
+            _child_sub: None,
         };
         this.sync_children(cx);
         this
@@ -77,17 +82,26 @@ impl SessionDetailsPage {
                 match &self.device_session {
                     Some(e) => e.update(cx, |c, cx| c.set_props(network, path, session_id, cx)),
                     None => {
-                        self.device_session =
-                            Some(cx.new(|_| DeviceCreationSession::new(network, path, session_id)));
+                        let e = cx.new(|_| DeviceCreationSession::new(network, path, session_id));
+                        // Footer + stepper live in this page's frame.
+                        self._child_sub = Some(cx.observe(&e, |_, _, cx| cx.notify()));
+                        e.update(cx, |c, cx| c.apply_dev_step(cx));
+                        self.device_session = Some(e);
                     }
                 }
             }
             Some(TRANSACTION_SIGNING) => {
                 self.device_session = None;
+                let network = requirement(&session, "network");
                 match signing_data(&session) {
                     Some(data) => match &self.signing {
-                        Some(e) => e.update(cx, |c, cx| c.set_props(data, session_id, cx)),
-                        None => self.signing = Some(cx.new(|_| TransactionSigning::new(data, session_id))),
+                        Some(e) => e.update(cx, |c, cx| c.set_props(data, session_id, network, cx)),
+                        None => {
+                            let e = cx.new(|_| TransactionSigning::new(data, session_id, network));
+                            self._child_sub = Some(cx.observe(&e, |_, _, cx| cx.notify()));
+                            e.update(cx, |c, cx| c.apply_dev_step(cx));
+                            self.signing = Some(e);
+                        }
                     },
                     None => self.signing = None,
                 }
@@ -100,14 +114,21 @@ impl SessionDetailsPage {
     }
 
     fn exit(&mut self, cx: &mut Context<Self>) {
+        self.leaving = true;
+        cx.notify();
         store(cx).update(cx, |s, cx| s.clear_activity_log(cx));
         let task = backend(cx).call(|app, st| async move {
             let window = main_window(&app)?;
             cmd_exit_session(window, State::new(&st)).await
         });
         // Exit is handled by the backend (route change); errors are ignored.
-        cx.spawn(async move |_, _| {
+        cx.spawn(async move |this, cx| {
             let _ = task.await;
+            this.update(cx, |this, cx| {
+                this.leaving = false;
+                cx.notify();
+            })
+            .ok();
         })
         .detach();
     }
@@ -121,49 +142,21 @@ impl Render for SessionDetailsPage {
         let session_type = st.session_type.clone();
         let connected = session.is_connected;
 
-        let title = session_type
-            .as_ref()
-            .map(|ty| {
-                let friendly = ty.replace('_', " ").to_lowercase();
-                let mut chars = friendly.chars();
-                match chars.next() {
-                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-                    None => friendly,
-                }
-            })
-            .unwrap_or_else(|| "Session details".into());
+        let title = session_type.as_deref().map(session_title).unwrap_or_else(|| {
+            if connected { "Waiting for session…".into() } else { "Joining session…".into() }
+        });
 
-        let status_color = if connected { t.success } else { t.destructive };
-        // Badge with a leading status dot.
-        let status_badge = div()
+        let adornment = div()
             .flex()
             .flex_row()
-            .flex_none()
-            .items_center()
-            .gap(px(6.))
-            .rounded_full()
-            .px(px(9.))
-            .py(px(3.))
-            .text_size(px(11.))
-            .line_height(px(13.))
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(status_color)
-            .bg(alpha(status_color, 0.14))
-            .child(dot(status_color))
-            .child(if connected { "Connected" } else { "Disconnected" });
-
-        let chips = div()
-            .mt_3()
-            .flex()
-            .flex_row()
-            .flex_wrap()
             .items_center()
             .gap_2()
-            .child(status_badge)
-            .map(|d| match (&session_type, &session.session_id) {
-                (Some(ty), _) => d.child(badge(ty.clone(), Tone::Secondary)),
-                (None, Some(_)) => d.child(skeleton_pill("type-skeleton", px(112.))),
-                (None, None) => d,
+            .child(if connected {
+                status_badge("Live", t.success)
+            } else if session.session_id.is_some() {
+                status_badge("Connecting", t.warning)
+            } else {
+                status_badge("Disconnected", t.destructive)
             })
             .map(|d| match &session.session_id {
                 Some(id) => d.child(
@@ -173,97 +166,89 @@ impl Render for SessionDetailsPage {
                         .text_color(t.muted_foreground)
                         .child(short_id(id)),
                 ),
-                None => d.child(skeleton_pill("id-skeleton", px(160.))),
+                None => d.child(skeleton("id-skeleton", px(110.), px(12.))),
             });
 
-        let header = div()
-            .flex_none()
-            .border_b_1()
-            .border_color(t.border)
-            .px_8()
-            .py_4()
-            .flex()
-            .flex_col()
-            .items_center()
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(768.))
-                    .flex()
-                    .flex_row()
-                    .items_start()
-                    .justify_between()
-                    .gap_6()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .text_size(px(20.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(t.foreground)
-                                    .child(title),
-                            )
-                            .child(chips),
-                    )
-                    .child(
-                        button("exit-session", "Exit session")
-                            .outline()
-                            .small()
-                            .icon("x")
-                            .on_click(cx.listener(|this, _, _, cx| this.exit(cx))),
-                    ),
-            );
-
-        // `!isConnected && !sessionState` → skeleton; the store always holds a
-        // (possibly empty) state, so "empty" stands in for "absent".
-        let state_empty = st.session_type.is_none() && st.error.is_none();
-        let content = if !connected && state_empty {
-            Some(content_skeleton("session-skeleton"))
-        } else if !connected {
-            None
-        } else {
-            match session_type.as_deref() {
-                Some(DEVICE_REGISTRATION) => self.device_session.clone().map(|e| e.into_any_element()),
-                Some(TRANSACTION_SIGNING) => Some(match &self.signing {
-                    Some(e) => e.clone().into_any_element(),
-                    None => content_skeleton("signing-skeleton"),
-                }),
-                _ => None,
+        // Workflow-specific stepper, subtitle, body and footer.
+        let (steps, step, subtitle, footer, content): (
+            Option<&[&str]>,
+            usize,
+            String,
+            Option<(Vec<AnyElement>, Vec<AnyElement>)>,
+            Option<AnyElement>,
+        ) = match (session_type.as_deref(), connected) {
+            (Some(DEVICE_REGISTRATION), true) if self.device_session.is_some() => {
+                let e = self.device_session.clone().unwrap();
+                let (idx, sub, foot) = e.update(cx, |c, cx| (c.step_index(), c.subtitle(), c.footer(cx)));
+                (Some(&device_creation::STEPS[..]), idx, sub.into(), Some(foot), Some(e.into_any_element()))
+            }
+            (Some(TRANSACTION_SIGNING), true) => match self.signing.clone() {
+                Some(e) => {
+                    let (idx, sub, foot) = e.update(cx, |c, cx| (c.step_index(), c.subtitle(), c.footer(cx)));
+                    (Some(&signing::STEPS[..]), idx, sub.into(), Some(foot), Some(e.into_any_element()))
+                }
+                None => (
+                    Some(&signing::STEPS[..]),
+                    0,
+                    session_blurb(TRANSACTION_SIGNING).into(),
+                    None,
+                    Some(skeleton_list("signing-skeleton", 3).into_any_element()),
+                ),
+            },
+            (Some(ty), true) => (
+                None,
+                0,
+                session_blurb(ty).into(),
+                None,
+                Some(
+                    section("Waiting")
+                        .child(alert(Tone::Secondary, "This session type isn't supported by this version of SigVault."))
+                        .into_any_element(),
+                ),
+            ),
+            (None, true) => (
+                None,
+                0,
+                "Connected. Waiting for the coordinator to send the next step…".into(),
+                None,
+                Some(skeleton_list("session-wait", 2).into_any_element()),
+            ),
+            // `!isConnected && !sessionState` → skeleton; with a state but
+            // no connection, nothing is shown (as in the React page).
+            (_, false) => {
+                let empty = st.session_type.is_none() && st.error.is_none();
+                (
+                    None,
+                    0,
+                    "Opening a live connection to the session…".into(),
+                    None,
+                    empty.then(|| skeleton_list("session-skeleton", 3).into_any_element()),
+                )
             }
         };
 
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .child(header)
-            .child(
-                div()
-                    .id("session-details-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .px_8()
-                    .py_8()
-                    .child(
-                        div()
-                            .w_full()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .child(
-                                div()
-                                    .w_full()
-                                    .max_w(px(768.))
-                                    .flex()
-                                    .flex_col()
-                                    .children(st.error.clone().map(|e| div().mb_6().child(alert(Tone::Destructive, e))))
-                                    .children(content),
-                            ),
-                    ),
-            )
+        let crumb = session_type.as_deref().map(session_title).unwrap_or_else(|| "Session".into());
+        let leave = button("exit-session", if self.leaving { "Leaving…" } else { "Leave session" })
+            .outline()
+            .small()
+            .icon("log-out")
+            .loading(self.leaving)
+            .on_click(cx.listener(|this, _, _, cx| this.exit(cx)));
+
+        let frame = page_frame("session-details")
+            .crumb("Sessions", None)
+            .crumb(crumb, None)
+            .title(title)
+            .title_adornment(adornment)
+            .subtitle(subtitle)
+            .action(leave)
+            .when_some(steps, |f, steps| f.header_extra(stepper(steps, step)))
+            .when_some(footer.filter(|(l, r)| !l.is_empty() || !r.is_empty()), |f, (l, r)| {
+                f.footer(footer_bar(l, r))
+            })
+            .children(st.error.clone().map(|e| alert(Tone::Destructive, e)))
+            .children(content);
+
+        div().size_full().relative().child(frame)
     }
 }

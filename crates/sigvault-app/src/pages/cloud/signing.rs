@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use gpui::{div, prelude::*, px, Context, FontWeight, SharedString, Window};
+use gpui::{div, prelude::*, px, AnyElement, ClipboardItem, Context, FontWeight, SharedString, Window};
 use serde::Deserialize;
 use sigvault_core::commands::hwi::WalletConfigInput;
 use sigvault_core::commands::{
@@ -14,12 +14,21 @@ use sigvault_core::commands::{
 use sigvault_core::hwi::{DiscoveredDevice, SignedPsbt};
 use sigvault_core::State;
 
-use super::common::main_window;
-use super::device_creation::non_empty;
+use super::common::{card_message, dev_step, icon_tile, main_window, non_empty, review_row};
 use super::devices::{device_list, fingerprint, is_supported, DeviceListHost, DeviceListProps};
+use super::psbt_summary::{hrp_for, summarize, PsbtSummary};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, button, icon, spinner, Tone};
+use crate::ui::{alert, badge, button, card, divider, format_btc, format_sat, section, spinner, Tone};
+
+/// Stepper labels for the signing flow.
+pub const STEPS: [&str; 3] = ["Review", "Sign on device", "Done"];
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Review,
+    Sign,
+}
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct TransactionData {
@@ -58,6 +67,11 @@ fn short_txid(txid: &str) -> String {
 pub struct TransactionSigning {
     data: TransactionSigningData,
     session_id: String,
+    network: Option<String>,
+    summary: Option<PsbtSummary>,
+    step: Step,
+    /// The signature was accepted by the coordinator.
+    submitted: bool,
     discovering: bool,
     devices: Vec<DiscoveredDevice>,
     selected: Option<DiscoveredDevice>,
@@ -69,10 +83,15 @@ pub struct TransactionSigning {
 }
 
 impl TransactionSigning {
-    pub fn new(data: TransactionSigningData, session_id: String) -> Self {
+    pub fn new(data: TransactionSigningData, session_id: String, network: Option<String>) -> Self {
+        let summary = Self::summary_for(&data, network.as_deref());
         Self {
             data,
             session_id,
+            network,
+            summary,
+            step: Step::Review,
+            submitted: false,
             discovering: false,
             devices: Vec::new(),
             selected: None,
@@ -86,12 +105,25 @@ impl TransactionSigning {
 
     /// Prop update from the parent page; component state is kept, as React
     /// would on a re-render with new props.
-    pub fn set_props(&mut self, data: TransactionSigningData, session_id: String, cx: &mut Context<Self>) {
-        if self.data != data || self.session_id != session_id {
+    pub fn set_props(
+        &mut self,
+        data: TransactionSigningData,
+        session_id: String,
+        network: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.data != data || self.session_id != session_id || self.network != network {
+            self.summary = Self::summary_for(&data, network.as_deref());
             self.data = data;
             self.session_id = session_id;
+            self.network = network;
             cx.notify();
         }
+    }
+
+    fn summary_for(data: &TransactionSigningData, network: Option<&str>) -> Option<PsbtSummary> {
+        let hrp = hrp_for(network, data.transaction.multipath_descriptor.as_deref());
+        summarize(&data.transaction.psbt, hrp)
     }
 
     fn wallet_config(&self) -> WalletConfigInput {
@@ -242,7 +274,10 @@ impl TransactionSigning {
 
             let err = match submit_task.await {
                 // onSignatureSubmitted(): no-op in SessionDetails.
-                Ok(r) if r.success => None,
+                Ok(r) if r.success => {
+                    this.update(cx, |this, _| this.submitted = true).ok();
+                    None
+                }
                 Ok(r) => Some(non_empty(r.message, "Failed to submit signature")),
                 Err(e) => Some(e),
             };
@@ -251,452 +286,6 @@ impl TransactionSigning {
         .detach();
     }
 
-    fn truncated_psbt(&self) -> String {
-        let psbt = &self.data.transaction.psbt;
-        let n = psbt.chars().count();
-        if n > 100 {
-            let start: String = psbt.chars().take(50).collect();
-            let end: String = psbt.chars().skip(n - 50).collect();
-            format!("{start}…{end}")
-        } else {
-            psbt.clone()
-        }
-    }
-
-    fn render_transaction_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let tx = &self.data.transaction;
-        let slots = &self.data.signature_slots;
-        let small_label = |s: &'static str| div().text_size(px(11.)).text_color(t.muted_foreground).child(s);
-
-        let header = div()
-            .flex()
-            .flex_row()
-            .items_start()
-            .justify_between()
-            .gap_4()
-            .border_b_1()
-            .border_color(alpha(t.border, 0.6))
-            .px_6()
-            .py_5()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.muted_foreground)
-                            .child("Transaction"),
-                    )
-                    .child(
-                        div()
-                            .mt(px(10.))
-                            .text_size(px(20.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child("Review and approve"),
-                    )
-                    .children(tx.wallet_name.clone().filter(|n| !n.is_empty()).map(|n| {
-                        div()
-                            .mt_1()
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .child(format!("wallet · {n}"))
-                    })),
-            )
-            .child(
-                div()
-                    .size(px(44.))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(alpha(t.primary, 0.3))
-                    .bg(alpha(t.primary, 0.08))
-                    .child(icon("cloud-file-text").size(px(20.)).text_color(t.primary)),
-            );
-
-        let body = div()
-            .px_6()
-            .py_5()
-            .child(small_label("transaction id"))
-            .child(
-                div()
-                    .mt_2()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        div()
-                            .font_family(FONT_MONO)
-                            .text_size(px(13.))
-                            .text_color(t.foreground)
-                            .child(short_txid(&tx.txid)),
-                    )
-                    .child(
-                        div()
-                            .font_family(FONT_MONO)
-                            .text_size(px(10.))
-                            .text_color(t.muted_foreground)
-                            .child(format!("{} chars", tx.txid.chars().count())),
-                    ),
-            )
-            .child(
-                div()
-                    .mt_5()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .child(small_label("psbt payload"))
-                            .child(
-                                div()
-                                    .id("psbt-toggle")
-                                    .cursor_pointer()
-                                    .text_size(px(11.))
-                                    .text_color(t.muted_foreground)
-                                    .hover(move |s| s.text_color(t.foreground))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.psbt_expanded = !this.psbt_expanded;
-                                        cx.notify();
-                                    }))
-                                    .child(if self.psbt_expanded { "collapse" } else { "expand" }),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("psbt-payload")
-                            .mt_2()
-                            .max_h(px(180.))
-                            .overflow_y_scroll()
-                            .rounded_md()
-                            .border_1()
-                            .border_color(alpha(t.border, 0.7))
-                            .bg(t.background)
-                            .p_3()
-                            .font_family(FONT_MONO)
-                            .text_size(px(11.))
-                            .line_height(px(18.))
-                            .text_color(t.muted_foreground)
-                            .child(if self.psbt_expanded { tx.psbt.clone() } else { self.truncated_psbt() }),
-                    ),
-            );
-
-        let slots_el = div()
-            .border_t_1()
-            .border_color(alpha(t.border, 0.6))
-            .px_6()
-            .pt_5()
-            .pb_6()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.muted_foreground)
-                            .child("Required signatures"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .child(format!(
-                                "{} {}",
-                                slots.len(),
-                                if slots.len() == 1 { "signer" } else { "signers" }
-                            )),
-                    ),
-            )
-            .child(
-                div()
-                    .mt_3()
-                    .flex()
-                    .flex_col()
-                    .gap(px(1.))
-                    .overflow_hidden()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(t.border)
-                    .bg(t.border)
-                    .children(slots.iter().map(|slot| {
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .gap_4()
-                            .bg(t.card)
-                            .px_4()
-                            .py_3()
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap_3()
-                                    .child(div().size(px(8.)).rounded_full().bg(t.primary))
-                                    .child(
-                                        div()
-                                            .font_family(FONT_MONO)
-                                            .text_size(px(13.))
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(t.foreground)
-                                            .child(slot.fingerprint.clone()),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .font_family(FONT_MONO)
-                                    .text_size(px(11.))
-                                    .text_color(t.muted_foreground)
-                                    .child(slot.derivation_path.clone()),
-                            )
-                    })),
-            );
-
-        div()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .rounded_lg()
-            .border_1()
-            .border_color(t.border)
-            .bg(t.card)
-            .child(header)
-            .child(body)
-            .child(slots_el)
-    }
-
-    fn render_device_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let busy = self.discovering || self.signing || self.submitting;
-        let signers = self.signing_fingerprints();
-        let has_matching = self.devices.iter().any(|d| self.can_sign(d));
-        let selected_can_sign = self.selected.as_ref().is_some_and(|d| self.can_sign(d));
-
-        let (scan_icon, scan_label): (Option<&'static str>, &'static str) = if self.discovering {
-            (None, "scanning")
-        } else if self.devices.is_empty() {
-            (Some("search"), "discover")
-        } else {
-            (Some("refresh"), "rescan")
-        };
-        let mut scan_btn = div()
-            .id("scan")
-            .flex()
-            .flex_row()
-            .flex_none()
-            .items_center()
-            .gap_2()
-            .h(px(40.))
-            .px_4()
-            .rounded_md()
-            .border_1()
-            .border_color(alpha(t.primary, 0.3))
-            .bg(alpha(t.primary, 0.06))
-            .text_size(px(12.))
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(t.foreground)
-            .map(|d| match scan_icon {
-                None => d.child(spinner(px(14.))),
-                Some(name) => d.child(icon(name).size(px(14.)).text_color(t.foreground)),
-            })
-            .child(scan_label);
-        if busy {
-            scan_btn = scan_btn.opacity(0.6).cursor_not_allowed();
-        } else {
-            scan_btn = scan_btn
-                .cursor_pointer()
-                .hover(move |s| s.border_color(alpha(t.primary, 0.6)).bg(alpha(t.primary, 0.12)))
-                .on_click(cx.listener(|this, _, _, cx| this.discover(cx)));
-        }
-
-        let header = div()
-            .flex()
-            .flex_row()
-            .items_start()
-            .justify_between()
-            .gap_4()
-            .border_b_1()
-            .border_color(alpha(t.border, 0.6))
-            .px_6()
-            .py_5()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.muted_foreground)
-                            .child("Hardware wallet"),
-                    )
-                    .child(
-                        div()
-                            .mt(px(10.))
-                            .text_size(px(20.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child("Sign with device"),
-                    )
-                    .child(
-                        div()
-                            .mt_1()
-                            .text_size(px(12.))
-                            .text_color(t.muted_foreground)
-                            .child("Connect your hardware wallet and approve on-device."),
-                    ),
-            )
-            .child(scan_btn);
-
-        let mut body = div().px_6().py_5();
-        if self.devices.is_empty() && !self.discovering {
-            body = body.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .py_10()
-                    .child(
-                        div()
-                            .size(px(56.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .border_1()
-                            .border_dashed()
-                            .border_color(t.border)
-                            .bg(t.background)
-                            .child(
-                                icon("cloud-hw-wallet")
-                                    .size(px(24.))
-                                    .text_color(alpha(t.muted_foreground, 0.5)),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .mt_5()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child("No devices scanned yet"),
-                    )
-                    .child(
-                        div()
-                            .mt(px(6.))
-                            .max_w(px(280.))
-                            .flex()
-                            .flex_row()
-                            .flex_wrap()
-                            .justify_center()
-                            .gap_1()
-                            .text_size(px(12.))
-                            .line_height(px(19.))
-                            .text_color(t.muted_foreground)
-                            .child("Plug in your hardware wallet and click")
-                            .child(div().font_family(FONT_MONO).child("DISCOVER."))
-                    ),
-            );
-        }
-        if !self.devices.is_empty() {
-            if !has_matching {
-                let expected = self
-                    .data
-                    .signature_slots
-                    .iter()
-                    .map(|s| s.fingerprint.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                body = body.child(
-                    div()
-                        .mb_4()
-                        .child(alert(Tone::Destructive, format!("No authorized signers found. Expected: {expected}"))),
-                );
-            }
-            let devices = self.devices.clone();
-            let selected_id = self.selected.as_ref().map(|d| d.id.clone());
-            let unlocking_id = self.unlocking_id.clone();
-            body = body.child(device_list(
-                DeviceListProps {
-                    devices: &devices,
-                    selected_id: selected_id.as_deref(),
-                    can_unlock: true,
-                    highlighted_fingerprints: Some(&signers),
-                    signer_fingerprints: Some(&signers),
-                    unlocking_id: unlocking_id.as_deref(),
-                    unlock_status: None,
-                },
-                cx,
-            ));
-        }
-
-        let footer = selected_can_sign.then(|| {
-            let label = if self.signing {
-                "Awaiting device approval…"
-            } else if self.submitting {
-                "Submitting signature…"
-            } else {
-                "Sign transaction"
-            };
-            let busy = self.signing || self.submitting;
-            div()
-                .border_t_1()
-                .border_color(alpha(t.border, 0.6))
-                .bg(alpha(t.primary, 0.03))
-                .px_6()
-                .py_6()
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap_4()
-                        .child(
-                            div().px_6().child(
-                                button("sign-tx", label)
-                                    .large()
-                                    .loading(busy)
-                                    .when(!busy, |b| b.icon_right("arrow-right"))
-                                    .on_click(cx.listener(|this, _, _, cx| this.sign(cx))),
-                            ),
-                        )
-                        .child(
-                            div()
-                                .text_center()
-                                .text_size(px(11.))
-                                .text_color(t.muted_foreground)
-                                .child("confirm on device display"),
-                        ),
-                )
-        });
-
-        div()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .rounded_lg()
-            .border_1()
-            .border_color(t.border)
-            .bg(t.card)
-            .child(header)
-            .child(body)
-            .children(footer)
-    }
 }
 
 impl DeviceListHost for TransactionSigning {
@@ -751,14 +340,513 @@ impl DeviceListHost for TransactionSigning {
     }
 }
 
+fn copy_icon(id: &'static str, value: String) -> impl IntoElement {
+    let t = theme();
+    div()
+        .id(id)
+        .flex_none()
+        .p(px(5.))
+        .rounded(px(4.))
+        .cursor_pointer()
+        .hover(move |s| s.bg(t.muted))
+        .on_click(move |_, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(value.clone()));
+            crate::shell::toast(cx, "Copied to clipboard");
+        })
+        .child(crate::ui::icon("copy").size(px(13.)))
+}
+
+fn amount(sat: u64) -> gpui::Div {
+    let t = theme();
+    div()
+        .flex()
+        .flex_row()
+        .flex_wrap()
+        .items_baseline()
+        .gap_2()
+        .child(div().font_family(FONT_MONO).text_size(px(12.)).text_color(t.foreground).child(format_btc(sat as i64)))
+        .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(format_sat(sat as i64)))
+}
+
+impl TransactionSigning {
+    /// Debug screenshot hook (`SIGVAULT_DEV_CLOUD_STEP=sign|done`).
+    pub fn apply_dev_step(&mut self, cx: &mut Context<Self>) {
+        match dev_step().as_deref() {
+            Some("sign") => {
+                self.step = Step::Sign;
+                self.discover(cx);
+            }
+            Some("done") => self.submitted = true,
+            _ => {}
+        }
+    }
+
+    /// Current step for the page's stepper (see [`STEPS`]).
+    pub fn step_index(&self) -> usize {
+        if self.submitted {
+            2
+        } else {
+            match self.step {
+                Step::Review => 0,
+                Step::Sign => 1,
+            }
+        }
+    }
+
+    pub fn subtitle(&self) -> &'static str {
+        match self.step_index() {
+            0 => "Check where the bitcoin goes and the fee before you sign.",
+            1 => "Connect an authorized hardware wallet and approve on the device.",
+            _ => "Your signature was submitted to the session.",
+        }
+    }
+
+    fn busy(&self) -> bool {
+        self.discovering || self.signing || self.submitting
+    }
+
+    /// Footer buttons for the page frame: (left, right).
+    pub fn footer(&self, cx: &mut Context<Self>) -> (Vec<AnyElement>, Vec<AnyElement>) {
+        let t = theme();
+        if self.submitted {
+            return (vec![], vec![]);
+        }
+        match self.step {
+            Step::Review => {
+                let n = self.data.signature_slots.len();
+                (
+                    vec![div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(format!("{n} authorized {}", if n == 1 { "signer" } else { "signers" }))
+                        .into_any_element()],
+                    vec![button("to-sign", "Continue to signing")
+                        .icon_right("arrow-right")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.step = Step::Sign;
+                            if this.devices.is_empty() && !this.discovering {
+                                this.discover(cx);
+                            }
+                            cx.notify();
+                        }))
+                        .into_any_element()],
+                )
+            }
+            Step::Sign => {
+                let busy = self.signing || self.submitting;
+                let can = self.selected.as_ref().is_some_and(|d| self.can_sign(d));
+                let label = if self.signing {
+                    "Confirm on device…"
+                } else if self.submitting {
+                    "Submitting signature…"
+                } else {
+                    "Sign transaction"
+                };
+                (
+                    vec![button("sign-back", "Back")
+                        .outline()
+                        .icon("arrow-left")
+                        .disabled(busy)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.step = Step::Review;
+                            cx.notify();
+                        }))
+                        .into_any_element()],
+                    vec![button("sign-tx", label)
+                        .loading(busy)
+                        .when(!busy, |b| b.icon("pen"))
+                        .disabled(!can && !busy)
+                        .on_click(cx.listener(|this, _, _, cx| this.sign(cx)))
+                        .into_any_element()],
+                )
+            }
+        }
+    }
+
+    fn render_summary(&self) -> AnyElement {
+        let t = theme();
+        let tx = &self.data.transaction;
+        let mut c = card();
+        if let Some(name) = tx.wallet_name.clone().filter(|n| !n.is_empty()) {
+            c = c.child(review_row("Wallet", div().font_weight(FontWeight::MEDIUM).child(name))).child(divider());
+        }
+        if let Some(s) = &self.summary {
+            c = c
+                .child(review_row("Sending", amount(s.sending())))
+                .child(divider())
+                .child(review_row(
+                    "Network fee",
+                    match s.fee {
+                        Some(fee) => amount(fee).into_any_element(),
+                        None => div()
+                            .text_color(t.muted_foreground)
+                            .child("Unknown — inputs don't include their amounts")
+                            .into_any_element(),
+                    },
+                ))
+                .child(divider())
+                .child(review_row(
+                    "Inputs",
+                    div().child(format!("{} {}", s.input_count, if s.input_count == 1 { "coin" } else { "coins" })),
+                ))
+                .child(divider());
+        }
+        c.child(review_row(
+            "Transaction ID",
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .child(div().font_family(FONT_MONO).text_size(px(12.)).child(short_txid(&tx.txid)))
+                .child(copy_icon("copy-txid", tx.txid.clone())),
+        ))
+        .into_any_element()
+    }
+
+    fn render_outputs(&self) -> Option<AnyElement> {
+        let t = theme();
+        let s = self.summary.as_ref()?;
+        let mut list = card().overflow_hidden();
+        for (i, o) in s.outputs.iter().enumerate() {
+            if i > 0 {
+                list = list.child(divider());
+            }
+            list = list.child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_4()
+                    .min_h(px(52.))
+                    .px_4()
+                    .py_2()
+                    .child(icon_tile(
+                        if o.is_change { "arrow-down-left" } else { "arrow-up-right" },
+                        32.,
+                        Some(if o.is_change { t.muted_foreground } else { t.primary }),
+                    ))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .font_family(FONT_MONO)
+                                    .text_size(px(12.))
+                                    .line_height(px(17.))
+                                    .text_color(t.foreground)
+                                    .child(o.address.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child(if o.is_change { "Back to the wallet" } else { "Recipient" }),
+                            ),
+                    )
+                    .when(o.is_change, |d| d.child(badge("Change", Tone::Secondary)))
+                    .child(
+                        div()
+                            .w(px(150.))
+                            .flex_none()
+                            .flex()
+                            .justify_end()
+                            .font_family(FONT_MONO)
+                            .text_size(px(12.))
+                            .text_color(if o.is_change { t.muted_foreground } else { t.foreground })
+                            .child(format_btc(o.value as i64)),
+                    ),
+            );
+        }
+        Some(
+            section("Outputs")
+                .description("Where the bitcoin goes. Change returns to the team wallet.")
+                .child(list)
+                .into_any_element(),
+        )
+    }
+
+    fn render_signers(&self) -> AnyElement {
+        let t = theme();
+        let slots = &self.data.signature_slots;
+        let mut list = card().overflow_hidden();
+        for (i, slot) in slots.iter().enumerate() {
+            if i > 0 {
+                list = list.child(divider());
+            }
+            let present = self.devices.iter().any(|d| fingerprint(d).as_deref() == Some(slot.fingerprint.as_str()));
+            list = list.child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_4()
+                    .h(px(48.))
+                    .px_4()
+                    .child(icon_tile("key", 28., Some(if present { t.success } else { t.muted_foreground })))
+                    .child(
+                        div()
+                            .w(px(96.))
+                            .flex_none()
+                            .font_family(FONT_MONO)
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(slot.fingerprint.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .font_family(FONT_MONO)
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(slot.derivation_path.clone()),
+                    )
+                    .when(present, |d| d.child(badge("Connected", Tone::Success))),
+            );
+        }
+        section("Your signing keys")
+            .description("Any one of these keys on a connected device can provide your signature.")
+            .child(list)
+            .into_any_element()
+    }
+
+    fn render_psbt(&self, cx: &mut Context<Self>) -> AnyElement {
+        let t = theme();
+        let psbt = self.data.transaction.psbt.clone();
+        let chars = psbt.chars().count();
+        card()
+            .overflow_hidden()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_3()
+                    .h(px(48.))
+                    .px_4()
+                    .child(icon_tile("file", 28., None))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Raw PSBT"))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child(format!("Base64 · {chars} characters")),
+                            ),
+                    )
+                    .child(copy_icon("copy-psbt", psbt.clone()))
+                    .child(
+                        button("psbt-toggle", if self.psbt_expanded { "Hide" } else { "Show" })
+                            .ghost()
+                            .small()
+                            .icon_right(if self.psbt_expanded { "chevron-up" } else { "chevron-down" })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.psbt_expanded = !this.psbt_expanded;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .when(self.psbt_expanded, |c| {
+                c.child(divider()).child(
+                    div()
+                        .id("psbt-payload")
+                        .max_h(px(200.))
+                        .overflow_y_scroll()
+                        .bg(alpha(t.background, 0.6))
+                        .px_4()
+                        .py_3()
+                        .font_family(FONT_MONO)
+                        .text_size(px(11.))
+                        .line_height(px(17.))
+                        .text_color(t.muted_foreground)
+                        .child(psbt),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn render_review(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let mut v = vec![section("Summary").child(self.render_summary()).into_any_element()];
+        if self.summary.is_none() {
+            v.push(
+                alert(Tone::Warning, "This PSBT couldn't be decoded for review. Check it in another tool before signing.")
+                    .into_any_element(),
+            );
+        }
+        v.extend(self.render_outputs());
+        v.push(self.render_signers());
+        v.push(section("Details").child(self.render_psbt(cx)).into_any_element());
+        v
+    }
+
+    fn render_sign(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let t = theme();
+        let signers = self.signing_fingerprints();
+        let has_matching = self.devices.iter().any(|d| self.can_sign(d));
+        let scan = button(
+            "scan",
+            if self.discovering {
+                "Scanning…"
+            } else if self.devices.is_empty() {
+                "Scan for devices"
+            } else {
+                "Scan again"
+            },
+        )
+        .outline()
+        .small()
+        .icon("usb")
+        .loading(self.discovering)
+        .disabled(self.busy())
+        .on_click(cx.listener(|this, _, _, cx| this.discover(cx)));
+
+        let body: AnyElement = if self.devices.is_empty() {
+            card()
+                .flex_row()
+                .items_center()
+                .gap_4()
+                .px_4()
+                .py_4()
+                .child(icon_tile("usb", 32., Some(t.muted_foreground)))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(if self.discovering { "Looking for devices…" } else { "No devices found yet" }),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .line_height(px(17.))
+                                .text_color(t.muted_foreground)
+                                .child("Plug in a hardware wallet holding one of your signing keys, unlock it and open the Bitcoin app."),
+                        ),
+                )
+                .when(self.discovering, |c| c.child(spinner(px(16.))))
+                .into_any_element()
+        } else {
+            let devices = self.devices.clone();
+            let selected_id = self.selected.as_ref().map(|d| d.id.clone());
+            let unlocking_id = self.unlocking_id.clone();
+            device_list(
+                DeviceListProps {
+                    devices: &devices,
+                    selected_id: selected_id.as_deref(),
+                    can_unlock: true,
+                    highlighted_fingerprints: Some(&signers),
+                    signer_fingerprints: Some(&signers),
+                    unlocking_id: unlocking_id.as_deref(),
+                    unlock_status: None,
+                },
+                cx,
+            )
+        };
+
+        let mut v = vec![section("Hardware wallet")
+            .description("Devices holding an authorized key are marked Signer.")
+            .action(scan)
+            .when(!self.devices.is_empty() && !has_matching, |s| {
+                let expected = self
+                    .data
+                    .signature_slots
+                    .iter()
+                    .map(|s| s.fingerprint.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                s.child(alert(Tone::Destructive, format!("No authorized signers found. Expected: {expected}")))
+            })
+            .child(body)
+            .into_any_element()];
+
+        if self.signing {
+            v.push(
+                card()
+                    .flex_row()
+                    .items_center()
+                    .gap_3()
+                    .px_4()
+                    .py_3()
+                    .border_color(alpha(t.primary, 0.4))
+                    .bg(alpha(t.primary, 0.05))
+                    .child(spinner(px(16.)))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Confirm on your device"))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child("Check the outputs and fee on the device screen, then approve."),
+                            ),
+                    )
+                    .into_any_element(),
+            );
+        }
+        if let Some(s) = &self.summary {
+            v.push(
+                section("You're approving")
+                    .child(
+                        card()
+                            .child(review_row("Sending", amount(s.sending())))
+                            .child(divider())
+                            .child(review_row(
+                                "Network fee",
+                                match s.fee {
+                                    Some(f) => amount(f).into_any_element(),
+                                    None => div().text_color(t.muted_foreground).child("Unknown").into_any_element(),
+                                },
+                            )),
+                    )
+                    .into_any_element(),
+            );
+        }
+        v
+    }
+}
+
 impl Render for TransactionSigning {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme();
+        let body = if self.submitted {
+            vec![card_message(
+                "circle-check",
+                Some(t.success),
+                "Signature submitted",
+                "SigVault will broadcast the transaction once enough co-signers have signed. You can leave this session.",
+            )
+            .into_any_element()]
+        } else {
+            match self.step {
+                Step::Review => self.render_review(cx),
+                Step::Sign => self.render_sign(cx),
+            }
+        };
         div()
             .flex()
             .flex_col()
             .gap_6()
-            .child(self.render_transaction_card(cx))
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
-            .child(self.render_device_card(cx))
+            .children(body)
     }
 }

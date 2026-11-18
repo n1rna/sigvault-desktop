@@ -6,6 +6,8 @@
 //! which routes to Welcome / SelectEnv / Login / Sessions / LocalWallets.
 
 mod assets;
+#[cfg(debug_assertions)]
+mod dev_fixtures;
 mod keychain;
 mod pages;
 mod psbt;
@@ -54,6 +56,8 @@ fn main() {
             cx.set_global(Backend::new(host));
             let store = state::init(cx);
             keychain::init(cx);
+            #[cfg(debug_assertions)]
+            dev_fixtures::install(cx);
             ui::input::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             cx.on_action(|_: &SwitchToDevice, cx| shell::switch_space(sigvault_core::app_mode::AppMode::Local, cx));

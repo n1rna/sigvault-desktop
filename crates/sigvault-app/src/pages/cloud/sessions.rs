@@ -3,48 +3,20 @@
 
 use std::cmp::Ordering;
 
-use gpui::{div, prelude::*, px, Context, FontWeight, SharedString, Window};
+use gpui::{div, prelude::*, px, Context, FontWeight, SharedString, Subscription, Window};
 use sigvault_core::commands::{
     cmd_get_remote_sessions, cmd_start_session_websocket_connection, cmd_update_remote_sessions,
 };
 use sigvault_core::State;
 
-use super::common::{main_window, short_id, skeleton};
+use super::common::{
+    card_message, format_relative, icon_tile, list_row, main_window, parse_time, segmented, sep_dot,
+    session_icon, session_title, short_id, skeleton_list,
+};
 use crate::runtime::backend;
-use crate::state::{store, RemoteSession};
-use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, badge, button, icon, icon_button, Tone};
-
-fn parse_time(iso: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {
-    chrono::DateTime::parse_from_rfc3339(iso).ok()
-}
-
-fn format_relative(iso: Option<&str>) -> String {
-    let Some(iso) = iso else {
-        return "—".into();
-    };
-    let Some(then) = parse_time(iso) else {
-        return "—".into();
-    };
-    let now = chrono::Utc::now();
-    let diff = (now.timestamp_millis() - then.timestamp_millis()).max(0);
-    let mins = diff / 60_000;
-    if mins < 1 {
-        return "just now".into();
-    }
-    if mins < 60 {
-        return format!("{mins}m ago");
-    }
-    let hrs = mins / 60;
-    if hrs < 24 {
-        return format!("{hrs}h ago");
-    }
-    let days = hrs / 24;
-    if days < 7 {
-        return format!("{days}d ago");
-    }
-    then.with_timezone(&chrono::Local).format("%-m/%-d/%Y").to_string()
-}
+use crate::state::{store, RemoteSession, StoreEvent};
+use crate::theme::{theme, FONT_MONO};
+use crate::ui::{alert, badge, button, card, divider, icon, page_frame, Tone};
 
 pub struct RemoteSessionsPage {
     sessions: Vec<RemoteSession>,
@@ -53,17 +25,33 @@ pub struct RemoteSessionsPage {
     error: Option<SharedString>,
     type_filter: Option<String>,
     newest_first: bool,
+    _subs: Vec<Subscription>,
 }
 
 impl RemoteSessionsPage {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Start from what the store already knows (pushed by the backend via
+        // `update_remote_sessions`), then refresh.
+        let st = store(cx);
+        let known = st.read(cx).remote_sessions.clone();
+        let sub = cx.subscribe(&st, |this, store, ev: &StoreEvent, cx| {
+            if matches!(ev, StoreEvent::SessionUpdated | StoreEvent::AuthChanged) {
+                return;
+            }
+            let latest = store.read(cx).remote_sessions.clone();
+            if !latest.is_empty() && this.sessions.is_empty() {
+                this.sessions = latest;
+                cx.notify();
+            }
+        });
         let mut this = Self {
-            sessions: Vec::new(),
+            sessions: known,
             loading: true,
             connecting_to: None,
             error: None,
             type_filter: None,
             newest_first: true,
+            _subs: vec![sub],
         };
         this.fetch_sessions(cx);
         this
@@ -83,13 +71,14 @@ impl RemoteSessionsPage {
             let res = task.await;
             this.update(cx, |this, cx| {
                 if let Ok(Some(sessions)) = res {
+                    let previous = std::mem::take(&mut this.sessions);
                     this.sessions = sessions
                         .into_iter()
                         .map(|s| RemoteSession {
+                            created_at: previous.iter().find(|p| p.id == s.id).and_then(|p| p.created_at.clone()),
                             id: s.id,
                             status: s.status,
                             session_type: s.session_type,
-                            created_at: None,
                         })
                         .collect();
                 }
@@ -167,316 +156,190 @@ impl RemoteSessionsPage {
     }
 }
 
+impl RemoteSessionsPage {
+    fn render_row(&self, pos: usize, ix: usize, session: &RemoteSession, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme();
+        let is_active = session.status.eq_ignore_ascii_case("active");
+        let is_connecting = self.connecting_to.as_deref() == Some(session.id.as_str());
+        let busy = self.connecting_to.is_some();
+        let id = session.id.clone();
+        let id2 = session.id.clone();
+        let status = {
+            let mut chars = session.status.chars();
+            match chars.next() {
+                Some(c) => c.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                None => "Unknown".into(),
+            }
+        };
+        let join = button(("join", ix), if is_connecting { "Joining…" } else { "Join" })
+            .small()
+            .loading(is_connecting)
+            .disabled(busy && !is_connecting)
+            .when(!is_active, |b| b.outline())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.connect(id.clone(), cx)
+            }));
+        list_row(("session-row", pos))
+            .h(px(60.))
+            .gap_4()
+            .when(!busy, |d| {
+                d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.connect(id2.clone(), cx)))
+            })
+            .child(icon_tile(
+                session_icon(&session.session_type),
+                32.,
+                Some(if is_active { t.primary } else { t.muted_foreground }),
+            ))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(t.foreground)
+                            .child(session_title(&session.session_type)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(div().font_family(FONT_MONO).child(short_id(&session.id)))
+                            .when_some(session.created_at.clone(), |d, created| {
+                                d.child(sep_dot()).child(format!("Created {}", format_relative(Some(&created))))
+                            }),
+                    ),
+            )
+            .child(
+                div()
+                    .w(px(96.))
+                    .flex_none()
+                    .flex()
+                    .child(badge(status, if is_active { Tone::Success } else { Tone::Secondary })),
+            )
+            .child(div().w(px(84.)).flex_none().flex().justify_end().child(join))
+    }
+}
+
 impl Render for RemoteSessionsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let total = self.sessions.len();
         let active = self.sessions.iter().filter(|s| s.status.eq_ignore_ascii_case("active")).count();
-        let rows = self.filtered_sorted();
-        let shown = rows.len();
+        let rows: Vec<(usize, RemoteSession)> =
+            self.filtered_sorted().into_iter().map(|(i, s)| (i, s.clone())).collect();
 
-        // ── Header ──
-        let header = div()
-            .flex()
-            .flex_row()
-            .items_start()
-            .justify_between()
-            .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .text_size(px(20.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(t.foreground)
-                            .child("Remote sessions"),
-                    )
-                    .child(
-                        div()
-                            .mt_1()
-                            .max_w(px(420.))
-                            .text_size(px(13.))
-                            .line_height(px(21.))
-                            .text_color(t.muted_foreground)
-                            .child(
-                                "Join active signing ceremonies or wait for new ones. Connect with your hardware wallet to contribute a signature.",
-                            ),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_none()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap_1()
-                            .text_size(px(12.))
-                            .text_color(t.muted_foreground)
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(t.foreground)
-                                    .child(active.to_string()),
-                            )
-                            .child(format!("active · {total} total")),
-                    )
-                    .child(
-                        icon_button("refresh-sessions", "refresh")
-                            .outline()
-                            .loading(self.loading)
-                            .on_click(cx.listener(|this, _, _, cx| this.fetch_sessions(cx))),
-                    ),
-            );
-
-        // ── Filter bar ──
-        let filter_bar = (total > 0).then(|| {
-            let mut chips: Vec<(Option<String>, String)> = vec![(None, "All".into())];
-            chips.extend(self.session_types().into_iter().map(|ty| (Some(ty.clone()), ty)));
+        // ── Filters: type tabs + sort ──
+        let filters = (total > 0).then(|| {
+            let mut items = vec![("all".to_string(), format!("All  {total}"))];
+            for ty in self.session_types() {
+                let n = self.sessions.iter().filter(|s| s.session_type == ty).count();
+                items.push((ty.clone(), format!("{}  {n}", session_title(&ty))));
+            }
+            let current = self.type_filter.clone().unwrap_or_else(|| "all".into());
+            let this = cx.entity().downgrade();
             div()
                 .flex()
                 .flex_row()
                 .items_center()
                 .justify_between()
                 .gap_4()
+                .child(segmented("session-filter", items, &current, move |key, _, cx| {
+                    this.update(cx, |this, cx| {
+                        this.type_filter = (key != "all").then_some(key);
+                        cx.notify();
+                    })
+                    .ok();
+                }))
                 .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(px(6.))
-                        .children(chips.into_iter().enumerate().map(|(ix, (value, label))| {
-                            let is_active = self.type_filter == value;
-                            div()
-                                .id(("type-filter", ix))
-                                .flex()
-                                .items_center()
-                                .h(px(28.))
-                                .px_3()
-                                .rounded_full()
-                                .border_1()
-                                .text_size(px(12.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .cursor_pointer()
-                                .map(|d| {
-                                    if is_active {
-                                        d.border_color(alpha(t.primary, 0.5))
-                                            .bg(alpha(t.primary, 0.08))
-                                            .text_color(t.foreground)
-                                    } else {
-                                        d.border_color(t.border)
-                                            .text_color(t.muted_foreground)
-                                            .hover(move |s| s.text_color(t.foreground))
-                                    }
-                                })
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.type_filter = value.clone();
-                                    cx.notify();
-                                }))
-                                .child(label)
+                    button("sort-order", if self.newest_first { "Newest first" } else { "Oldest first" })
+                        .ghost()
+                        .small()
+                        .icon("chevrons-up-down")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.newest_first = !this.newest_first;
+                            cx.notify();
                         })),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .flex_none()
-                        .items_center()
-                        .gap_2()
-                        .when(self.type_filter.is_some(), |d| {
-                            d.child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(t.muted_foreground)
-                                    .child(format!("{shown} / {total}")),
-                            )
-                        })
-                        .child(
-                            button("sort-order", if self.newest_first { "Newest" } else { "Oldest" })
-                                .ghost()
-                                .small()
-                                .icon(if self.newest_first { "cloud-arrow-down" } else { "cloud-arrow-up" })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.newest_first = !this.newest_first;
-                                    cx.notify();
-                                })),
-                        ),
                 )
         });
 
         // ── List ──
         let list = if self.loading && total == 0 {
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(1.))
-                .overflow_hidden()
-                .rounded_lg()
-                .border_1()
-                .border_color(t.border)
-                .bg(t.border)
-                .children((0..4usize).map(|i| skeleton(("session-skeleton", i), px(68.))))
-                .into_any_element()
+            skeleton_list("session-skeleton", 4).into_any_element()
+        } else if total == 0 {
+            card_message(
+                "users",
+                Some(t.primary),
+                "No sessions yet",
+                "When a co-signer invites you to register a device or sign a transaction, the session shows up here.",
+            )
+            .child(
+                div().mt_4().child(
+                    button("empty-refresh", "Check again")
+                        .outline()
+                        .small()
+                        .icon("refresh")
+                        .on_click(cx.listener(|this, _, _, cx| this.fetch_sessions(cx))),
+                ),
+            )
+            .into_any_element()
         } else if rows.is_empty() {
-            div()
-                .flex()
-                .flex_col()
+            card()
                 .items_center()
-                .justify_center()
-                .rounded_lg()
-                .border_1()
-                .border_dashed()
-                .border_color(t.border)
-                .bg(alpha(t.card, 0.3))
-                .py_16()
-                .child(
-                    div()
-                        .size(px(48.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded_full()
-                        .border_1()
-                        .border_color(t.border)
-                        .bg(t.background)
-                        .child(icon("cloud-calendar").size(px(20.)).text_color(alpha(t.muted_foreground, 0.5))),
-                )
-                .child(
-                    div()
-                        .mt_4()
-                        .text_size(px(14.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(t.foreground)
-                        .child(if total == 0 { "No sessions yet" } else { "Nothing matches that filter" }),
-                )
-                .child(
-                    div()
-                        .mt_1()
-                        .max_w(px(320.))
-                        .text_center()
-                        .text_size(px(12.))
-                        .line_height(px(19.))
-                        .text_color(t.muted_foreground)
-                        .child(if total == 0 {
-                            "When someone invites you to a signing ceremony it will appear here."
-                        } else {
-                            "Try clearing the filter or refreshing the list."
-                        }),
-                )
+                .py_10()
+                .gap_1()
+                .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("No sessions match this filter"))
+                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Show all sessions or refresh the list."))
                 .into_any_element()
         } else {
-            let last = rows.len() - 1;
-            div()
-                .flex()
-                .flex_col()
-                .overflow_hidden()
-                .rounded_lg()
-                .border_1()
-                .border_color(t.border)
-                .children(rows.into_iter().enumerate().map(|(pos, (ix, session))| {
-                    let is_active = session.status.eq_ignore_ascii_case("active");
-                    let is_connecting = self.connecting_to.as_deref() == Some(session.id.as_str());
-                    let id = session.id.clone();
-                    div()
-                        .id(("session-row", ix))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_4()
-                        .bg(t.card)
-                        .px_4()
-                        .py(px(14.))
-                        .when(pos != last, |d| d.border_b_1().border_color(t.border))
-                        .hover(move |s| s.bg(alpha(t.muted, 0.4)))
-                        .child(
-                            div()
-                                .size(px(36.))
-                                .flex_none()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded_md()
-                                .border_1()
-                                .border_color(t.border)
-                                .bg(t.background)
-                                .child(icon("cloud-shield").size(px(16.))),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .flex_1()
-                                .min_w_0()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_row()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(
-                                            div()
-                                                .min_w_0()
-                                                .truncate()
-                                                .text_size(px(13.))
-                                                .font_weight(FontWeight::MEDIUM)
-                                                .text_color(t.foreground)
-                                                .child(session.session_type.clone()),
-                                        )
-                                        .child(badge(
-                                            session.status.clone(),
-                                            if is_active { Tone::Success } else { Tone::Secondary },
-                                        )),
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_row()
-                                        .items_center()
-                                        .gap_2()
-                                        .text_size(px(12.))
-                                        .text_color(t.muted_foreground)
-                                        .child(div().font_family(FONT_MONO).child(short_id(&session.id)))
-                                        .when_some(session.created_at.clone(), |d, created| {
-                                            d.child(div().text_color(alpha(t.muted_foreground, 0.4)).child("·"))
-                                                .child(format_relative(Some(&created)))
-                                        }),
-                                ),
-                        )
-                        .child(
-                            button(("join", ix), if is_connecting { "Joining" } else { "Join" })
-                                .small()
-                                .loading(is_connecting)
-                                .when(!is_connecting, |b| b.icon_right("arrow-right"))
-                                .on_click(cx.listener(move |this, _, _, cx| this.connect(id.clone(), cx))),
-                        )
-                }))
-                .into_any_element()
+            let mut list = card().overflow_hidden();
+            for (pos, (ix, session)) in rows.iter().enumerate() {
+                if pos > 0 {
+                    list = list.child(divider());
+                }
+                list = list.child(self.render_row(pos, *ix, session, cx));
+            }
+            list.into_any_element()
         };
 
-        div().size_full().child(
-            div().id("remote-sessions-scroll").size_full().overflow_y_scroll().child(
-                div().w_full().flex().flex_col().items_center().px_10().py(px(36.)).child(
-                    div()
-                        .w_full()
-                        .max_w(px(768.))
-                        .flex()
-                        .flex_col()
-                        .gap_6()
-                        .child(header)
-                        .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
-                        .children(filter_bar)
-                        .child(list),
-                ),
-            ),
-        )
+        let summary = (total > 0).then(|| {
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .text_size(px(12.))
+                .text_color(t.muted_foreground)
+                .child(icon("info").size(px(14.)))
+                .child(format!(
+                    "{active} active of {total}. Joining opens a live connection; you'll be asked to connect your hardware wallet."
+                ))
+        });
+
+        page_frame("sessions")
+            .title("Sessions")
+            .subtitle("Signing sessions you've been invited to: register a device or approve a team transaction.")
+            .action(
+                button("refresh-sessions", "Refresh")
+                    .outline()
+                    .small()
+                    .icon("refresh")
+                    .loading(self.loading)
+                    .on_click(cx.listener(|this, _, _, cx| this.fetch_sessions(cx))),
+            )
+            .when_some(filters, |f, el| f.header_extra(el))
+            .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
+            .child(list)
+            .children(summary)
     }
 }

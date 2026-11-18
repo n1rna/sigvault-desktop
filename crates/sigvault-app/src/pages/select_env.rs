@@ -1,14 +1,16 @@
 //! `pages/SelectEnv.tsx` — pick a SigVault deployment (regtest / signet /
 //! testnet / mainnet) from the remote manifest.
 
-use gpui::{div, prelude::*, px, Context, SharedString, Window};
+use gpui::{div, prelude::*, px, Context, FontWeight, SharedString, Window};
 use sigvault_core::commands::{cmd_list_environments, cmd_set_environment};
 use sigvault_core::env_config::EnvConfig;
 use sigvault_core::State;
 
+use super::cloud::common::{icon_tile, list_row, network_badge_unless_named, skeleton_list};
 use crate::runtime::backend;
+use crate::state::store;
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, badge, button, icon, logo, Tone};
+use crate::ui::{alert, badge, button, card, divider, footer_bar, icon, page_frame, section, Tone, FORM_WIDTH};
 
 pub struct SelectEnvPage {
     environments: Vec<EnvConfig>,
@@ -84,145 +86,161 @@ impl SelectEnvPage {
     }
 }
 
+fn host_of(url: &str) -> String {
+    url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string()
+}
+
+impl SelectEnvPage {
+    fn render_list(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let t = theme();
+        if self.loading && self.environments.is_empty() {
+            return skeleton_list("env-skeleton", 3).into_any_element();
+        }
+        if self.environments.is_empty() {
+            return card()
+                .items_center()
+                .gap_1()
+                .py_10()
+                .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("No networks available"))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child("Check your internet connection, then refresh the list."),
+                )
+                .into_any_element();
+        }
+        let mut list = card().overflow_hidden();
+        for (ix, env) in self.environments.iter().enumerate() {
+            if ix > 0 {
+                list = list.child(divider());
+            }
+            let disabled = env.coming_soon;
+            let selected = self.selected_id.as_deref() == Some(env.id.as_str());
+            let id = env.id.clone();
+            let radio = div()
+                .size(px(16.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .border_1()
+                .border_color(if selected { t.primary } else { t.border })
+                .when(selected, |d| d.child(div().size(px(8.)).rounded_full().bg(t.primary)));
+            list = list.child(
+                list_row(("env", ix))
+                    .h(px(60.))
+                    .gap_4()
+                    .when(selected, |d| d.bg(alpha(t.primary, 0.06)))
+                    .when(disabled, |d| d.opacity(0.55))
+                    .when(!disabled, |d| {
+                        d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+                            this.selected_id = Some(id.clone());
+                            cx.notify();
+                        }))
+                    })
+                    .child(radio)
+                    .child(icon_tile("globe", 32., Some(if selected { t.primary } else { t.muted_foreground })))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(t.foreground)
+                                    .child(env.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .truncate()
+                                    .font_family(FONT_MONO)
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child(host_of(&env.api_base_url)),
+                            ),
+                    )
+                    .children(network_badge_unless_named(&env.name, &env.network))
+                    .child(div().w(px(96.)).flex_none().flex().justify_end().map(|d| {
+                        if disabled {
+                            d.child(badge("Coming soon", Tone::Secondary))
+                        } else if selected {
+                            d.child(badge("Selected", Tone::Default))
+                        } else {
+                            d
+                        }
+                    })),
+            );
+        }
+        list.into_any_element()
+    }
+}
+
 impl Render for SelectEnvPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
-        let list = if self.loading {
-            div()
-                .rounded_md()
-                .border_1()
-                .border_color(t.border)
-                .bg(t.card)
-                .px_4()
-                .py_3()
-                .text_size(px(13.))
+        let authenticated = store(cx).read(cx).authenticated;
+        let selected_name = self
+            .environments
+            .iter()
+            .find(|e| Some(&e.id) == self.selected_id.as_ref())
+            .map(|e| e.name.clone());
+        let footer = footer_bar(
+            vec![div()
+                .text_size(px(12.))
                 .text_color(t.muted_foreground)
-                .child("Loading environments…")
-                .into_any_element()
-        } else {
-            div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .children(self.environments.iter().map(|env| {
-                    let disabled = env.coming_soon;
-                    let selected = self.selected_id.as_deref() == Some(env.id.as_str());
-                    let id = env.id.clone();
-                    let host = env
-                        .api_base_url
-                        .trim_start_matches("https://")
-                        .trim_start_matches("http://")
-                        .to_string();
-                    div()
-                        .id(SharedString::from(env.id.clone()))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .w_full()
-                        .rounded_md()
-                        .border_1()
-                        .px_4()
-                        .py_3()
-                        .map(|d| {
-                            if disabled {
-                                d.border_color(alpha(t.border, 0.5)).bg(alpha(t.muted, 0.2)).opacity(0.6)
-                            } else if selected {
-                                d.border_color(t.primary).bg(alpha(t.primary, 0.06)).cursor_pointer()
-                            } else {
-                                d.border_color(t.border)
-                                    .bg(t.card)
-                                    .cursor_pointer()
-                                    .hover(|s| s.border_color(alpha(t.primary, 0.5)))
-                            }
-                        })
-                        .when(!disabled, |d| {
-                            d.on_click(cx.listener(move |this, _, _, cx| {
-                                this.selected_id = Some(id.clone());
-                                cx.notify();
-                            }))
-                        })
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .child(div().text_size(px(14.)).font_weight(gpui::FontWeight::MEDIUM).child(env.name.clone()))
-                                .child(
-                                    div()
-                                        .mt(px(2.))
-                                        .flex()
-                                        .flex_row()
-                                        .gap_1()
-                                        .text_size(px(12.))
-                                        .text_color(t.muted_foreground)
-                                        .child(format!("{} ·", env.network))
-                                        .child(div().font_family(FONT_MONO).child(host)),
-                                ),
-                        )
-                        .map(|d| {
-                            if disabled {
-                                d.child(badge("Coming soon", Tone::Secondary))
-                            } else if selected {
-                                d.child(icon("check").text_color(t.primary))
-                            } else {
-                                d
-                            }
-                        })
-                }))
-                .into_any_element()
-        };
+                .child(match &selected_name {
+                    Some(n) => format!("You'll sign in to {n} next."),
+                    None => "Choose a network to continue.".into(),
+                })
+                .into_any_element()],
+            vec![button("env-continue", if self.submitting { "Applying…" } else { "Continue" })
+                .loading(self.submitting)
+                .when(!self.submitting, |b| b.icon_right("arrow-right"))
+                .disabled(self.selected_id.is_none() || self.loading || authenticated)
+                .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
+                .into_any_element()],
+        );
 
-        div().id("select-env").size_full().overflow_y_scroll().child(
-            div().min_h_full().flex().items_center().justify_center().child(
+        page_frame("select-env")
+            .title("Choose a network")
+            .subtitle("Pick which SigVault Cloud deployment to connect to. Each network has its own accounts, wallets and sessions.")
+            .action(
+                button("env-refresh", "Refresh")
+                    .outline()
+                    .small()
+                    .icon("refresh")
+                    .loading(self.loading && !self.environments.is_empty())
+                    .disabled(self.loading || self.submitting)
+                    .on_click(cx.listener(|this, _, _, cx| this.load(cx))),
+            )
+            .footer(footer)
+            .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
+            .when(authenticated, |f| {
+                f.child(alert(Tone::Warning, "You're signed in. Sign out first to switch networks."))
+            })
+            .child(
+                section("Networks")
+                    .description("Test networks use test bitcoin with no real value.")
+                    .child(self.render_list(cx)),
+            )
+            .child(
                 div()
-                    .w_full()
-                    .max_w(px(460.))
-                    .px_10()
-                    .py_12()
+                    .max_w(FORM_WIDTH)
                     .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(10.))
-                            .child(logo(px(26.)))
-                            .child(div().text_size(px(15.)).font_weight(gpui::FontWeight::SEMIBOLD).child("SigVault")),
-                    )
-                    .child(div().mt_8().text_size(px(26.)).font_weight(gpui::FontWeight::SEMIBOLD).child("Choose a network"))
-                    .child(
-                        div()
-                            .mt_2()
-                            .text_size(px(13.))
-                            .line_height(px(21.))
-                            .text_color(t.muted_foreground)
-                            .child("Pick which SigVault deployment to connect to. You can switch later by signing out."),
-                    )
-                    .children(self.error.clone().map(|e| div().mt_6().child(alert(Tone::Destructive, e))))
-                    .child(div().mt_8().child(list))
-                    .child(
-                        div().mt_8().child(
-                            button("env-continue", if self.submitting { "Applying…" } else { "Continue" })
-                                .large()
-                                .full_width()
-                                .loading(self.submitting)
-                                .icon_right("arrow-right")
-                                .disabled(self.selected_id.is_none() || self.loading)
-                                .on_click(cx.listener(|this, _, _, cx| this.submit(cx))),
-                        ),
-                    )
-                    .child(
-                        div().mt_3().child(
-                            button("env-refresh", "Refresh list")
-                                .ghost()
-                                .small()
-                                .full_width()
-                                .disabled(self.loading || self.submitting)
-                                .on_click(cx.listener(|this, _, _, cx| this.load(cx))),
-                        ),
-                    ),
-            ),
-        )
+                    .flex_row()
+                    .items_start()
+                    .gap_2()
+                    .text_size(px(12.))
+                    .line_height(px(17.))
+                    .text_color(t.muted_foreground)
+                    .child(icon("info").size(px(14.)).mt(px(1.)))
+                    .child("To switch later, sign out and pick another network here. Wallets on this device aren't affected."),
+            )
     }
 }
