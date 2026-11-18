@@ -59,3 +59,42 @@ Tailwind `text-[13px]` → `.text_size(px(13.))`; `bg-primary/10` → `.bg(alpha
 `cargo build -p sigvault-app` must stay warning-free in your files.
 Screenshot helper: `/private/tmp/claude-501/tools/shot.sh <out.png> [wait_secs]` launches the
 debug build with `SIGVAULT_DATA_DIR` (default scratch dir) and captures the window; read the PNG.
+
+# Local mode design system (v2)
+
+Local mode is a desktop app: persistent left sidebar (`shell/sidebar.rs`: wallets,
+Restore wallet, Key library, Add key, keychain lock, Settings) + one page frame.
+
+**Every local page renders `crate::ui::page_frame(id)`** (ui/frame.rs) — never its own
+outer container, padding, max width, or centered column. That guarantees identical
+header position, padding (32px) and content width (max 1040) everywhere.
+- Header: `.crumb("Wallets", Some(Page::LocalWallets)).crumb("Savings", None)` for
+  drill-down pages (instead of back buttons), `.title(..)`, `.subtitle(..)`,
+  `.title_adornment(badge)`, `.action(..)` (primary CTA last, `button(..).small()` sizes
+  only — use default size for the primary CTA).
+- Wizards / multi-step flows: `.header_extra(stepper(..))` + `.footer(footer_bar(left, right))`
+  with Back on the left and Cancel/Continue on the right. Step content goes in the body;
+  single-column forms are wrapped in `div().max_w(FORM_WIDTH)` (left-aligned, not centered).
+- Group content with `section("Title").description(..).action(..)`.
+- Lists: bordered `card()` containing rows separated by `divider()` (row height ~56px,
+  px_4, hover bg `alpha(t.muted, 0.5)`), not a stack of separate floating cards.
+- Dialogs: `crate::ui::modal(id, width)`. Destructive confirm in a modal.
+- Typography: page title 20px semibold (frame), section title 13px semibold, body 13px,
+  meta 12px muted, mono 12px. Don't invent other sizes.
+- Do not render Settings/Refresh/Back icon buttons that duplicate the sidebar.
+- After creating/deleting/renaming/locking/unlocking a wallet call
+  `crate::state::local_changed(cx)` so the sidebar refreshes.
+
+**Key library** (`crate::keychain`): `keychain(cx)` entity — `keys()`, `keys_for_network`,
+`get`, `find_match`, `add_public(NewKey)`, `add_hot(NewKey, HotSecret) -> Task`,
+`secret(id) -> Task<HotSecret>`, `rename`, `delete`, `is_unlocked/has_password/unlock/lock`,
+emits `KeychainEvent`. Hot secrets need the keychain unlocked: show
+`pages/local/keys/unlock.rs::KeychainUnlock` inside a `modal` and retry on `UnlockEvent::Unlocked`.
+`pages/local/keys/add_flow.rs::AddKeyFlow` is the embeddable add/import flow
+(emits `AddKeyEvent::Added(id)` / `Cancelled`).
+
+Screenshots: `/private/tmp/claude-501/tools/shot.sh out.png 7 /local/keys` (3rd arg =
+`SIGVAULT_DEV_PAGE` path; data dir defaults to a seeded scratch dir with wallets
+"Savings"/"Daily spend", passphrase `hunter22`). Copy the dir first if your flow writes to it:
+`cp -R /private/tmp/claude-501/scratch/svdata-local /private/tmp/claude-501/scratch/<you>` and
+pass `SIGVAULT_DATA_DIR=...`. Always look at your pages before reporting done.

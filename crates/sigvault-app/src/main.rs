@@ -6,6 +6,7 @@
 //! which routes to Welcome / SelectEnv / Login / Sessions / LocalWallets.
 
 mod assets;
+mod keychain;
 mod pages;
 mod psbt;
 mod router;
@@ -52,6 +53,7 @@ fn main() {
         .run(move |cx: &mut App| {
             cx.set_global(Backend::new(host));
             let store = state::init(cx);
+            keychain::init(cx);
             ui::input::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             #[cfg(target_os = "macos")]
@@ -63,7 +65,7 @@ fn main() {
                 items: vec![gpui::MenuItem::action("Quit SigVault", Quit)],
             }]);
 
-            let bounds = Bounds::centered(None, size(px(900.), px(720.)), cx);
+            let bounds = Bounds::centered(None, size(px(1120.), px(760.)), cx);
             let window = cx
                 .open_window(
                     WindowOptions {
@@ -73,7 +75,7 @@ fn main() {
                             appears_transparent: true,
                             traffic_light_position: Some(point(px(16.), px(20.))),
                         }),
-                        window_min_size: Some(size(px(760.), px(560.))),
+                        window_min_size: Some(size(px(880.), px(600.))),
                         app_id: Some(sigvault_core::host::APP_IDENTIFIER.into()),
                         ..Default::default()
                     },

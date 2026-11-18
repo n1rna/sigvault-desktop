@@ -3,6 +3,7 @@
 //! `ActivityPanel` in `App.tsx`.
 
 mod activity;
+mod sidebar;
 mod topbar;
 mod update;
 
@@ -20,6 +21,7 @@ use crate::theme::{alpha, theme};
 use crate::ui::icon;
 
 pub use activity::ActivityPanel;
+pub use sidebar::LocalSidebar;
 pub use topbar::TopBar;
 pub use update::UpdateBanner;
 
@@ -28,6 +30,8 @@ pub struct Root {
     pending: Option<Page>,
     view: Option<AnyView>,
     topbar: Entity<TopBar>,
+    sidebar: Entity<LocalSidebar>,
+    dev_page: Option<Page>,
     activity: Entity<ActivityPanel>,
     update: Entity<UpdateBanner>,
     toast: Option<SharedString>,
@@ -46,6 +50,11 @@ impl Root {
                 // Re-assert the backend route against the current page.
                 let current = this.pending.clone().unwrap_or_else(|| this.current.clone());
                 this.go(current, cx);
+                // Debug builds: jump to SIGVAULT_DEV_PAGE once the backend
+                // has routed (handy for screenshots of deep pages).
+                if let Some(page) = this.dev_page.take() {
+                    this.go(page, cx);
+                }
             }
         });
         cx.set_global(RootHandle(cx.entity().downgrade()));
@@ -54,6 +63,12 @@ impl Root {
             pending: Some(Page::Loading),
             view: None,
             topbar: cx.new(|cx| TopBar::new(window, cx)),
+            sidebar: cx.new(LocalSidebar::new),
+            dev_page: if cfg!(debug_assertions) {
+                std::env::var("SIGVAULT_DEV_PAGE").ok().and_then(|p| Page::from_path(&p))
+            } else {
+                None
+            },
             activity: cx.new(|cx| ActivityPanel::new(cx)),
             update: cx.new(|cx| UpdateBanner::new(cx)),
             toast: None,
@@ -113,8 +128,10 @@ impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(page) = self.pending.take() {
             self.view = Some(pages::build(&page, window, cx));
+            self.sidebar.update(cx, |s, cx| s.set_current(page.clone(), cx));
             self.current = page;
         }
+        let local = self.current.is_local();
         let t = theme();
         div()
             .size_full()
@@ -129,12 +146,21 @@ impl Render for Root {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .relative()
-                    .overflow_hidden()
-                    .children(self.view.clone()),
+                    .flex()
+                    .flex_row()
+                    .when(local, |d| d.child(self.sidebar.clone()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .relative()
+                            .overflow_hidden()
+                            .children(self.view.clone()),
+                    ),
             )
-            .child(self.update.clone())
             .child(self.activity.clone())
+            .child(self.update.clone())
             .children(self.toast.clone().map(|msg| {
                 div()
                     .absolute()

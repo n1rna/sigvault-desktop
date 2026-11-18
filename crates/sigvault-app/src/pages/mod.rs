@@ -27,6 +27,9 @@ pub fn build(page: &Page, window: &mut Window, cx: &mut App) -> AnyView {
         Page::LocalWallet(id) => cx.new(|cx| local::dashboard::WalletDashboardPage::new(id, window, cx)).into(),
         Page::LocalReceive(id) => cx.new(|cx| local::receive::ReceivePage::new(id, window, cx)).into(),
         Page::LocalSend(id) => cx.new(|cx| local::send::SendPage::new(id, window, cx)).into(),
+        Page::LocalKeys => cx.new(|cx| local::keys::list::KeyListPage::new(window, cx)).into(),
+        Page::LocalKeyAdd => cx.new(|cx| local::keys::add::AddKeyPage::new(window, cx)).into(),
+        Page::LocalKey(id) => cx.new(|cx| local::keys::detail::KeyDetailPage::new(id, window, cx)).into(),
         Page::LocalSettings => cx.new(|cx| local::settings::LocalSettingsPage::new(window, cx)).into(),
     }
 }

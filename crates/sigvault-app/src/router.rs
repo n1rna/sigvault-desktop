@@ -21,6 +21,12 @@ pub enum Page {
     LocalReceive(String),
     LocalSend(String),
     LocalSettings,
+    /// Key library.
+    LocalKeys,
+    /// Add / import a key into the library.
+    LocalKeyAdd,
+    /// Key detail.
+    LocalKey(String),
     Register,
     Sessions,
     SessionDetails,
@@ -40,10 +46,45 @@ impl Page {
             Page::LocalReceive(id) => format!("/local/wallets/{id}/receive"),
             Page::LocalSend(id) => format!("/local/wallets/{id}/send"),
             Page::LocalSettings => "/local/settings".into(),
+            Page::LocalKeys => "/local/keys".into(),
+            Page::LocalKeyAdd => "/local/keys/add".into(),
+            Page::LocalKey(id) => format!("/local/keys/{id}"),
             Page::Register => "/register".into(),
             Page::Sessions => "/sessions".into(),
             Page::SessionDetails => "/session-details".into(),
         }
+    }
+}
+
+impl Page {
+    /// Inverse of [`Page::path`] (used by the `SIGVAULT_DEV_PAGE` hook).
+    pub fn from_path(path: &str) -> Option<Page> {
+        let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
+        Some(match parts.as_slice() {
+            [""] => Page::Loading,
+            ["welcome"] => Page::Welcome,
+            ["select-env"] => Page::SelectEnv,
+            ["login"] => Page::Login,
+            ["register"] => Page::Register,
+            ["sessions"] => Page::Sessions,
+            ["session-details"] => Page::SessionDetails,
+            ["local", "wallets"] => Page::LocalWallets,
+            ["local", "wallets", "new"] => Page::LocalWalletNew,
+            ["local", "wallets", "recover"] => Page::LocalWalletRecover,
+            ["local", "wallets", id] => Page::LocalWallet(id.to_string()),
+            ["local", "wallets", id, "receive"] => Page::LocalReceive(id.to_string()),
+            ["local", "wallets", id, "send"] => Page::LocalSend(id.to_string()),
+            ["local", "settings"] => Page::LocalSettings,
+            ["local", "keys"] => Page::LocalKeys,
+            ["local", "keys", "add"] => Page::LocalKeyAdd,
+            ["local", "keys", id] => Page::LocalKey(id.to_string()),
+            _ => return None,
+        })
+    }
+
+    /// Local-mode pages render inside the sidebar layout.
+    pub fn is_local(&self) -> bool {
+        self.path().starts_with("/local/")
     }
 }
 
@@ -105,6 +146,19 @@ mod tests {
         assert_eq!(resolve(&R::LocalWallets, &Page::Sessions), Page::LocalWallets);
         assert_eq!(resolve(&R::Login, &Page::LocalWallets), Page::Login);
         assert_eq!(resolve(&R::MainPage, &Page::Login), Page::Sessions);
+    }
+
+    #[test]
+    fn paths_round_trip() {
+        for p in [
+            Page::LocalKeys,
+            Page::LocalKeyAdd,
+            Page::LocalKey("k1".into()),
+            Page::LocalSend("w".into()),
+            Page::Sessions,
+        ] {
+            assert_eq!(Page::from_path(&p.path()), Some(p));
+        }
     }
 
     #[test]

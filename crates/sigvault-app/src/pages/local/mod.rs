@@ -2,6 +2,7 @@
 
 pub mod create_wizard;
 pub mod dashboard;
+pub mod keys;
 pub mod receive;
 pub mod recovery;
 pub mod send;

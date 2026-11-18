@@ -43,14 +43,11 @@ impl Render for ActivityPanel {
         };
 
         div()
-            .absolute()
-            .bottom_0()
-            .left_0()
-            .right_0()
+            .flex_none()
+            .w_full()
             .border_t_1()
             .border_color(t.border)
             .bg(t.card)
-            .shadow_lg()
             .child(
                 div()
                     .id("activity-toggle")
@@ -60,7 +57,7 @@ impl Render for ActivityPanel {
                     .gap_2()
                     .w_full()
                     .px_4()
-                    .py_2()
+                    .py(px(6.))
                     .cursor_pointer()
                     .hover(|s| s.bg(t.muted))
                     .on_click(cx.listener(|this, _, _, cx| {

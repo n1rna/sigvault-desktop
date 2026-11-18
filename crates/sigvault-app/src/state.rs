@@ -132,6 +132,9 @@ pub enum StoreEvent {
     #[allow(dead_code)] // payload kept for subscribers (toasts, logging)
     Notification(Notification),
     SyncProgress(SyncProgress),
+    /// Local wallets were created / deleted / renamed / locked / unlocked.
+    /// Emitted by pages via [`local_changed`]; the sidebar refreshes on it.
+    LocalDataChanged,
 }
 
 pub struct AppStore {
@@ -265,6 +268,11 @@ pub fn init(cx: &mut App) -> Entity<AppStore> {
     let store = cx.new(|_| AppStore::new());
     cx.set_global(StoreHandle(store.clone()));
     store
+}
+
+/// Tell local-mode views (sidebar, wallet list) that wallet data changed.
+pub fn local_changed(cx: &mut App) {
+    store(cx).update(cx, |_, cx| cx.emit(StoreEvent::LocalDataChanged));
 }
 
 /// The global [`AppStore`] entity.
