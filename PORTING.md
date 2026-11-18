@@ -98,3 +98,15 @@ Screenshots: `/private/tmp/claude-501/tools/shot.sh out.png 7 /local/keys` (3rd 
 "Savings"/"Daily spend", passphrase `hunter22`). Copy the dir first if your flow writes to it:
 `cp -R /private/tmp/claude-501/scratch/svdata-local /private/tmp/claude-501/scratch/<you>` and
 pass `SIGVAULT_DATA_DIR=...`. Always look at your pages before reporting done.
+
+# App shell v3 (both workspaces)
+
+There is no top bar. `shell/sidebar.rs::AppSidebar` is shown on every page under
+`/local/*` ("On this device") and `/cloud/*` ("SigVault Cloud"); only Loading and
+Welcome are full-window. The sidebar's top has a workspace switcher (⌘1 / ⌘2) that
+calls `cmd_set_app_mode`; nav + footer depend on the workspace (cloud footer = account
+menu with sign out, Settings → `Page::CloudSettings`). A 40px draggable chrome strip sits
+above both sidebar and content (traffic lights live in it) — pages must not add their own.
+Cloud pages are now `/cloud/login`, `/cloud/select-env`, `/cloud/sessions`, `/cloud/session`,
+`/cloud/register`, `/cloud/settings`; the same design-system rules apply to them.
+User-facing names: "On this device" (local) and "SigVault Cloud" (cloud) — never "local mode".

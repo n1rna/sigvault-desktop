@@ -235,7 +235,7 @@ impl RenderOnce for PageFrame {
             .flex_none()
             .w_full()
             .px(PAGE_PADDING_X)
-            .pt(px(22.))
+            .pt(px(6.))
             .pb(px(18.))
             .border_b_1()
             .border_color(alpha(t.border, 0.7))

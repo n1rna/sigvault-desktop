@@ -20,6 +20,7 @@ pub fn build(page: &Page, window: &mut Window, cx: &mut App) -> AnyView {
         Page::Login => cx.new(|cx| login::LoginPage::new(window, cx)).into(),
         Page::Register => cx.new(|cx| cloud::register::MachineRegistrationPage::new(window, cx)).into(),
         Page::Sessions => cx.new(|cx| cloud::sessions::RemoteSessionsPage::new(window, cx)).into(),
+        Page::CloudSettings => cx.new(|cx| cloud::settings::CloudSettingsPage::new(window, cx)).into(),
         Page::SessionDetails => cx.new(|cx| cloud::session_details::SessionDetailsPage::new(window, cx)).into(),
         Page::LocalWallets => cx.new(|cx| local::wallet_list::LocalWalletListPage::new(window, cx)).into(),
         Page::LocalWalletNew => cx.new(|cx| local::create_wizard::CreateWalletWizardPage::new(window, cx)).into(),

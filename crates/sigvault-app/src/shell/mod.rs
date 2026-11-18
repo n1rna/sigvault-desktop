@@ -3,8 +3,7 @@
 //! `ActivityPanel` in `App.tsx`.
 
 mod activity;
-mod sidebar;
-mod topbar;
+pub mod sidebar;
 mod update;
 
 use std::time::Duration;
@@ -21,16 +20,14 @@ use crate::theme::{alpha, theme};
 use crate::ui::icon;
 
 pub use activity::ActivityPanel;
-pub use sidebar::LocalSidebar;
-pub use topbar::TopBar;
+pub use sidebar::{switch_space, AppSidebar};
 pub use update::UpdateBanner;
 
 pub struct Root {
     current: Page,
     pending: Option<Page>,
     view: Option<AnyView>,
-    topbar: Entity<TopBar>,
-    sidebar: Entity<LocalSidebar>,
+    sidebar: Entity<AppSidebar>,
     dev_page: Option<Page>,
     activity: Entity<ActivityPanel>,
     update: Entity<UpdateBanner>,
@@ -43,7 +40,7 @@ struct RootHandle(WeakEntity<Root>);
 impl Global for RootHandle {}
 
 impl Root {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let st = store(cx);
         let sub = cx.subscribe(&st, |this, _, ev: &StoreEvent, cx| {
             if matches!(ev, StoreEvent::RouteChanged) {
@@ -62,8 +59,7 @@ impl Root {
             current: Page::Loading,
             pending: Some(Page::Loading),
             view: None,
-            topbar: cx.new(|cx| TopBar::new(window, cx)),
-            sidebar: cx.new(LocalSidebar::new),
+            sidebar: cx.new(AppSidebar::new),
             dev_page: if cfg!(debug_assertions) {
                 std::env::var("SIGVAULT_DEV_PAGE").ok().and_then(|p| Page::from_path(&p))
             } else {
@@ -131,7 +127,7 @@ impl Render for Root {
             self.sidebar.update(cx, |s, cx| s.set_current(page.clone(), cx));
             self.current = page;
         }
-        let local = self.current.is_local();
+        let with_sidebar = self.current.has_sidebar();
         let t = theme();
         div()
             .size_full()
@@ -141,22 +137,29 @@ impl Render for Root {
             .bg(t.background)
             .text_color(t.foreground)
             .text_size(px(14.))
-            .child(self.topbar.clone())
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
                     .flex_row()
-                    .when(local, |d| d.child(self.sidebar.clone()))
+                    .when(with_sidebar, |d| d.child(self.sidebar.clone()))
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
                             .h_full()
-                            .relative()
-                            .overflow_hidden()
-                            .children(self.view.clone()),
+                            .flex()
+                            .flex_col()
+                            .child(sidebar::chrome_strip("content-chrome"))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_h_0()
+                                    .relative()
+                                    .overflow_hidden()
+                                    .children(self.view.clone()),
+                            ),
                     ),
             )
             .child(self.activity.clone())

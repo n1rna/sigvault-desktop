@@ -28,7 +28,7 @@ use sigvault_core::{AppHandle, State};
 
 use crate::runtime::{backend, Backend};
 
-gpui::actions!(sigvault, [Quit]);
+gpui::actions!(sigvault, [Quit, SwitchToDevice, SwitchToCloud]);
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
@@ -56,10 +56,20 @@ fn main() {
             keychain::init(cx);
             ui::input::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
+            cx.on_action(|_: &SwitchToDevice, cx| shell::switch_space(sigvault_core::app_mode::AppMode::Local, cx));
+            cx.on_action(|_: &SwitchToCloud, cx| shell::switch_space(sigvault_core::app_mode::AppMode::Cloud, cx));
             #[cfg(target_os = "macos")]
-            cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+            cx.bind_keys([
+                KeyBinding::new("cmd-q", Quit, None),
+                KeyBinding::new("cmd-1", SwitchToDevice, None),
+                KeyBinding::new("cmd-2", SwitchToCloud, None),
+            ]);
             #[cfg(not(target_os = "macos"))]
-            cx.bind_keys([KeyBinding::new("ctrl-q", Quit, None)]);
+            cx.bind_keys([
+                KeyBinding::new("ctrl-q", Quit, None),
+                KeyBinding::new("ctrl-1", SwitchToDevice, None),
+                KeyBinding::new("ctrl-2", SwitchToCloud, None),
+            ]);
             cx.set_menus(vec![gpui::Menu {
                 name: "SigVault".into(),
                 items: vec![gpui::MenuItem::action("Quit SigVault", Quit)],
@@ -73,7 +83,7 @@ fn main() {
                         titlebar: Some(TitlebarOptions {
                             title: Some("SigVault".into()),
                             appears_transparent: true,
-                            traffic_light_position: Some(point(px(16.), px(20.))),
+                            traffic_light_position: Some(point(px(14.), px(14.))),
                         }),
                         window_min_size: Some(size(px(880.), px(600.))),
                         app_id: Some(sigvault_core::host::APP_IDENTIFIER.into()),

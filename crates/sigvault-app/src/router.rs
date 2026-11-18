@@ -30,6 +30,8 @@ pub enum Page {
     Register,
     Sessions,
     SessionDetails,
+    /// Cloud space settings: environment, account, about.
+    CloudSettings,
 }
 
 impl Page {
@@ -37,8 +39,8 @@ impl Page {
         match self {
             Page::Loading => "/".into(),
             Page::Welcome => "/welcome".into(),
-            Page::SelectEnv => "/select-env".into(),
-            Page::Login => "/login".into(),
+            Page::SelectEnv => "/cloud/select-env".into(),
+            Page::Login => "/cloud/login".into(),
             Page::LocalWallets => "/local/wallets".into(),
             Page::LocalWalletNew => "/local/wallets/new".into(),
             Page::LocalWalletRecover => "/local/wallets/recover".into(),
@@ -49,9 +51,10 @@ impl Page {
             Page::LocalKeys => "/local/keys".into(),
             Page::LocalKeyAdd => "/local/keys/add".into(),
             Page::LocalKey(id) => format!("/local/keys/{id}"),
-            Page::Register => "/register".into(),
-            Page::Sessions => "/sessions".into(),
-            Page::SessionDetails => "/session-details".into(),
+            Page::Register => "/cloud/register".into(),
+            Page::Sessions => "/cloud/sessions".into(),
+            Page::SessionDetails => "/cloud/session".into(),
+            Page::CloudSettings => "/cloud/settings".into(),
         }
     }
 }
@@ -63,11 +66,12 @@ impl Page {
         Some(match parts.as_slice() {
             [""] => Page::Loading,
             ["welcome"] => Page::Welcome,
-            ["select-env"] => Page::SelectEnv,
-            ["login"] => Page::Login,
-            ["register"] => Page::Register,
-            ["sessions"] => Page::Sessions,
-            ["session-details"] => Page::SessionDetails,
+            ["cloud", "select-env"] => Page::SelectEnv,
+            ["cloud", "login"] => Page::Login,
+            ["cloud", "register"] => Page::Register,
+            ["cloud", "sessions"] => Page::Sessions,
+            ["cloud", "session"] => Page::SessionDetails,
+            ["cloud", "settings"] => Page::CloudSettings,
             ["local", "wallets"] => Page::LocalWallets,
             ["local", "wallets", "new"] => Page::LocalWalletNew,
             ["local", "wallets", "recover"] => Page::LocalWalletRecover,
@@ -82,9 +86,20 @@ impl Page {
         })
     }
 
-    /// Local-mode pages render inside the sidebar layout.
+    /// Pages in the "On this device" space.
     pub fn is_local(&self) -> bool {
         self.path().starts_with("/local/")
+    }
+
+    /// Pages in the "SigVault Cloud" space.
+    pub fn is_cloud(&self) -> bool {
+        self.path().starts_with("/cloud/")
+    }
+
+    /// Pages rendered inside the sidebar layout (everything except the
+    /// first-launch Welcome and boot Loading screens).
+    pub fn has_sidebar(&self) -> bool {
+        self.is_local() || self.is_cloud()
     }
 }
 
@@ -99,9 +114,10 @@ fn spec(route: &R) -> RouteSpec {
         R::Welcome => (Page::Welcome, None),
         R::SelectEnv => (Page::SelectEnv, None),
         R::Login => (Page::Login, None),
-        R::MainPage => (Page::Sessions, None),
+        // Signed in: any /cloud/ page (settings, register) is fine.
+        R::MainPage => (Page::Sessions, Some("/cloud/")),
         R::MachineRegistration => (Page::Register, None),
-        R::RemoteSessions => (Page::Sessions, None),
+        R::RemoteSessions => (Page::Sessions, Some("/cloud/")),
         R::SessionDetails => (Page::SessionDetails, None),
         R::LocalWallets => (Page::LocalWallets, Some("/local/")),
     };
@@ -156,6 +172,8 @@ mod tests {
             Page::LocalKey("k1".into()),
             Page::LocalSend("w".into()),
             Page::Sessions,
+            Page::CloudSettings,
+            Page::SessionDetails,
         ] {
             assert_eq!(Page::from_path(&p.path()), Some(p));
         }
