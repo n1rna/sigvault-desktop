@@ -12,5 +12,4 @@ pub mod mnemonic;
 pub mod policy;
 pub mod policy_picker;
 pub mod slot_board;
-pub mod slot_editor;
 pub mod ui;

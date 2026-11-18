@@ -2,7 +2,10 @@
 
 pub mod create_wizard;
 pub mod dashboard;
+pub mod key_picker;
 pub mod keys;
+#[cfg(test)]
+mod pipeline_tests;
 pub mod receive;
 pub mod recovery;
 pub mod send;

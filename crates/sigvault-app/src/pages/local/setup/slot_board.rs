@@ -1,20 +1,91 @@
-//! `setup/SlotBoard.tsx` — spending paths with their key slots. Clicking
-//! a slot opens its editor in place; filled slots show where the key
-//! came from and whether its private half will be stored on this
-//! computer.
+//! Spending paths with their key slots, as used by the create and restore
+//! wizards. Each path is a `section` holding a bordered card with one row
+//! per slot. Slots are filled with keys from the key library (the host
+//! decides which); this module only renders the board and routes clicks
+//! back to the host through [`SlotBoardHost`].
 
-use gpui::{div, prelude::*, px, Context, Div, Entity, FontWeight, SharedString, Window};
+use std::collections::HashMap;
 
-use super::policy::{paths_spendable_from_this_device, Slot, SlotLayout};
-use super::slot_editor::SlotEditor;
-use super::ui::{fingerprint, setup_alert, truncate_middle, AlertTone};
+use gpui::{div, prelude::*, px, AnyElement, Context, Div, FontWeight, SharedString, Window};
+
+use super::policy::{paths_spendable_by, Slot, SlotLayout};
+use crate::keychain::{source_label, KeyRecord};
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{badge, Tone};
+use crate::ui::{alert, badge, button, divider, icon, section, Tone};
 
 /// The page that owns the board's state.
 pub trait SlotBoardHost: Sized + 'static {
-    fn edit_slot(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>);
+    /// Create: choose / change the library key for a slot.
+    /// Restore: use the matched library key again after "watch-only".
+    fn pick_key(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>);
+    /// Create: remove the key. Restore: keep the slot watch-only.
     fn clear_slot(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>);
+    /// Restore: add the slot's key to the library (opens the add-key flow).
+    fn add_key(&mut self, _slot_id: String, _window: &mut Window, _cx: &mut Context<Self>) {}
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BoardMode {
+    Create,
+    Restore,
+}
+
+/// A library key as the board shows it.
+#[derive(Clone, Debug)]
+pub struct BoardKey {
+    pub label: SharedString,
+    pub source: String,
+    pub hot: bool,
+    pub fingerprint: String,
+    pub derivation_path: String,
+    pub device: Option<String>,
+}
+
+impl BoardKey {
+    pub fn from_record(k: &KeyRecord) -> Self {
+        Self {
+            label: k.label.clone().into(),
+            source: k.source.clone(),
+            hot: k.is_hot(),
+            fingerprint: k.fingerprint.clone(),
+            derivation_path: k.derivation_path.clone(),
+            device: k.device.clone(),
+        }
+    }
+}
+
+/// What a slot currently holds.
+#[derive(Clone, Debug)]
+pub enum SlotState {
+    /// Create: nothing chosen yet.
+    Empty,
+    /// A library key fills the slot.
+    Assigned(BoardKey),
+    /// Restore: the descriptor's key with no private material here.
+    /// `skipped` is the library key the user chose not to use.
+    WatchOnly { skipped: Option<BoardKey> },
+}
+
+/// Lucide icon for a key source.
+pub fn source_icon(source: &str) -> &'static str {
+    match source {
+        "generated" => "sparkles",
+        "seed" => "scroll-text",
+        "xprv" => "key-round",
+        "hardware" => "hw-device",
+        "xpub" => "eye",
+        "key_file" => "file-key",
+        _ => "key",
+    }
+}
+
+/// "Private key here" / "Watch-only" pill.
+pub fn custody_badge(hot: bool) -> Div {
+    if hot {
+        badge("Private key", Tone::Warning)
+    } else {
+        badge("Public only", Tone::Secondary)
+    }
 }
 
 fn format_thousands(n: u32) -> String {
@@ -31,244 +102,109 @@ fn format_thousands(n: u32) -> String {
 
 pub fn slot_board<H: SlotBoardHost>(
     layout: &SlotLayout,
-    editor: Option<&Entity<SlotEditor>>,
+    states: &HashMap<String, SlotState>,
+    mode: BoardMode,
     cx: &mut Context<H>,
 ) -> Div {
     let t = theme();
-    let editing = editor.map(|e| e.read(cx).slot_id().to_string());
-    let exposed = paths_spendable_from_this_device(layout);
+    let state_of = |id: &str| states.get(id).cloned().unwrap_or(SlotState::Empty);
+    let exposed = paths_spendable_by(layout, |s: &Slot| {
+        matches!(states.get(&s.id), Some(SlotState::Assigned(k)) if k.hot)
+    });
 
-    let sections: Vec<_> = layout
+    let sections: Vec<AnyElement> = layout
         .paths
         .iter()
         .map(|path| {
             let filled = path
                 .slot_ids
                 .iter()
-                .filter(|id| layout.slot(id).is_some_and(|s| s.filled.is_some()))
+                .filter(|id| matches!(states.get(id.as_str()), Some(SlotState::Assigned(_))))
                 .count();
-            div()
+            let mut rows: Vec<AnyElement> = Vec::new();
+            for (i, id) in path.slot_ids.iter().enumerate() {
+                let Some(slot) = layout.slot(id) else { continue };
+                if i > 0 {
+                    rows.push(divider().into_any_element());
+                }
+                rows.push(slot_row(&path.id, slot, state_of(id), mode, cx).into_any_element());
+            }
+            let counter = div()
                 .flex()
-                .flex_col()
-                .rounded_lg()
-                .border_1()
-                .border_color(t.border)
-                .bg(alpha(t.card, 0.4))
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .children(path.timelock_blocks.map(|b| badge(format!("{} blocks", format_thousands(b)), Tone::Secondary)))
                 .child(
                     div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .gap_3()
-                        .border_b_1()
-                        .border_color(t.border)
-                        .px_4()
-                        .py_3()
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_row()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(
-                                            div()
-                                                .text_size(px(13.))
-                                                .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(t.foreground)
-                                                .child(path.title.clone()),
-                                        )
-                                        .children(path.timelock_blocks.map(|b| {
-                                            badge(format!("{} blocks", format_thousands(b)), Tone::Secondary)
-                                        })),
-                                )
-                                .child(
-                                    div()
-                                        .mt(px(2.))
-                                        .text_size(px(11.))
-                                        .text_color(t.muted_foreground)
-                                        .child(path.subtitle.clone()),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .font_family(FONT_MONO)
-                                .text_size(px(11.))
-                                .text_color(t.muted_foreground)
-                                .child(format!("{filled}/{}", path.slot_ids.len())),
-                        ),
-                )
-                .children(path.slot_ids.iter().enumerate().filter_map(|(i, id)| {
-                    let slot = layout.slot(id)?;
-                    let body = if editing.as_deref() == Some(id.as_str()) {
-                        editor?.clone().into_any_element()
-                    } else {
-                        slot_row(&path.id, slot, cx).into_any_element()
-                    };
-                    Some(
-                        div()
-                            .px_4()
-                            .py_3()
-                            .when(i > 0, |d| d.border_t_1().border_color(t.border))
-                            .child(body),
-                    )
-                }))
+                        .font_family(FONT_MONO)
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(format!("{filled}/{}", path.slot_ids.len())),
+                );
+            section(path.title.clone())
+                .description(path.subtitle.clone())
+                .action(counter)
+                .child(crate::ui::card().overflow_hidden().children(rows))
+                .into_any_element()
         })
         .collect();
 
     div()
         .flex()
         .flex_col()
-        .gap_5()
+        .gap_6()
         .children(sections)
         .when(!exposed.is_empty(), |d| {
-            let titles = exposed
-                .iter()
-                .map(|p| p.title.to_lowercase())
-                .collect::<Vec<_>>()
-                .join(" and ");
-            d.child(setup_alert(
-                AlertTone::Warning,
-                Some("This computer alone could spend these funds.".into()),
-                Some(
-                    format!(
-                        "Private keys stored here meet the threshold for {titles}. Anyone who gets this computer and the wallet passphrase gets the coins, which defeats the point of a multi-key setup. Use a hardware wallet or another person's key for at least one of those slots unless this is intentional (for example, testing)."
-                    )
-                    .into_any_element(),
+            let titles = exposed.iter().map(|p| p.title.to_lowercase()).collect::<Vec<_>>().join(" and ");
+            d.child(alert(
+                Tone::Warning,
+                format!(
+                    "This computer alone could spend from the {titles}: private keys stored here meet its threshold. Anyone with this computer and the wallet passphrase gets the coins. Use a hardware wallet or someone else's key for at least one of those slots unless this is intentional (for example, testing)."
                 ),
             ))
         })
 }
 
-fn row_button(id: SharedString, label: &'static str, destructive: bool) -> gpui::Stateful<Div> {
+pub fn meta_line(fp: &str, path: &str) -> Div {
     let t = theme();
     div()
-        .id(id)
-        .rounded_md()
-        .px(px(10.))
-        .py(px(6.))
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(6.))
         .text_size(px(12.))
-        .font_weight(FontWeight::MEDIUM)
         .text_color(t.muted_foreground)
-        .cursor_pointer()
-        .hover(move |s| s.text_color(if destructive { t.destructive } else { t.foreground }))
-        .child(label)
+        .child(div().font_family(FONT_MONO).child(if fp.is_empty() { "no origin".to_string() } else { fp.to_lowercase() }))
+        .when(!path.is_empty(), |d| d.child("·").child(div().font_family(FONT_MONO).child(path.to_string())))
 }
 
-fn slot_row<H: SlotBoardHost>(path_id: &str, slot: &Slot, cx: &mut Context<H>) -> Div {
+fn key_cell(k: &BoardKey, dim: bool) -> Div {
     let t = theme();
-    let id = slot.id.clone();
-    let key = format!("{path_id}-{}", slot.id);
-
-    let Some(f) = &slot.filled else {
-        // Recover mode: the public key is already known from the
-        // descriptor, so an unfilled slot is "watch-only", not "empty".
-        let expected = slot.expected.as_ref();
-        let detail = match expected {
-            Some(e) => {
-                let mut row = div().flex().flex_row().items_center().gap_x(px(4.));
-                row = match &e.fingerprint {
-                    Some(fp) => row.child(fingerprint(fp)),
-                    None => row.child("no origin"),
-                };
-                if let Some(p) = &e.derivation_path {
-                    row = row.child("·").child(div().font_family(FONT_MONO).child(p.clone()));
-                }
-                row.child("· watch-only")
-            }
-            None => div().child("Empty"),
-        };
-        let has_expected = expected.is_some();
-        return div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .gap_3()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child(slot.label.clone()),
-                    )
-                    .child(
-                        div()
-                            .mt(px(2.))
-                            .overflow_hidden()
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .child(detail),
-                    ),
-            )
-            .child(
-                div()
-                    .id(SharedString::from(format!("add-{key}")))
-                    .flex_none()
-                    .rounded_md()
-                    .px_3()
-                    .py(px(6.))
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .cursor_pointer()
-                    .map(|d| {
-                        if has_expected {
-                            d.border_1()
-                                .border_color(t.border)
-                                .text_color(t.muted_foreground)
-                                .hover(move |s| s.text_color(t.foreground))
-                        } else {
-                            d.bg(t.primary)
-                                .text_color(t.primary_foreground)
-                                .hover(move |s| s.bg(alpha(t.primary, 0.9)))
-                        }
-                    })
-                    .on_click(cx.listener(move |this, _, w, cx| this.edit_slot(id.clone(), w, cx)))
-                    .child(if has_expected { "Attach private key" } else { "Add key" }),
-            );
-    };
-
-    let tone = if f.secret.is_some() {
-        Tone::Warning
-    } else if f.source == super::api::SlotSource::Hardware {
-        Tone::Success
-    } else {
-        Tone::Outline
-    };
-    let id2 = slot.id.clone();
-    let mut detail = div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap_x(px(4.))
-        .child(fingerprint(&f.key.fingerprint))
-        .child("·")
-        .child(div().font_family(FONT_MONO).child(f.key.derivation_path.clone()))
-        .child("·")
-        .child(div().font_family(FONT_MONO).child(truncate_middle(&f.key.xpub, 10, 6)));
-    if let Some(d) = &f.detail {
-        detail = detail.child("·").child(d.clone());
-    }
-
+    let extra = k.device.clone();
     div()
         .flex()
         .flex_row()
         .items_center()
-        .justify_between()
         .gap_3()
+        .min_w_0()
+        .when(dim, |d| d.opacity(0.6))
+        .child(
+            div()
+                .size(px(30.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_md()
+                .bg(t.muted)
+                .child(icon(source_icon(&k.source)).size(px(15.)).text_color(t.foreground)),
+        )
         .child(
             div()
                 .flex()
                 .flex_col()
+                .gap(px(2.))
                 .min_w_0()
                 .child(
                     div()
@@ -276,46 +212,180 @@ fn slot_row<H: SlotBoardHost>(path_id: &str, slot: &Slot, cx: &mut Context<H>) -
                         .flex_row()
                         .items_center()
                         .gap_2()
+                        .min_w_0()
                         .child(
                             div()
+                                .truncate()
                                 .text_size(px(13.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(t.foreground)
-                                .child(slot.label.clone()),
+                                .child(k.label.clone()),
                         )
-                        .child(badge(f.source.label(), tone))
-                        .when(f.secret.is_some(), |d| {
-                            d.child(
-                                div()
-                                    .text_size(px(10.))
-                                    .text_color(t.muted_foreground)
-                                    .child("stored on this computer"),
-                            )
-                        }),
+                        .child(custody_badge(k.hot)),
                 )
                 .child(
                     div()
-                        .mt(px(2.))
-                        .overflow_hidden()
-                        .text_size(px(11.))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(12.))
                         .text_color(t.muted_foreground)
-                        .child(detail),
+                        .child(source_label(&k.source))
+                        .children(extra.map(|d| format!("({d})")))
+                        .child("·")
+                        .child(meta_line(&k.fingerprint, &k.derivation_path)),
                 ),
         )
-        .child(
+}
+
+fn slot_row<H: SlotBoardHost>(
+    path_id: &str,
+    slot: &Slot,
+    state: SlotState,
+    mode: BoardMode,
+    cx: &mut Context<H>,
+) -> Div {
+    let t = theme();
+    let key = format!("{path_id}-{}", slot.id);
+    let id1 = slot.id.clone();
+    let id2 = slot.id.clone();
+
+    let (body, actions): (AnyElement, Vec<AnyElement>) = match (&state, mode) {
+        (SlotState::Assigned(k), BoardMode::Create) => (
+            key_cell(k, false).into_any_element(),
+            vec![
+                button(SharedString::from(format!("change-{key}")), "Change")
+                    .ghost()
+                    .small()
+                    .on_click(cx.listener(move |this, _, w, cx| this.pick_key(id1.clone(), w, cx)))
+                    .into_any_element(),
+                button(SharedString::from(format!("remove-{key}")), "Remove")
+                    .ghost()
+                    .small()
+                    .on_click(cx.listener(move |this, _, w, cx| this.clear_slot(id2.clone(), w, cx)))
+                    .into_any_element(),
+            ],
+        ),
+        (SlotState::Assigned(k), BoardMode::Restore) => (
+            key_cell(k, false).into_any_element(),
+            vec![button(SharedString::from(format!("skip-{key}")), "Keep watch-only")
+                .ghost()
+                .small()
+                .on_click(cx.listener(move |this, _, w, cx| this.clear_slot(id2.clone(), w, cx)))
+                .into_any_element()],
+        ),
+        (SlotState::WatchOnly { skipped: Some(k) }, _) => (
+            key_cell(k, true).into_any_element(),
+            vec![button(SharedString::from(format!("use-{key}")), "Use this key")
+                .outline()
+                .small()
+                .on_click(cx.listener(move |this, _, w, cx| this.pick_key(id1.clone(), w, cx)))
+                .into_any_element()],
+        ),
+        (SlotState::WatchOnly { skipped: None }, _) => {
+            let e = slot.expected.as_ref();
+            let fp = e.and_then(|e| e.fingerprint.clone()).unwrap_or_default();
+            let dp = e.and_then(|e| e.derivation_path.clone()).unwrap_or_default();
+            (
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_3()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .size(px(30.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(t.border)
+                            .child(icon("eye").size(px(15.))),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .text_color(t.muted_foreground)
+                                            .child("Not in your key library"),
+                                    )
+                                    .child(badge("Watch-only", Tone::Outline)),
+                            )
+                            .child(meta_line(&fp, &dp)),
+                    )
+                    .into_any_element(),
+                vec![button(SharedString::from(format!("add-{key}")), "Add key…")
+                    .outline()
+                    .small()
+                    .icon("plus")
+                    .on_click(cx.listener(move |this, _, w, cx| this.add_key(id1.clone(), w, cx)))
+                    .into_any_element()],
+            )
+        }
+        (SlotState::Empty, _) => (
             div()
                 .flex()
                 .flex_row()
-                .flex_none()
                 .items_center()
-                .gap_1()
+                .gap_3()
                 .child(
-                    row_button(SharedString::from(format!("change-{key}")), "Change", false)
-                        .on_click(cx.listener(move |this, _, w, cx| this.edit_slot(id.clone(), w, cx))),
+                    div()
+                        .size(px(30.))
+                        .flex_none()
+                        .rounded_md()
+                        .border_1()
+                        .border_dashed()
+                        .border_color(t.border),
                 )
+                .child(div().text_size(px(13.)).text_color(t.muted_foreground).child("No key chosen"))
+                .into_any_element(),
+            vec![button(SharedString::from(format!("choose-{key}")), "Choose key")
+                .outline()
+                .small()
+                .on_click(cx.listener(move |this, _, w, cx| this.pick_key(id1.clone(), w, cx)))
+                .into_any_element()],
+        ),
+    };
+
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_4()
+        .min_h(px(60.))
+        .px_4()
+        .py_2()
+        .hover(move |s| s.bg(alpha(t.muted, 0.5)))
+        .child(
+            div()
+                .w(px(150.))
+                .flex_none()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
                 .child(
-                    row_button(SharedString::from(format!("remove-{key}")), "Remove", true)
-                        .on_click(cx.listener(move |this, _, w, cx| this.clear_slot(id2.clone(), w, cx))),
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(t.foreground)
+                        .child(slot.label.clone()),
                 ),
         )
+        .child(div().flex_1().min_w_0().child(body))
+        .child(div().flex_none().flex().flex_row().items_center().gap_1().children(actions))
 }

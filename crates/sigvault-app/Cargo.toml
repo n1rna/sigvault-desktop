@@ -33,3 +33,8 @@ rqrr = { version = "0.11", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 zeroize = "1.8"
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+bitcoin = "0.32"
+bdk_wallet = "1.1.0"

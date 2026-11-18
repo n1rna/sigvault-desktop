@@ -113,7 +113,11 @@ impl Render for KeychainUnlock {
                             .text_size(px(13.))
                             .line_height(px(19.))
                             .text_color(t.muted_foreground)
-                            .child(format!("{body} {}.", self.reason).replace(" .", ".")),
+                            .child(if self.creating {
+                                body.to_string()
+                            } else {
+                                format!("{body} {}.", self.reason).replace(" .", ".")
+                            }),
                     ),
             )
             .child(field("Password", self.password.clone(), None))

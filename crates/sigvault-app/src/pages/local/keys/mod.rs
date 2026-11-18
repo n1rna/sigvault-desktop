@@ -11,4 +11,5 @@ pub mod add;
 pub mod add_flow;
 pub mod detail;
 pub mod list;
+pub mod sources;
 pub mod unlock;

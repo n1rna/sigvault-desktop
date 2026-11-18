@@ -1,130 +1,138 @@
 //! `pages/local/WalletDashboard.tsx` — per-wallet dashboard (QBL-227).
 //!
-//! Renders balance, transaction history, and sync status for a single
-//! unlocked wallet. Auto-refreshes balance + history when the sync status
-//! reports completion. Receive / Send route to their own pages.
+//! Balance, activity, keys and descriptor details for one wallet.
+//! Auto-refreshes balance + history when the sync status reports
+//! completion. Locked wallets (reached from the sidebar) unlock inline.
+//! Receive / Send route to their own pages.
 
-use std::time::Duration;
-
-use gpui::{
-    div, prelude::*, px, ClipboardItem, Context, SharedString, Subscription, Window,
-};
+use gpui::{div, prelude::*, px, AnyElement, Context, Entity, SharedString, Subscription, Window};
 use sigvault_core::local_wallet::commands::{
-    cmd_local_get_balance, cmd_local_get_history, cmd_local_list_wallets, cmd_local_lock_wallet,
-    cmd_local_sync, LocalBalance, LocalTxRecord,
+    cmd_local_export_wallet_backup, cmd_local_get_balance, cmd_local_get_history,
+    cmd_local_get_wallet_details, cmd_local_list_wallets, cmd_local_lock_wallet, cmd_local_sync,
+    cmd_local_unlock_wallet, ExportWalletBackupRequest, LocalBalance, LocalTxRecord,
+    UnlockWalletRequest, WalletDetails,
 };
 use sigvault_core::local_wallet::manager::WalletSummary;
 use sigvault_core::State;
 
 use super::sync_status::{initial_sync_state, watch_sync, LocalSyncState, LocalSyncStatus};
-use super::widgets::{back_button, btc_amount, group_thousands, header_bar, sep_dot, tooltip};
+use super::widgets::{
+    btc_amount, copy_button, default_save_dir, format_date, format_relative, group_thousands,
+    list_card, list_row, loading_card, network_badge, policy_badge, row_icon, sep_dot, tooltip,
+};
 use crate::router::Page;
 use crate::runtime::backend;
-use crate::shell::navigate;
+use crate::shell::{navigate, toast};
+use crate::state::{local_changed, store};
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, badge, button, icon, spinner_with, Tone};
-
-fn format_relative(unix: Option<u64>) -> String {
-    let Some(unix) = unix.filter(|u| *u > 0) else {
-        return "—".into();
-    };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.);
-    let diff = now - unix as f64;
-    if diff < 60. {
-        return "just now".into();
-    }
-    if diff < 3600. {
-        return format!("{}m ago", (diff / 60.).floor());
-    }
-    if diff < 86400. {
-        return format!("{}h ago", (diff / 3600.).floor());
-    }
-    if diff < 86400. * 7. {
-        return format!("{}d ago", (diff / 86400.).floor());
-    }
-    use chrono::{Local, TimeZone};
-    match Local.timestamp_opt(unix as i64, 0) {
-        chrono::LocalResult::Single(dt) => dt.format("%b %-d, %Y").to_string(),
-        _ => "—".into(),
-    }
-}
-
-fn short_txid(txid: &str) -> String {
-    if txid.len() <= 16 {
-        return txid.to_string();
-    }
-    format!("{}…{}", &txid[..8], &txid[txid.len() - 6..])
-}
+use crate::ui::{
+    alert, badge, button, card, divider, empty_state, field, page_frame, section, truncate_middle,
+    InputEvent, TextInput, Tone, FORM_WIDTH,
+};
 
 pub struct WalletDashboardPage {
     wallet_id: String,
     wallet: Option<WalletSummary>,
+    details: Option<WalletDetails>,
     balance: Option<LocalBalance>,
     history: Vec<LocalTxRecord>,
     loading: bool,
     error: Option<SharedString>,
     syncing: bool,
-    copied_txid: Option<String>,
-    copied_epoch: usize,
+    /// A sync finished since the wallet was unlocked.
+    synced: bool,
     sync: LocalSyncState,
-    _sync_sub: Subscription,
+    passphrase: Entity<TextInput>,
+    unlocking: bool,
+    unlock_error: Option<SharedString>,
+    exporting: bool,
+    _subs: Vec<Subscription>,
 }
 
 impl WalletDashboardPage {
-    pub fn new(wallet_id: String, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(wallet_id: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let sync = initial_sync_state(&wallet_id, cx);
-        let sub = watch_sync(wallet_id.clone(), cx, |this: &mut Self, state, cx| {
+        let synced = store(cx)
+            .read(cx)
+            .sync_progress
+            .get(&wallet_id)
+            .is_some_and(|p| p.phase == "complete");
+        let sync_sub = watch_sync(wallet_id.clone(), cx, |this: &mut Self, state, cx| {
             // Refresh balance + history when a sync cycle completes (auto-
             // sync after unlock, or a manual trigger).
             let became_complete = state.status == LocalSyncStatus::Complete
                 && this.sync.status != LocalSyncStatus::Complete;
             this.sync = state;
             if became_complete {
+                this.synced = true;
                 this.load_all(cx);
             }
             cx.notify();
         });
+        let passphrase =
+            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Wallet passphrase"));
+        let pass_sub = cx.subscribe(&passphrase, |this, _, ev: &InputEvent, cx| match ev {
+            InputEvent::Changed => {
+                this.unlock_error = None;
+                cx.notify();
+            }
+            InputEvent::Submit => this.unlock(cx),
+        });
         let mut this = Self {
             wallet_id,
             wallet: None,
+            details: None,
             balance: None,
             history: Vec::new(),
             loading: true,
             error: None,
             syncing: false,
-            copied_txid: None,
-            copied_epoch: 0,
+            synced,
             sync,
-            _sync_sub: sub,
+            passphrase,
+            unlocking: false,
+            unlock_error: None,
+            exporting: false,
+            _subs: vec![sync_sub, pass_sub],
         };
         this.load_all(cx);
         this
     }
 
+    fn locked(&self) -> bool {
+        self.wallet.as_ref().is_some_and(|w| w.locked)
+    }
+
     fn load_all(&mut self, cx: &mut Context<Self>) {
-        self.error = None;
         let id = self.wallet_id.clone();
         let task = backend(cx).call(move |app, st| async move {
             let state = State::new(&st);
-            let (wallets, bal, hist) = futures::join!(
-                cmd_local_list_wallets(app.clone(), state),
+            let wallets = cmd_local_list_wallets(app.clone(), state).await?;
+            let wallet = wallets.into_iter().find(|w| w.id.as_str() == id);
+            // Details are metadata only — available while locked too.
+            let details = cmd_local_get_wallet_details(app.clone(), state, id.clone()).await.ok();
+            if wallet.as_ref().is_none_or(|w| w.locked) {
+                return Ok((wallet, details, None, Vec::new()));
+            }
+            let (bal, hist) = futures::join!(
                 cmd_local_get_balance(app.clone(), state, id.clone()),
                 cmd_local_get_history(app, state, id.clone()),
             );
-            let wallets = wallets?;
-            let found = wallets.into_iter().find(|w| w.id.as_str() == id);
-            Ok((found, bal?, hist?))
+            Ok((wallet, details, Some(bal?), hist?))
         });
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
                 match res {
-                    Ok((wallet, bal, hist)) => {
+                    Ok((wallet, details, bal, hist)) => {
+                        if wallet.is_none() {
+                            this.error = Some("This wallet no longer exists.".into());
+                        } else {
+                            this.error = None;
+                        }
                         this.wallet = wallet;
-                        this.balance = Some(bal);
+                        this.details = details;
+                        this.balance = bal;
                         this.history = hist;
                     }
                     Err(e) => this.error = Some(e.into()),
@@ -138,7 +146,7 @@ impl WalletDashboardPage {
     }
 
     fn trigger_sync(&mut self, cx: &mut Context<Self>) {
-        if self.syncing {
+        if self.syncing || self.sync.status == LocalSyncStatus::Active {
             return;
         }
         self.syncing = true;
@@ -162,31 +170,106 @@ impl WalletDashboardPage {
         .detach();
     }
 
-    fn lock_and_exit(&mut self, cx: &mut Context<Self>) {
+    fn lock(&mut self, cx: &mut Context<Self>) {
         let id = self.wallet_id.clone();
         let task = backend(cx).call(move |app, st| async move {
             cmd_local_lock_wallet(app, State::new(&st), id).await
         });
-        cx.spawn(async move |_, cx| {
-            let _ = task.await;
-            cx.update(|cx| navigate(Page::LocalWallets, cx)).ok();
+        cx.spawn(async move |this, cx| {
+            let res = task.await;
+            this.update(cx, |this, cx| {
+                match res {
+                    Ok(_) => {
+                        local_changed(cx);
+                        this.synced = false;
+                        this.load_all(cx);
+                    }
+                    Err(e) => this.error = Some(e.into()),
+                }
+                cx.notify();
+            })
+            .ok();
         })
         .detach();
     }
 
-    fn copy_txid(&mut self, txid: String, cx: &mut Context<Self>) {
-        cx.write_to_clipboard(ClipboardItem::new_string(txid.clone()));
-        self.copied_txid = Some(txid);
-        self.copied_epoch += 1;
-        let epoch = self.copied_epoch;
+    fn unlock(&mut self, cx: &mut Context<Self>) {
+        let Some(w) = self.wallet.as_ref() else { return };
+        let passphrase = self.passphrase.read(cx).text().to_string();
+        if self.unlocking || (w.has_hot_keys && passphrase.is_empty()) {
+            return;
+        }
+        self.unlocking = true;
+        self.unlock_error = None;
         cx.notify();
+        let wallet_id = self.wallet_id.clone();
+        let task = backend(cx).call(move |app, st| async move {
+            cmd_local_unlock_wallet(app, State::new(&st), UnlockWalletRequest { wallet_id, passphrase })
+                .await
+        });
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(1500)).await;
+            let res = task.await;
             this.update(cx, |this, cx| {
-                if this.copied_epoch == epoch {
-                    this.copied_txid = None;
-                    cx.notify();
+                this.unlocking = false;
+                match res {
+                    Ok(()) => {
+                        this.passphrase.update(cx, |p, cx| p.clear(cx));
+                        local_changed(cx);
+                        this.load_all(cx);
+                    }
+                    Err(e) => this.unlock_error = Some(e.into()),
                 }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn export_backup(&mut self, cx: &mut Context<Self>) {
+        if self.exporting {
+            return;
+        }
+        self.exporting = true;
+        cx.notify();
+        let wallet_id = self.wallet_id.clone();
+        let name = self.wallet.as_ref().map(|w| w.name.clone()).unwrap_or_else(|| "wallet".into());
+        let file_name = format!("{}.wallet-backup.json", file_safe(&name));
+        let export = backend(cx).call(move |app, st| async move {
+            cmd_local_export_wallet_backup(app, State::new(&st), ExportWalletBackupRequest { wallet_id })
+                .await
+        });
+        let rx = cx.prompt_for_new_path(&default_save_dir(), Some(&file_name));
+        cx.spawn(async move |this, cx| {
+            let res: Result<Option<String>, String> = async {
+                let contents = export.await?;
+                let path = match rx.await {
+                    Ok(Ok(Some(p))) => p,
+                    Ok(Err(e)) => return Err(e.to_string()),
+                    _ => return Ok(None),
+                };
+                cx.background_executor()
+                    .spawn(async move {
+                        std::fs::write(&path, contents.as_bytes())
+                            .map(|_| {
+                                path.file_name()
+                                    .map(|n| n.to_string_lossy().into_owned())
+                                    .unwrap_or_default()
+                            })
+                            .map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map(Some)
+            }
+            .await;
+            this.update(cx, |this, cx| {
+                this.exporting = false;
+                match res {
+                    Ok(Some(f)) => toast(cx, format!("Saved {f}")),
+                    Ok(None) => {}
+                    Err(e) => this.error = Some(format!("Couldn't save backup: {e}").into()),
+                }
+                cx.notify();
             })
             .ok();
         })
@@ -195,506 +278,631 @@ impl WalletDashboardPage {
 
     // ── rendering ──
 
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn sync_active(&self) -> bool {
+        self.syncing || self.sync.status == LocalSyncStatus::Active
+    }
+
+    fn render_actions(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let Some(w) = self.wallet.as_ref() else { return Vec::new() };
+        if w.locked {
+            return Vec::new();
+        }
+        let active = self.sync_active();
+        let sync_label: SharedString = if active {
+            if self.sync.percent > 0 {
+                format!("Syncing {}%", self.sync.percent).into()
+            } else {
+                "Syncing…".into()
+            }
+        } else {
+            "Sync".into()
+        };
+        let sync_tip: SharedString = if active {
+            phase_label(self.sync.phase.as_deref()).into()
+        } else {
+            "Fetch the latest transactions from your Electrum server".into()
+        };
+        let watch_only = w.policy_type == "watch_only";
+        let receive_id = self.wallet_id.clone();
+        let send_id = self.wallet_id.clone();
+        let mut out = vec![
+            div()
+                .id("sync-wrap")
+                .tooltip(tooltip(sync_tip))
+                .child(
+                    button("sync", sync_label)
+                        .outline()
+                        .small()
+                        .icon("refresh-ccw")
+                        .loading(active)
+                        .on_click(cx.listener(|this, _, _, cx| this.trigger_sync(cx))),
+                )
+                .into_any_element(),
+            button("lock", "Lock")
+                .outline()
+                .small()
+                .icon("lock")
+                .on_click(cx.listener(|this, _, _, cx| this.lock(cx)))
+                .into_any_element(),
+            button("receive", "Receive")
+                .outline()
+                .small()
+                .icon("arrow-down-left")
+                .on_click(move |_, _, cx| navigate(Page::LocalReceive(receive_id.clone()), cx))
+                .into_any_element(),
+        ];
+        if !watch_only {
+            out.push(
+                button("send", "Send")
+                    .icon("arrow-up-right")
+                    .on_click(move |_, _, cx| navigate(Page::LocalSend(send_id.clone()), cx))
+                    .into_any_element(),
+            );
+        }
+        out
+    }
+
+    fn render_locked(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
-        let wallet_name = self
-            .wallet
-            .as_ref()
-            .map(|w| w.name.clone())
-            .unwrap_or_else(|| "Wallet".into());
-        header_bar()
+        let Some(w) = self.wallet.as_ref() else { return div().into_any_element() };
+        let hot = w.has_hot_keys;
+        let empty = self.passphrase.read(cx).text().is_empty();
+        div()
+            .w_full()
+            .max_w(FORM_WIDTH)
             .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .min_w_0()
-                    .child(back_button("back", "Back to wallets", |_, _, cx| {
-                        navigate(Page::LocalWallets, cx)
-                    }))
+                card()
+                    .p_5()
+                    .gap_4()
                     .child(
                         div()
                             .flex()
                             .flex_row()
-                            .items_center()
-                            .gap(px(10.))
-                            .min_w_0()
+                            .items_start()
+                            .gap_3()
+                            .child(row_icon("lock", t.muted_foreground, false))
                             .child(
                                 div()
-                                    .text_size(px(14.))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(t.foreground)
-                                    .child(wallet_name),
-                            )
-                            .children(self.wallet.as_ref().map(|w| {
-                                div()
+                                    .flex_1()
+                                    .min_w_0()
                                     .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap(px(10.))
-                                    .child(badge(w.network.to_uppercase(), Tone::Outline))
+                                    .flex_col()
+                                    .gap(px(2.))
                                     .child(
                                         div()
-                                            .text_size(px(12.))
-                                            .text_color(t.muted_foreground)
-                                            .child(w.policy_type.clone()),
+                                            .text_size(px(13.))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .child("This wallet is locked"),
                                     )
-                            })),
-                    ),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_2()
-                    .child(self.render_sync_indicator(cx))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .line_height(px(19.))
+                                            .text_color(t.muted_foreground)
+                                            .child(if hot {
+                                                "Enter the passphrase to load balances and activity. Keys stay decrypted in memory until you lock it again."
+                                            } else {
+                                                "Open the wallet to load balances and activity. Signing happens on your hardware device."
+                                            }),
+                                    ),
+                            ),
+                    )
+                    .when(hot, |d| d.child(field("Passphrase", self.passphrase.clone(), None)))
+                    .children(self.unlock_error.clone().map(|e| alert(Tone::Destructive, e)))
                     .child(
-                        button("lock", "Lock")
-                            .outline()
-                            .small()
-                            .icon("lock")
-                            .on_click(cx.listener(|this, _, _, cx| this.lock_and_exit(cx))),
+                        div().flex().flex_row().justify_end().child(
+                            button("unlock", if hot { "Unlock" } else { "Open wallet" })
+                                .icon("unlock")
+                                .loading(self.unlocking)
+                                .disabled(hot && empty)
+                                .on_click(cx.listener(|this, _, _, cx| this.unlock(cx))),
+                        ),
                     ),
             )
-    }
-
-    fn render_sync_indicator(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let sync = &self.sync;
-        let active = self.syncing || sync.status == LocalSyncStatus::Active;
-        let label: SharedString = if active {
-            if sync.message.is_empty() {
-                "Syncing…".into()
-            } else {
-                sync.message.clone().into()
-            }
-        } else if sync.status == LocalSyncStatus::Complete {
-            "Synced".into()
-        } else {
-            "Sync".into()
-        };
-        let title: SharedString = if active {
-            format!("{} ({}%)", sync.phase.clone().unwrap_or_default(), sync.percent).into()
-        } else {
-            "Run an Electrum sync".into()
-        };
-        let fg = t.muted_foreground;
-        let leading = if active {
-            spinner_with(px(14.), fg).into_any_element()
-        } else {
-            icon("refresh-ccw").size(px(14.)).text_color(fg).into_any_element()
-        };
-        let mut el = div()
-            .id("sync-indicator")
-            .h(px(32.))
-            .px_3()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_2()
-            .rounded_md()
-            .text_size(px(13.))
-            .font_weight(gpui::FontWeight::MEDIUM)
-            .text_color(fg)
-            .whitespace_nowrap()
-            .tooltip(tooltip(title))
-            .child(leading)
-            .child(label);
-        if active {
-            el = el.opacity(0.5);
-        } else {
-            el = el
-                .cursor_pointer()
-                .hover(move |s| s.bg(alpha(t.muted, 0.6)).text_color(t.foreground))
-                .on_click(cx.listener(|this, _, _, cx| this.trigger_sync(cx)));
-        }
-        el
+            .into_any_element()
     }
 
     fn render_balance(&self) -> impl IntoElement {
         let t = theme();
         let confirmed = self.balance.as_ref().map(|b| b.confirmed_sat).unwrap_or(0);
         let pending = self.balance.as_ref().map(|b| b.unconfirmed_sat).unwrap_or(0);
-        div()
-            .rounded_lg()
-            .border_1()
-            .border_color(t.border)
-            .bg(t.card)
-            .px_6()
-            .py_6()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(t.muted_foreground)
-                    .child("Balance"),
-            )
-            .child(
-                div()
-                    .mt_2()
-                    .flex()
-                    .flex_row()
-                    .items_end()
-                    .gap(px(10.))
-                    .child(
-                        div()
-                            .font_family(FONT_MONO)
-                            .text_size(px(36.))
-                            .line_height(px(36.))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child(btc_amount(confirmed as i64)),
-                    )
-                    .child(
-                        div()
-                            .pb(px(3.))
-                            .text_size(px(13.))
-                            .text_color(t.muted_foreground)
-                            .child("BTC"),
-                    ),
-            )
-            .child(
-                div()
-                    .mt_2()
-                    .font_family(FONT_MONO)
-                    .text_size(px(11.))
-                    .text_color(t.muted_foreground)
-                    .child(format!("{} sat", group_thousands(confirmed))),
-            )
-            .when(pending > 0, |d| {
-                d.child(
+        let total = confirmed + pending;
+        let active = self.sync_active();
+
+        let stat = |label: &'static str, sat: u64, color| {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(label))
+                .child(
                     div()
-                        .mt_3()
+                        .flex()
+                        .flex_row()
+                        .items_baseline()
+                        .gap_1()
+                        .child(
+                            div()
+                                .font_family(FONT_MONO)
+                                .text_size(px(13.))
+                                .text_color(color)
+                                .child(btc_amount(sat as i64)),
+                        )
+                        .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("BTC")),
+                )
+        };
+
+        let status: AnyElement = if active {
+            let pct = self.sync.percent.min(100) as f32 / 100.;
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
                         .flex()
                         .flex_row()
                         .items_center()
-                        .gap_2()
+                        .justify_between()
                         .text_size(px(12.))
-                        .text_color(t.warning)
-                        .child(div().size(px(6.)).rounded_full().bg(t.warning))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .child("+")
-                                .child(
-                                    div()
-                                        .font_family(FONT_MONO)
-                                        .child(btc_amount(pending as i64)),
-                                )
-                                .child(" BTC pending"),
-                        ),
+                        .text_color(t.muted_foreground)
+                        .child(format!("Syncing · {}", phase_label(self.sync.phase.as_deref())))
+                        .child(format!("{}%", self.sync.percent)),
                 )
-            })
+                .child(
+                    div()
+                        .h(px(3.))
+                        .w_full()
+                        .rounded_full()
+                        .bg(alpha(t.muted_foreground, 0.15))
+                        .child(div().h_full().rounded_full().bg(t.primary).w(gpui::relative(pct.max(0.02)))),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .text_size(px(12.))
+                .text_color(t.muted_foreground)
+                .child(
+                    div()
+                        .size(px(6.))
+                        .rounded_full()
+                        .bg(if self.synced { t.success } else { alpha(t.muted_foreground, 0.5) }),
+                )
+                .child(if self.synced {
+                    "Up to date with your Electrum server"
+                } else {
+                    "Showing the last synced state — press Sync to refresh"
+                })
+                .into_any_element()
+        };
+
+        card()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .p_5()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Total balance"))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_row()
+                                    .items_baseline()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .font_family(FONT_MONO)
+                                            .text_size(px(28.))
+                                            .line_height(px(34.))
+                                            .text_color(t.foreground)
+                                            .child(btc_amount(total as i64)),
+                                    )
+                                    .child(div().text_size(px(13.)).text_color(t.muted_foreground).child("BTC")),
+                            )
+                            .child(
+                                div()
+                                    .font_family(FONT_MONO)
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child(format!("{} sat", group_thousands(total))),
+                            ),
+                    )
+                    .child(div().w(px(1.)).bg(alpha(t.border, 0.6)))
+                    .child(
+                        div()
+                            .w(px(220.))
+                            .flex_none()
+                            .p_5()
+                            .flex()
+                            .flex_col()
+                            .justify_center()
+                            .gap_3()
+                            .child(stat("Confirmed", confirmed, t.foreground))
+                            .child(stat("Pending", pending, if pending > 0 { t.warning } else { t.muted_foreground })),
+                    ),
+            )
+            .child(divider())
+            .child(div().px_5().py_3().child(status))
     }
 
-    fn render_recovery_only(&self) -> impl IntoElement {
+    fn render_activity(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let n = self.history.len();
+        let body = if self.history.is_empty() {
+            let rid = self.wallet_id.clone();
+            card()
+                .child(
+                    empty_state(
+                        "history",
+                        "No transactions yet",
+                        "Share a receive address to fund this wallet. Incoming payments show up here after the next sync.",
+                    )
+                    .child(
+                        div().mt_4().child(
+                            button("empty-receive", "Receive bitcoin")
+                                .outline()
+                                .small()
+                                .icon("arrow-down-left")
+                                .on_click(move |_, _, cx| navigate(Page::LocalReceive(rid.clone()), cx)),
+                        ),
+                    ),
+                )
+                .into_any_element()
+        } else {
+            let mut list = list_card();
+            for (ix, tx) in self.history.iter().enumerate() {
+                if ix > 0 {
+                    list = list.child(divider());
+                }
+                list = list.child(self.render_tx_row(ix, tx, cx));
+            }
+            list.into_any_element()
+        };
+        section("Activity")
+            .description(if n == 0 {
+                "Transactions sent from and received by this wallet.".to_string()
+            } else {
+                format!("{n} transaction{}", if n == 1 { "" } else { "s" })
+            })
+            .child(body)
+    }
+
+    fn render_tx_row(&self, ix: usize, tx: &LocalTxRecord, _cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
-        div()
+        let incoming = tx.net_sat >= 0;
+        let group: SharedString = format!("tx-{ix}").into();
+
+        let mut meta = div()
             .flex()
             .flex_row()
-            .items_start()
-            .gap(px(10.))
-            .rounded_md()
-            .border_1()
-            .border_color(alpha(t.warning, 0.3))
-            .bg(alpha(t.warning, 0.05))
-            .px(px(14.))
-            .py_3()
+            .items_center()
+            .gap(px(6.))
             .text_size(px(12.))
-            .line_height(px(17.))
-            .text_color(t.foreground)
-            .child(icon("alert-circle").size(px(14.)).mt(px(1.5)).text_color(t.warning))
+            .text_color(t.muted_foreground);
+        meta = if tx.confirmed {
+            meta.child(format!(
+                "Confirmed{}",
+                tx.block_height.map(|h| format!(" in block {}", group_thousands(h as u64))).unwrap_or_default()
+            ))
+        } else {
+            meta.child(div().text_color(t.warning).child("Pending"))
+        };
+        if tx.fee_sat > 0 {
+            meta = meta.child(sep_dot()).child(format!("fee {} sat", group_thousands(tx.fee_sat)));
+        }
+
+        let when = tx
+            .block_time
+            .filter(|u| *u > 0)
+            .map(|u| (format_relative(u), format_date(u as i64)));
+
+        list_row(("tx-row", ix))
+            .group(group.clone())
+            .child(if incoming {
+                row_icon("arrow-down-left", t.success, true)
+            } else {
+                row_icon("arrow-up-right", t.muted_foreground, true)
+            })
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .child(div().font_weight(gpui::FontWeight::MEDIUM).child("Recovery-only wallet"))
-                    .child(
-                        div().mt(px(2.)).text_color(t.muted_foreground).child(
-                            "The primary path is unspendable. Funds can only be moved via the recovery key after the timelock elapses.",
-                        ),
-                    ),
-            )
-    }
-
-    fn render_actions(&self) -> impl IntoElement {
-        let watch_only = self
-            .wallet
-            .as_ref()
-            .map(|w| w.policy_type == "watch_only")
-            .unwrap_or(false);
-        let receive_id = self.wallet_id.clone();
-        let send_id = self.wallet_id.clone();
-        div()
-            .flex()
-            .flex_row()
-            .gap_3()
-            .child(
-                div().flex_1().flex_basis(px(0.)).child(
-                    button("receive", "Receive")
-                        .outline()
-                        .large()
-                        .full_width()
-                        .icon("arrow-left")
-                        .on_click(move |_, _, cx| navigate(Page::LocalReceive(receive_id.clone()), cx)),
-                ),
-            )
-            .when(!watch_only, |d| {
-                d.child(
-                    div().flex_1().flex_basis(px(0.)).child(
-                        button("send", "Send")
-                            .outline()
-                            .large()
-                            .full_width()
-                            .icon("arrow-right")
-                            .on_click(move |_, _, cx| navigate(Page::LocalSend(send_id.clone()), cx)),
-                    ),
-                )
-            })
-    }
-
-    fn render_history(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let list = if self.history.is_empty() {
-            div()
-                .rounded_lg()
-                .border_1()
-                .border_dashed()
-                .border_color(t.border)
-                .bg(alpha(t.card, 0.4))
-                .px_5()
-                .py_10()
-                .flex()
-                .flex_col()
-                .items_center()
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .text_color(t.foreground)
-                        .child("No transactions yet"),
-                )
-                .child(
-                    div()
-                        .mt_1()
-                        .text_size(px(12.))
-                        .text_color(t.muted_foreground)
-                        .child("Use Receive to fund this wallet, then run a sync."),
-                )
-                .into_any_element()
-        } else {
-            let rows: Vec<_> = self
-                .history
-                .iter()
-                .enumerate()
-                .map(|(ix, tx)| self.render_tx_row(ix, tx, cx).into_any_element())
-                .collect();
-            div()
-                .flex()
-                .flex_col()
-                .overflow_hidden()
-                .rounded_lg()
-                .border_1()
-                .border_color(t.border)
-                .bg(t.card)
-                .children(rows)
-                .into_any_element()
-        };
-        div()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .mb_3()
                     .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
+                    .flex_col()
+                    .gap(px(2.))
                     .child(
                         div()
                             .text_size(px(13.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(t.foreground)
-                            .child("Transactions"),
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .child(if incoming { "Received" } else { "Sent" }),
                     )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(t.muted_foreground)
-                            .child(format!("{} total", self.history.len())),
-                    ),
+                    .child(meta),
             )
-            .child(list)
-    }
-
-    fn render_tx_row(&self, ix: usize, tx: &LocalTxRecord, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let incoming = tx.net_sat >= 0;
-        let copied = self.copied_txid.as_deref() == Some(tx.txid.as_str());
-        let color = if incoming { t.success } else { t.destructive };
-
-        let mut meta = div()
-            .mt(px(2.))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_2()
-            .text_size(px(12.))
-            .text_color(t.muted_foreground)
-            .child(format_relative(tx.block_time))
-            .child(sep_dot());
-        meta = if tx.confirmed {
-            meta.child(format!(
-                "block {}",
-                tx.block_height.map(|h| h.to_string()).unwrap_or_default()
-            ))
-        } else {
-            meta.child(div().text_color(t.warning).child("pending"))
-        };
-        if tx.fee_sat > 0 {
-            meta = meta
-                .child(sep_dot())
-                .child(format!("fee {} sat", group_thousands(tx.fee_sat)));
-        }
-
-        let txid = tx.txid.clone();
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_4()
-            .px_5()
-            .py_3()
-            .when(ix > 0, |d| d.border_t_1().border_color(t.border))
             .child(
                 div()
-                    .size(px(32.))
+                    .w(px(200.))
                     .flex_none()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .bg(alpha(color, 0.10))
-                    .child(
-                        icon(if incoming { "tx-in" } else { "tx-out" })
-                            .size(px(14.))
-                            .text_color(color),
-                    ),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .justify_between()
-                    .gap_4()
+                    .gap_1()
                     .child(
                         div()
+                            .id(("txid", ix))
+                            .font_family(FONT_MONO)
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .tooltip(tooltip(tx.txid.clone()))
+                            .child(truncate_middle(&tx.txid, 8)),
+                    )
+                    .child(
+                        div()
+                            .opacity(0.)
+                            .group_hover(group, |s| s.opacity(1.))
+                            .child(copy_button(("copy-txid", ix), tx.txid.clone(), "Copy transaction ID")),
+                    ),
+            )
+            .child(
+                div()
+                    .id(("tx-when", ix))
+                    .w(px(96.))
+                    .flex_none()
+                    .text_size(px(12.))
+                    .text_color(t.muted_foreground)
+                    .map(|d| match when {
+                        Some((rel, abs)) => d.tooltip(tooltip(abs)).child(rel),
+                        None => d.child("—"),
+                    }),
+            )
+            .child(
+                div()
+                    .w(px(160.))
+                    .flex_none()
+                    .flex()
+                    .flex_row()
+                    .justify_end()
+                    .items_baseline()
+                    .gap_1()
+                    .child(
+                        div()
+                            .font_family(FONT_MONO)
+                            .text_size(px(13.))
+                            .text_color(if incoming { t.success } else { t.foreground })
+                            .child(format!("{}{}", if incoming { "+" } else { "" }, btc_amount(tx.net_sat))),
+                    )
+                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("BTC")),
+            )
+    }
+
+    fn render_keys(&self, d: &WalletDetails) -> impl IntoElement {
+        let t = theme();
+        let mut list = list_card();
+        for (ix, slot) in d.slots.iter().enumerate() {
+            if ix > 0 {
+                list = list.child(divider());
+            }
+            let hw = slot.source == "hardware";
+            let mut meta = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.))
+                .text_size(px(12.))
+                .text_color(t.muted_foreground)
+                .child(source_label(&slot.source));
+            if let Some(fp) = slot.fingerprint.clone() {
+                meta = meta.child(sep_dot()).child(div().font_family(FONT_MONO).child(fp));
+            }
+            if let Some(p) = slot.derivation_path.clone() {
+                meta = meta.child(sep_dot()).child(div().font_family(FONT_MONO).child(p));
+            }
+            list = list.child(
+                list_row(("slot", ix))
+                    .child(row_icon(if hw { "hw-device" } else { "key" }, t.muted_foreground, false))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
-                            .min_w_0()
+                            .gap(px(2.))
                             .child(
                                 div()
-                                    .id(("txid", ix))
-                                    .font_family(FONT_MONO)
-                                    .text_size(px(12.))
-                                    .text_color(t.foreground)
-                                    .cursor_pointer()
-                                    .hover(move |s| s.text_color(t.primary))
-                                    .tooltip(tooltip(tx.txid.clone()))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.copy_txid(txid.clone(), cx)
-                                    }))
-                                    .child(if copied {
-                                        "✓ Copied".to_string()
+                                    .truncate()
+                                    .text_size(px(13.))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .child(if slot.label.is_empty() {
+                                        format!("Key {}", ix + 1)
                                     } else {
-                                        short_txid(&tx.txid)
+                                        slot.label.clone()
                                     }),
                             )
                             .child(meta),
                     )
-                    .child(
-                        div()
-                            .flex_none()
-                            .flex()
-                            .flex_col()
-                            .items_end()
-                            .font_family(FONT_MONO)
-                            .text_size(px(13.))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(if incoming { t.success } else { t.foreground })
-                            .child(format!(
-                                "{}{}",
-                                if incoming { "+" } else { "" },
-                                btc_amount(tx.net_sat)
-                            ))
-                            .child(
-                                div()
-                                    .mt(px(2.))
-                                    .text_size(px(10.))
-                                    .font_weight(gpui::FontWeight::NORMAL)
-                                    .text_color(alpha(t.muted_foreground, 0.7))
-                                    .child("BTC"),
-                            ),
-                    ),
+                    .child(if slot.hot {
+                        badge("On this computer", Tone::Success)
+                    } else if hw {
+                        badge("Hardware", Tone::Outline)
+                    } else {
+                        badge("Public key only", Tone::Outline)
+                    })
+                    .child(copy_button(("copy-xpub", ix), slot.xpub.clone(), "Copy xpub")),
+            );
+        }
+        section("Keys")
+            .description(format!(
+                "{} key{} can sign for this wallet.",
+                d.slots.len(),
+                if d.slots.len() == 1 { "" } else { "s" }
+            ))
+            .child(list)
+    }
+
+    fn render_details(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme();
+        let w = self.wallet.as_ref();
+        let d = self.details.as_ref();
+        let row = |k: &'static str, v: AnyElement| {
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_4()
+                .min_h(px(44.))
+                .px_4()
+                .py_2()
+                .child(div().w(px(140.)).flex_none().text_size(px(12.)).text_color(t.muted_foreground).child(k))
+                .child(div().flex().flex_1().min_w_0().overflow_hidden().text_size(px(13.)).child(v))
+        };
+        let mono_row = |id: &'static str, value: String| {
+            div()
+                .w_full()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .id(SharedString::from(format!("{id}-text")))
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .font_family(FONT_MONO)
+                        .text_size(px(12.))
+                        .line_height(px(18.))
+                        .text_color(t.foreground)
+                        .tooltip(tooltip(value.clone()))
+                        .child(value.clone()),
+                )
+                .child(copy_button(id, value, "Copy"))
+                .into_any_element()
+        };
+
+        let mut c = card();
+        if let Some(w) = w {
+            c = c
+                .child(row("Created", div().child(format_date(w.created_at)).into_any_element()))
+                .child(divider())
+                .child(row("Wallet ID", mono_row("copy-id", w.id.as_str().to_string())));
+        }
+        if let Some(d) = d {
+            c = c
+                .child(divider())
+                .child(row("Receive descriptor", mono_row("copy-ext", d.external_descriptor.clone())))
+                .child(divider())
+                .child(row("Change descriptor", mono_row("copy-int", d.internal_descriptor.clone())));
+        }
+        section("Details")
+            .description("Descriptors describe how this wallet's addresses are built. The backup file contains no private keys.")
+            .action(
+                button("export-backup", "Export backup")
+                    .outline()
+                    .small()
+                    .icon("download")
+                    .loading(self.exporting)
+                    .on_click(cx.listener(|this, _, _, cx| this.export_backup(cx))),
             )
+            .child(c)
+    }
+}
+
+fn phase_label(phase: Option<&str>) -> &'static str {
+    match phase {
+        Some("connecting") => "Connecting to Electrum",
+        Some("fetching_history") => "Fetching history",
+        Some("persisting") => "Saving",
+        Some("complete") => "Done",
+        _ => "Working",
+    }
+}
+
+fn source_label(source: &str) -> &'static str {
+    match source {
+        "generated" => "Generated on this computer",
+        "seed" => "Recovery phrase",
+        "xprv" => "Extended private key",
+        "hardware" => "Hardware device",
+        "xpub" => "Extended public key",
+        "key_file" => "Key backup file",
+        _ => "Key",
+    }
+}
+
+fn file_safe(name: &str) -> String {
+    let s: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let s = s.trim_matches('-').to_string();
+    if s.is_empty() {
+        "wallet".into()
+    } else {
+        s
     }
 }
 
 impl Render for WalletDashboardPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        if self.loading {
-            return div()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .text_color(t.muted_foreground)
-                        .child("Loading wallet…"),
-                )
-                .into_any_element();
+        let name = self.wallet.as_ref().map(|w| w.name.clone()).unwrap_or_else(|| "Wallet".into());
+        let mut frame = page_frame("wallet-dashboard")
+            .crumb("Wallets", Some(Page::LocalWallets))
+            .crumb(name.clone(), None)
+            .title(name);
+        if let Some(w) = self.wallet.as_ref() {
+            frame = frame.title_adornment(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
+                    .ml_1()
+                    .child(network_badge(&w.network))
+                    .child(policy_badge(&w.policy_type))
+                    .when(w.recovery_only, |d| d.child(badge("Recovery-only", Tone::Warning)))
+                    .when(w.locked, |d| d.child(badge("Locked", Tone::Outline))),
+            );
+        }
+        for a in self.render_actions(cx) {
+            frame = frame.action(a);
         }
 
-        let recovery_only = self.wallet.as_ref().map(|w| w.recovery_only).unwrap_or(false);
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .child(self.render_header(cx))
-            .child(
-                div()
-                    .id("dashboard-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .child(
-                        div().w_full().flex().flex_col().items_center().px_6().py(px(28.)).child(
-                            div()
-                                .w_full()
-                                .max_w(px(768.))
-                                .flex()
-                                .flex_col()
-                                .gap_6()
-                                .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
-                                .child(self.render_balance())
-                                .when(recovery_only, |d| d.child(self.render_recovery_only()))
-                                .child(self.render_actions())
-                                .child(self.render_history(cx)),
-                        ),
-                    ),
-            )
-            .into_any_element()
+        if self.loading {
+            return frame.child(loading_card("Loading wallet…")).into_any_element();
+        }
+        frame = frame.children(self.error.clone().map(|e| alert(Tone::Destructive, e)));
+        if self.wallet.is_none() {
+            return frame.into_any_element();
+        }
+
+        let recovery_only = self.wallet.as_ref().is_some_and(|w| w.recovery_only);
+        if self.locked() {
+            frame = frame.child(self.render_locked(cx));
+        } else {
+            frame = frame
+                .child(self.render_balance())
+                .when(recovery_only, |f| {
+                    f.child(alert(
+                        Tone::Warning,
+                        "Recovery-only wallet: the primary spending path is unspendable. Funds can only be moved with the recovery key after the timelock elapses.",
+                    ))
+                })
+                .child(self.render_activity(cx));
+        }
+        if let Some(d) = self.details.as_ref() {
+            if !d.slots.is_empty() {
+                frame = frame.child(self.render_keys(d));
+            }
+        }
+        frame.child(self.render_details(cx)).into_any_element()
     }
 }

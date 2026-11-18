@@ -1,48 +1,38 @@
-//! `pages/local/LocalWalletList.tsx` — local wallet list (QBL-222).
+//! `pages/local/LocalWalletList.tsx` — "All wallets" (QBL-222).
 //!
-//! Lists all on-disk wallets discovered by `cmd_local_list_wallets`,
-//! supports unlock / lock / delete, and routes to the create wizard and
-//! per-wallet dashboard. Once unlocked, opening a wallet auto-syncs in the
-//! background; the dashboard renders the progress.
+//! Lists all on-disk wallets discovered by `cmd_local_list_wallets` in one
+//! table-like card, supports unlock / lock / delete, and routes to the
+//! create wizard, restore flow and per-wallet dashboard. Refreshes itself
+//! when wallet data changes elsewhere (sidebar, dashboard, sync).
+
+use std::collections::HashMap;
 
 use gpui::{div, prelude::*, px, ClickEvent, Context, Entity, SharedString, Subscription, Window};
 use sigvault_core::local_wallet::commands::{
-    cmd_local_delete_wallet, cmd_local_list_wallets, cmd_local_lock_wallet,
+    cmd_local_delete_wallet, cmd_local_get_balance, cmd_local_list_wallets, cmd_local_lock_wallet,
     cmd_local_unlock_wallet, DeleteWalletRequest, UnlockWalletRequest,
 };
 use sigvault_core::local_wallet::manager::WalletSummary;
 use sigvault_core::State;
 
-use super::widgets::{sep_dot, status_box, tooltip};
+use super::widgets::{
+    btc_amount, dialog_actions, dialog_title, format_date, hover_action, list_card, list_header,
+    list_row, loading_card, network_badge, policy_label, row_icon, sep_dot, tooltip,
+};
 use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::navigate;
+use crate::state::{local_changed, store, StoreEvent};
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, badge, button, icon, icon_button, modal, InputEvent, TextInput, Tone};
+use crate::ui::{
+    alert, button, card, divider, empty_state, field, modal, page_frame, InputEvent, TextInput,
+    Tone,
+};
 
-fn format_network(n: &str) -> String {
-    n.to_uppercase()
-}
-
-fn format_policy_type(t: &str) -> String {
-    match t {
-        "singlesig" | "singlesig_hot" => "Single key".into(),
-        "singlesig_hardware" => "Single key · hardware".into(),
-        "descriptor" => "Descriptor".into(),
-        "multisig" => "Multisig".into(),
-        "timelocked" => "Timelocked policy".into(),
-        "watch_only" => "Watch-only".into(),
-        other => other.into(),
-    }
-}
-
-fn format_created_at(unix: i64) -> String {
-    use chrono::{Local, TimeZone};
-    match Local.timestamp_opt(unix, 0) {
-        chrono::LocalResult::Single(dt) => dt.format("%b %-d, %Y").to_string(),
-        _ => "—".into(),
-    }
-}
+const COL_NETWORK: f32 = 112.;
+const COL_CREATED: f32 = 104.;
+const COL_BALANCE: f32 = 150.;
+const COL_ACTIONS: f32 = 84.;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ModalKind {
@@ -59,6 +49,8 @@ struct ModalState {
 
 pub struct LocalWalletListPage {
     wallets: Vec<WalletSummary>,
+    /// Confirmed + pending sats for unlocked wallets.
+    balances: HashMap<String, u64>,
     loading: bool,
     error: Option<SharedString>,
     modal: Option<ModalState>,
@@ -70,9 +62,11 @@ pub struct LocalWalletListPage {
 
 impl LocalWalletListPage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let unlock_pass = cx.new(|cx| TextInput::new(window, cx).masked());
+        let unlock_pass =
+            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Wallet passphrase"));
         let delete_name = cx.new(|cx| TextInput::new(window, cx));
-        let delete_pass = cx.new(|cx| TextInput::new(window, cx).masked());
+        let delete_pass =
+            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Wallet passphrase"));
 
         let mut subs = Vec::new();
         subs.push(cx.subscribe(&unlock_pass, |this, _, ev: &InputEvent, cx| match ev {
@@ -85,9 +79,16 @@ impl LocalWalletListPage {
                 InputEvent::Submit => this.submit_delete(cx),
             }));
         }
+        // Auto refresh: wallet data changed elsewhere, or a sync finished.
+        subs.push(cx.subscribe(&store(cx), |this, _, ev: &StoreEvent, cx| match ev {
+            StoreEvent::LocalDataChanged => this.load_wallets(cx),
+            StoreEvent::SyncProgress(p) if p.phase == "complete" => this.load_wallets(cx),
+            _ => {}
+        }));
 
         let mut this = Self {
             wallets: Vec::new(),
+            balances: HashMap::new(),
             loading: true,
             error: None,
             modal: None,
@@ -101,19 +102,27 @@ impl LocalWalletListPage {
     }
 
     fn load_wallets(&mut self, cx: &mut Context<Self>) {
-        self.loading = true;
-        self.error = None;
-        cx.notify();
         let task = backend(cx).call(|app, st| async move {
-            cmd_local_list_wallets(app, State::new(&st)).await
+            let mut list = cmd_local_list_wallets(app.clone(), State::new(&st)).await?;
+            list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            // Balances are an in-memory read on unlocked wallets — cheap.
+            let mut balances = HashMap::new();
+            for w in list.iter().filter(|w| !w.locked) {
+                let id = w.id.as_str().to_string();
+                if let Ok(b) = cmd_local_get_balance(app.clone(), State::new(&st), id.clone()).await {
+                    balances.insert(id, b.confirmed_sat + b.unconfirmed_sat);
+                }
+            }
+            Ok((list, balances))
         });
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
                 match res {
-                    Ok(mut list) => {
-                        list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                    Ok((list, balances)) => {
                         this.wallets = list;
+                        this.balances = balances;
+                        this.error = None;
                     }
                     Err(e) => this.error = Some(e.into()),
                 }
@@ -131,12 +140,8 @@ impl LocalWalletListPage {
             // Hot wallets need the passphrase to decrypt seed.enc.
             self.unlock_pass.update(cx, |i, cx| i.clear(cx));
             self.unlock_pass.read(cx).focus(window);
-            self.modal = Some(ModalState {
-                kind: ModalKind::Unlock,
-                wallet,
-                submitting: false,
-                error: None,
-            });
+            self.modal =
+                Some(ModalState { kind: ModalKind::Unlock, wallet, submitting: false, error: None });
             cx.notify();
             return;
         }
@@ -158,7 +163,10 @@ impl LocalWalletListPage {
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| match res {
-                Ok(()) => navigate(Page::LocalWallet(id), cx),
+                Ok(()) => {
+                    local_changed(cx);
+                    navigate(Page::LocalWallet(id), cx);
+                }
                 Err(e) => {
                     this.error = Some(e.into());
                     cx.notify();
@@ -176,7 +184,8 @@ impl LocalWalletListPage {
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| match res {
-                Ok(_) => this.load_wallets(cx),
+                // `local_changed` reloads this page through the store subscription.
+                Ok(_) => local_changed(cx),
                 Err(e) => {
                     this.error = Some(e.into());
                     cx.notify();
@@ -194,16 +203,15 @@ impl LocalWalletListPage {
         });
         self.delete_pass.update(cx, |i, cx| i.clear(cx));
         self.delete_name.read(cx).focus(window);
-        self.modal = Some(ModalState {
-            kind: ModalKind::Delete,
-            wallet,
-            submitting: false,
-            error: None,
-        });
+        self.modal =
+            Some(ModalState { kind: ModalKind::Delete, wallet, submitting: false, error: None });
         cx.notify();
     }
 
     fn close_modal(&mut self, cx: &mut Context<Self>) {
+        if self.modal.as_ref().is_some_and(|m| m.submitting) {
+            return;
+        }
         self.modal = None;
         cx.notify();
     }
@@ -229,7 +237,7 @@ impl LocalWalletListPage {
                 match res {
                     Ok(()) => {
                         this.modal = None;
-                        this.load_wallets(cx);
+                        local_changed(cx);
                         navigate(Page::LocalWallet(id), cx);
                     }
                     Err(e) => {
@@ -268,6 +276,7 @@ impl LocalWalletListPage {
             wallet_id: m.wallet.id.as_str().to_string(),
             passphrase: m.wallet.has_hot_keys.then_some(passphrase),
         };
+        let name = m.wallet.name.clone();
         cx.notify();
         let task = backend(cx).call(move |app, st| async move {
             cmd_local_delete_wallet(app, State::new(&st), request).await
@@ -278,7 +287,8 @@ impl LocalWalletListPage {
                 match res {
                     Ok(()) => {
                         this.modal = None;
-                        this.load_wallets(cx);
+                        local_changed(cx);
+                        crate::shell::toast(cx, format!("Deleted “{name}”"));
                     }
                     Err(e) => {
                         if let Some(m) = this.modal.as_mut() {
@@ -296,467 +306,331 @@ impl LocalWalletListPage {
 
     // ── rendering ──
 
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        div()
-            .flex()
-            .flex_row()
-            .items_start()
-            .justify_between()
-            .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .text_size(px(20.))
-                            .line_height(px(26.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(t.foreground)
-                            .child("Local wallets"),
-                    )
-                    .child(
-                        div()
-                            .mt_1()
-                            .text_size(px(13.))
-                            .text_color(t.muted_foreground)
-                            .child("On-device wallets. Your seed never leaves this machine."),
-                    ),
+    fn render_empty(&self) -> impl IntoElement {
+        card().child(
+            empty_state(
+                "wallet",
+                "No wallets yet",
+                "Create a wallet from keys on this computer or a hardware device, or restore one from a recovery phrase or backup file.",
             )
             .child(
                 div()
-                    .flex_none()
+                    .mt_4()
                     .flex()
                     .flex_row()
-                    .items_center()
                     .gap_2()
                     .child(
-                        div().id("settings-wrap").tooltip(tooltip("Settings")).child(
-                            icon_button("settings", "settings")
-                                .outline()
-                                .on_click(|_, _, cx| navigate(Page::LocalSettings, cx)),
-                        ),
-                    )
-                    .child(
-                        button("refresh", "Refresh")
+                        button("empty-restore", "Restore wallet")
                             .outline()
-                            .small()
-                            .disabled(self.loading)
-                            .on_click(cx.listener(|this, _, _, cx| this.load_wallets(cx))),
-                    )
-                    .child(
-                        button("recover", "Recover")
-                            .outline()
-                            .small()
+                            .icon("history")
                             .on_click(|_, _, cx| navigate(Page::LocalWalletRecover, cx)),
                     )
                     .child(
-                        button("new-wallet", "New wallet")
-                            .small()
+                        button("empty-create", "Create wallet")
                             .icon("plus")
                             .on_click(|_, _, cx| navigate(Page::LocalWalletNew, cx)),
                     ),
             )
+            .child(
+                div().mt_2().child(
+                    button("empty-keys", "Manage keys in the Key library")
+                        .link()
+                        .small()
+                        .on_click(|_, _, cx| navigate(Page::LocalKeys, cx)),
+                ),
+            ),
+        )
     }
 
-    fn render_empty(&self) -> impl IntoElement {
+    fn render_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
+        let col = |w: f32, text: &'static str, right: bool| {
+            div().w(px(w)).flex_none().when(right, |d| d.flex().justify_end()).child(text)
+        };
+        let header = list_header(vec![
+            div().w(px(32.)).flex_none().into_any_element(),
+            div().flex_1().child("Name").into_any_element(),
+            col(COL_NETWORK, "Network", false).into_any_element(),
+            col(COL_CREATED, "Created", false).into_any_element(),
+            col(COL_BALANCE, "Balance", true).into_any_element(),
+            div().w(px(COL_ACTIONS)).flex_none().into_any_element(),
+        ]);
+        let mut list = list_card().child(header).child(divider());
+        for (ix, w) in self.wallets.iter().enumerate() {
+            if ix > 0 {
+                list = list.child(divider());
+            }
+            list = list.child(self.render_row(ix, w, cx));
+        }
+        let unlocked = self.wallets.iter().filter(|w| !w.locked).count();
         div()
             .flex()
             .flex_col()
-            .items_center()
-            .justify_center()
-            .rounded_lg()
-            .border_1()
-            .border_dashed()
-            .border_color(t.border)
-            .bg(alpha(t.card, 0.4))
-            .px_10()
-            .py_16()
+            .gap_2()
+            .child(list)
             .child(
                 div()
-                    .size(px(48.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .border_1()
-                    .border_color(t.border)
-                    .bg(t.background)
-                    .child(icon("wallet-card").size(px(20.)).text_color(t.muted_foreground)),
-            )
-            .child(
-                div()
-                    .mt_5()
-                    .text_size(px(16.))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(t.foreground)
-                    .child("No wallets yet"),
-            )
-            .child(
-                div()
-                    .mt_2()
-                    .max_w(px(384.))
-                    .text_center()
-                    .text_size(px(13.))
-                    .line_height(px(21.))
+                    .text_size(px(12.))
                     .text_color(t.muted_foreground)
-                    .child(
-                        "Create your first local wallet to start receiving and signing transactions on-device. Your seed never leaves this machine.",
-                    ),
-            )
-            .child(
-                div().mt_6().child(
-                    button("create-wallet", "Create wallet")
-                        .icon("plus")
-                        .on_click(|_, _, cx| navigate(Page::LocalWalletNew, cx)),
-                ),
+                    .child(format!(
+                        "{} wallet{} · {} unlocked",
+                        self.wallets.len(),
+                        if self.wallets.len() == 1 { "" } else { "s" },
+                        unlocked
+                    )),
             )
     }
 
-    fn render_card(&self, ix: usize, w: &WalletSummary, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_row(&self, ix: usize, w: &WalletSummary, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
-        let group: SharedString = format!("wallet-card-{ix}").into();
-        let fp = w.fingerprints.first().cloned();
+        let group: SharedString = format!("wallet-row-{ix}").into();
+        let id = w.id.as_str().to_string();
 
-        let lock_icon = if w.locked {
-            icon("lock").size(px(14.)).text_color(t.muted_foreground)
+        let lead = if w.locked {
+            row_icon("lock", t.muted_foreground, false)
         } else {
-            icon("unlock").size(px(14.)).text_color(t.success)
+            row_icon("unlock", t.success, true)
         };
+        let lead = div()
+            .id(("lock-state", ix))
+            .tooltip(tooltip(if w.locked { "Locked" } else { "Unlocked" }))
+            .child(lead);
 
         let mut meta = div()
-            .mt_1()
             .flex()
             .flex_row()
             .items_center()
-            .gap_2()
+            .gap(px(6.))
             .text_size(px(12.))
             .text_color(t.muted_foreground)
-            .child(format_policy_type(&w.policy_type));
-        if let Some(fp) = fp {
-            meta = meta.child(sep_dot()).child(div().font_family(FONT_MONO).child(fp));
+            .child(policy_label(&w.policy_type));
+        if !w.fingerprints.is_empty() {
+            let shown: Vec<&str> = w.fingerprints.iter().take(2).map(String::as_str).collect();
+            let more = w.fingerprints.len().saturating_sub(2);
+            meta = meta.child(sep_dot()).child(
+                div()
+                    .font_family(FONT_MONO)
+                    .child(shown.join(" ")),
+            );
+            if more > 0 {
+                meta = meta.child(format!("+{more}"));
+            }
         }
-        meta = meta.child(sep_dot()).child(format_created_at(w.created_at));
+        if w.recovery_only {
+            meta = meta.child(sep_dot()).child(div().text_color(t.warning).child("Recovery-only"));
+        }
 
-        let open_wallet = w.clone();
-        let row = div()
-            .id(("wallet-open", ix))
-            .w_full()
+        let balance = if w.locked {
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_1()
+                .text_size(px(12.))
+                .text_color(alpha(t.muted_foreground, 0.7))
+                .child("Locked")
+                .into_any_element()
+        } else {
+            match self.balances.get(&id) {
+                Some(sat) => div()
+                    .flex()
+                    .flex_row()
+                    .items_baseline()
+                    .gap_1()
+                    .child(
+                        div()
+                            .font_family(FONT_MONO)
+                            .text_size(px(12.))
+                            .text_color(t.foreground)
+                            .child(btc_amount(*sat as i64)),
+                    )
+                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("BTC"))
+                    .into_any_element(),
+                None => div()
+                    .text_size(px(12.))
+                    .text_color(t.muted_foreground)
+                    .child("—")
+                    .into_any_element(),
+            }
+        };
+
+        let mut actions = div()
             .flex()
             .flex_row()
             .items_center()
-            .justify_between()
-            .px_4()
-            .py(px(14.))
+            .gap_1()
+            .opacity(0.)
+            .group_hover(group.clone(), |s| s.opacity(1.));
+        if !w.locked {
+            let lock_id = id.clone();
+            actions = actions.child(hover_action(("wallet-lock", ix), "lock", "Lock wallet", false).on_click(
+                cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.lock_wallet(lock_id.clone(), cx);
+                }),
+            ));
+        }
+        let del_wallet = w.clone();
+        actions = actions.child(
+            hover_action(("wallet-delete", ix), "trash", "Delete wallet…", true).on_click(cx.listener(
+                move |this, _: &ClickEvent, window, cx| {
+                    cx.stop_propagation();
+                    this.open_delete(del_wallet.clone(), window, cx);
+                },
+            )),
+        );
+
+        let open_wallet = w.clone();
+        list_row(("wallet-row", ix))
+            .group(group)
             .cursor_pointer()
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                 this.open_wallet(open_wallet.clone(), window, cx)
             }))
+            .child(lead)
             .child(
                 div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(13.))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(t.foreground)
+                            .child(w.name.clone()),
+                    )
+                    .child(meta),
+            )
+            .child(div().w(px(COL_NETWORK)).flex_none().flex().child(network_badge(&w.network)))
+            .child(
+                div()
+                    .w(px(COL_CREATED))
+                    .flex_none()
+                    .text_size(px(12.))
+                    .text_color(t.muted_foreground)
+                    .child(format_date(w.created_at)),
+            )
+            .child(div().w(px(COL_BALANCE)).flex_none().flex().justify_end().child(balance))
+            .child(
+                div()
+                    .w(px(COL_ACTIONS))
+                    .flex_none()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(14.))
-                    .min_w_0()
-                    .child(
-                        div()
-                            .size(px(36.))
-                            .flex_none()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_md()
-                            .border_1()
-                            .border_color(t.border)
-                            .bg(t.background)
-                            .child(lock_icon),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        div()
-                                            .text_size(px(14.))
-                                            .font_weight(gpui::FontWeight::MEDIUM)
-                                            .text_color(t.foreground)
-                                            .child(w.name.clone()),
-                                    )
-                                    .child(badge(format_network(&w.network), Tone::Outline))
-                                    .when(w.recovery_only, |d| {
-                                        d.child(badge("Recovery-only", Tone::Warning))
-                                    }),
-                            )
-                            .child(meta),
-                    ),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .group_hover(group.clone(), |s| s.ml(px(2.)))
-                    .child(icon("chevron-right").size(px(16.)).text_color(t.muted_foreground)),
-            );
-
-        // Hover-revealed actions, painted over the row. Their click handlers
-        // stop propagation so the row's open handler doesn't also fire.
-        let mut actions = div().flex().flex_row().items_center().gap_1();
-        if !w.locked {
-            let id = w.id.as_str().to_string();
-            actions = actions.child(
-                action_icon(("wallet-lock", ix), "lock", "Lock wallet", false).on_click(
-                    cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        cx.stop_propagation();
-                        this.lock_wallet(id.clone(), cx);
-                    }),
-                ),
-            );
-        }
-        let del_wallet = w.clone();
-        actions = actions.child(
-            action_icon(("wallet-delete", ix), "trash", "Delete wallet", true).on_click(
-                cx.listener(move |this, _: &ClickEvent, window, cx| {
-                    cx.stop_propagation();
-                    this.open_delete(del_wallet.clone(), window, cx);
-                }),
-            ),
-        );
-
-        div()
-            .id(("wallet-card", ix))
-            .group(group.clone())
-            .relative()
-            .rounded_lg()
-            .border_1()
-            .border_color(t.border)
-            .bg(t.card)
-            .hover(move |s| s.border_color(alpha(t.primary, 0.5)))
-            .child(row)
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .right(px(44.))
-                    .flex()
-                    .items_center()
-                    .opacity(0.)
-                    .group_hover(group, |s| s.opacity(1.))
-                    .child(actions),
+                    .justify_end()
+                    .gap_1()
+                    .child(actions)
+                    .child(icon_chevron()),
             )
     }
 
     fn render_modal(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let m = self.modal.as_ref()?;
-        let t = theme();
-        let (title, modal_id) = match m.kind {
-            ModalKind::Unlock => ("Unlock wallet", "unlock-modal"),
-            ModalKind::Delete => ("Delete wallet", "delete-modal"),
-        };
+        let error = m.error.clone().map(|e| alert(Tone::Destructive, e));
+        let cancel = button("modal-cancel", "Cancel")
+            .ghost()
+            .disabled(m.submitting)
+            .on_click(cx.listener(|this, _, _, cx| this.close_modal(cx)))
+            .into_any_element();
 
-        let header = div()
-            .flex()
-            .flex_row()
-            .items_start()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .text_size(px(16.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(t.foreground)
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .mt_1()
-                            .text_size(px(12.))
-                            .text_color(t.muted_foreground)
-                            .child(m.wallet.name.clone()),
-                    ),
-            )
-            .child(
-                div()
-                    .id("modal-close")
-                    .size(px(28.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(t.muted))
-                    .on_click(cx.listener(|this, _, _, cx| this.close_modal(cx)))
-                    .child(icon("x").size(px(14.)).text_color(t.muted_foreground)),
-            );
-
-        let error = m.error.clone().map(|e| {
-            div()
-                .rounded_md()
-                .border_1()
-                .border_color(alpha(t.destructive, 0.3))
-                .bg(alpha(t.destructive, 0.06))
-                .px_3()
-                .py_2()
-                .text_size(px(12.))
-                .text_color(t.destructive)
-                .child(e)
-        });
-
-        let body = match m.kind {
+        let panel = match m.kind {
             ModalKind::Unlock => {
                 let empty = self.unlock_pass.read(cx).text().is_empty();
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_4()
-                    .child(input_label("Passphrase", self.unlock_pass.clone()))
+                modal("unlock-modal", 420.)
+                    .child(dialog_title(
+                        format!("Unlock “{}”", m.wallet.name),
+                        Some(
+                            "Enter the passphrase you set when creating this wallet. Keys stay decrypted in memory until you lock it."
+                                .into(),
+                        ),
+                    ))
+                    .child(field("Passphrase", self.unlock_pass.clone(), None))
                     .children(error)
-                    .child(
-                        button("unlock-submit", if m.submitting { "Unlocking…" } else { "Unlock" })
-                            .large()
-                            .full_width()
-                            .disabled(m.submitting || empty)
-                            .on_click(cx.listener(|this, _, _, cx| this.submit_unlock(cx))),
-                    )
+                    .child(dialog_actions(vec![
+                        cancel,
+                        button("unlock-submit", "Unlock")
+                            .icon("unlock")
+                            .loading(m.submitting)
+                            .disabled(empty)
+                            .on_click(cx.listener(|this, _, _, cx| this.submit_unlock(cx)))
+                            .into_any_element(),
+                    ]))
             }
             ModalKind::Delete => {
                 let ready = self.delete_ready(cx);
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_4()
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .line_height(px(19.))
-                            .text_color(t.muted_foreground)
-                            .child(
-                                "This permanently removes the on-disk wallet, including the encrypted seed. Recovery requires the original BIP39 mnemonic. Type the wallet name to confirm.",
-                            ),
-                    )
-                    .child(input_label("Confirm name", self.delete_name.clone()))
+                modal("delete-modal", 460.)
+                    .child(dialog_title(
+                        format!("Delete “{}”?", m.wallet.name),
+                        Some(
+                            "This permanently removes the wallet from this computer, including its encrypted seed. You can only get it back with the original recovery phrase or a backup."
+                                .into(),
+                        ),
+                    ))
+                    .child(field(
+                        format!("Type “{}” to confirm", m.wallet.name),
+                        self.delete_name.clone(),
+                        None,
+                    ))
                     .when(m.wallet.has_hot_keys, |d| {
-                        d.child(input_label("Passphrase", self.delete_pass.clone()))
+                        d.child(field("Passphrase", self.delete_pass.clone(), None))
                     })
                     .children(error)
-                    .child(
-                        button(
-                            "delete-submit",
-                            if m.submitting { "Deleting…" } else { "Delete wallet" },
-                        )
-                        .destructive()
-                        .large()
-                        .full_width()
-                        .disabled(m.submitting || !ready)
-                        .on_click(cx.listener(|this, _, _, cx| this.submit_delete(cx))),
-                    )
+                    .child(dialog_actions(vec![
+                        cancel,
+                        button("delete-submit", "Delete wallet")
+                            .destructive()
+                            .icon("trash")
+                            .loading(m.submitting)
+                            .disabled(!ready)
+                            .on_click(cx.listener(|this, _, _, cx| this.submit_delete(cx)))
+                            .into_any_element(),
+                    ]))
             }
         };
-
-        Some(
-            modal(modal_id, 448.)
-                .on_dismiss(cx.listener(|this, _, _, cx| this.close_modal(cx)))
-                .child(div().flex().flex_col().gap_1().child(header).child(div().mt_4().child(body))),
-        )
+        Some(panel.on_dismiss(cx.listener(|this, _, _, cx| this.close_modal(cx))))
     }
 }
 
-fn input_label(text: &'static str, input: Entity<TextInput>) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child(
-            div()
-                .text_size(px(12.))
-                .font_weight(gpui::FontWeight::MEDIUM)
-                .text_color(theme().muted_foreground)
-                .child(text),
-        )
-        .child(input)
-}
-
-fn action_icon(
-    id: impl Into<gpui::ElementId>,
-    icon_name: &'static str,
-    title: &'static str,
-    destructive: bool,
-) -> gpui::Stateful<gpui::Div> {
-    let t = theme();
-    let hover_fg = if destructive { t.destructive } else { t.foreground };
-    let hover_bg = if destructive { alpha(t.destructive, 0.1) } else { t.muted };
-    let group: SharedString = format!("action-{icon_name}").into();
-    div()
-        .id(id)
-        .group(group.clone())
-        .size(px(28.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_sm()
-        .cursor_pointer()
-        .hover(move |s| s.bg(hover_bg))
-        .tooltip(tooltip(title))
-        .child(
-            icon(icon_name)
-                .size(px(14.))
-                .text_color(t.muted_foreground)
-                .group_hover(group, move |s| s.text_color(hover_fg)),
-        )
+fn icon_chevron() -> impl IntoElement {
+    crate::ui::icon("chevron-right").size(px(14.)).text_color(alpha(theme().muted_foreground, 0.7))
 }
 
 impl Render for LocalWalletListPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body = if self.loading {
-            status_box("Loading wallets…").rounded_lg().into_any_element()
+            loading_card("Loading wallets…").into_any_element()
         } else if self.wallets.is_empty() {
             self.render_empty().into_any_element()
         } else {
-            let cards: Vec<_> = self
-                .wallets
-                .iter()
-                .enumerate()
-                .map(|(ix, w)| self.render_card(ix, w, cx).into_any_element())
-                .collect();
-            div().flex().flex_col().gap(px(10.)).children(cards).into_any_element()
+            self.render_list(cx).into_any_element()
         };
 
         div()
             .size_full()
             .relative()
             .child(
-                div().id("local-wallets-scroll").size_full().overflow_y_scroll().child(
-                    div().w_full().flex().flex_col().items_center().px_10().py(px(36.)).child(
-                        div()
-                            .w_full()
-                            .max_w(px(768.))
-                            .flex()
-                            .flex_col()
-                            .gap_6()
-                            .child(self.render_header(cx))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .children(self.error.clone().map(|e| {
-                                        div().mb_4().child(alert(Tone::Destructive, e))
-                                    }))
-                                    .child(body),
-                            ),
-                    ),
-                ),
+                page_frame("local-wallets")
+                    .title("Wallets")
+                    .subtitle("Wallets stored on this computer. Keys and seeds never leave it.")
+                    .action(
+                        button("restore", "Restore")
+                            .outline()
+                            .small()
+                            .icon("history")
+                            .on_click(|_, _, cx| navigate(Page::LocalWalletRecover, cx)),
+                    )
+                    .action(
+                        button("new-wallet", "New wallet")
+                            .icon("plus")
+                            .on_click(|_, _, cx| navigate(Page::LocalWalletNew, cx)),
+                    )
+                    .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
+                    .child(body),
             )
             .children(self.render_modal(cx))
     }

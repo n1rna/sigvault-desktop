@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::api::{
     AnalyzedSlot, DescriptorAnalysis, HotSecret, ScriptKind, SlotKey, SlotSource, WirePath,
-    WirePolicy, WireRecovery, WireSlot,
+    WirePolicy, WireRecovery,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -140,6 +140,7 @@ pub fn default_derivation_path(policy: &PolicyDraft, network: &str, account: u32
 
 /// Bump the account component of a standard path. Returns `None` for
 /// paths that don't follow BIP84/BIP48 — those the user picked by hand.
+#[allow(dead_code)] // setup/slot_editor.rs
 pub fn with_account(path: &str, account: u32) -> Option<String> {
     let parts: Vec<&str> = path.split('/').collect();
     if !(parts.len() == 4 || parts.len() == 5) || parts[0] != "m" {
@@ -207,9 +208,6 @@ pub struct SlotLayout {
 impl SlotLayout {
     pub fn slot(&self, id: &str) -> Option<&Slot> {
         self.slots.iter().find(|s| s.id == id)
-    }
-    pub fn slot_mut(&mut self, id: &str) -> Option<&mut Slot> {
-        self.slots.iter_mut().find(|s| s.id == id)
     }
 }
 
@@ -406,17 +404,22 @@ pub fn layout_for_analysis(analysis: &DescriptorAnalysis) -> SlotLayout {
     SlotLayout { paths, slots }
 }
 
+#[cfg(test)]
 fn is_hot(s: &Slot) -> bool {
     s.filled.as_ref().is_some_and(|f| f.secret.is_some())
 }
 
-pub fn hot_slot_count(slots: &[Slot]) -> usize {
-    slots.iter().filter(|s| is_hot(s)).count()
-}
-
 /// Paths that keys stored on this computer could satisfy on their own.
 /// Single-key wallets are excluded: holding the key is the point.
+#[cfg(test)]
 pub fn paths_spendable_from_this_device(layout: &SlotLayout) -> Vec<PathSpec> {
+    paths_spendable_by(layout, is_hot)
+}
+
+/// Like [`paths_spendable_from_this_device`], with the caller deciding
+/// which slots hold a private key here (library keys are only fetched
+/// at submit time, so `filled.secret` is empty until then).
+pub fn paths_spendable_by(layout: &SlotLayout, is_hot: impl Fn(&Slot) -> bool) -> Vec<PathSpec> {
     if layout.slots.len() <= 1 {
         return vec![];
     }
@@ -430,7 +433,7 @@ pub fn paths_spendable_from_this_device(layout: &SlotLayout) -> Vec<PathSpec> {
             let hot = p
                 .slot_ids
                 .iter()
-                .filter(|id| layout.slot(id).is_some_and(is_hot))
+                .filter(|id| layout.slot(id).is_some_and(&is_hot))
                 .count();
             hot as u32 >= p.threshold
         })
@@ -439,6 +442,7 @@ pub fn paths_spendable_from_this_device(layout: &SlotLayout) -> Vec<PathSpec> {
 }
 
 /// Another slot that already holds this exact key, if any.
+#[allow(dead_code)] // setup/slot_editor.rs
 pub fn duplicate_of<'a>(slots: &'a [Slot], slot_id: &str, xpub: &str) -> Option<&'a Slot> {
     slots.iter().find(|s| {
         s.id != slot_id && s.filled.as_ref().is_some_and(|f| f.key.xpub == xpub)
@@ -486,24 +490,6 @@ pub fn to_wire_policy(policy: &PolicyDraft, layout: &SlotLayout) -> WirePolicy {
                 .collect(),
         },
     }
-}
-
-pub fn to_wire_slots(slots: &[Slot]) -> Result<Vec<WireSlot>, String> {
-    slots
-        .iter()
-        .map(|s| {
-            let f = s
-                .filled
-                .as_ref()
-                .ok_or_else(|| format!("{} has no key yet", s.label))?;
-            Ok(WireSlot {
-                label: s.label.clone(),
-                source: f.source,
-                key: f.key.clone(),
-                secret: f.secret.clone(),
-            })
-        })
-        .collect()
 }
 
 /// Validate a draft before laying it out. Returns a human message or None.

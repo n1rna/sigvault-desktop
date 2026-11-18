@@ -39,7 +39,21 @@ fn key_body(extended: &str) -> Option<Vec<u8>> {
     Some(raw[4..78].to_vec())
 }
 
-pub fn same_extended_key(a: &str, b: &str) -> bool {
+/// BIP32 depth byte of an extended key (0 = master key), or `None` when
+/// the string isn't a well-formed extended key.
+pub fn extended_key_depth(extended: &str) -> Option<u8> {
+    let raw = base58_decode(extended.trim())?;
+    (raw.len() == 82).then(|| raw[4])
+}
+
+/// True for extended keys encoded for a test network (`tpub`, `tprv`,
+/// `upub`, `vpub`, …). Mainnet encodings start with x/y/z/Y/Z.
+pub fn is_test_network_key(extended: &str) -> bool {
+    extended.trim().starts_with(['t', 'u', 'v', 'U', 'V'])
+}
+
+#[cfg(test)]
+fn same_extended_key(a: &str, b: &str) -> bool {
     match (key_body(a), key_body(b)) {
         (Some(ka), Some(kb)) => ka == kb,
         _ => false,
@@ -61,23 +75,6 @@ pub fn normalize_path(path: &str) -> String {
     } else {
         format!("m/{p}")
     }
-}
-
-pub fn same_path(a: Option<&str>, b: Option<&str>) -> bool {
-    match (a, b) {
-        (Some(a), Some(b)) if !a.is_empty() && !b.is_empty() => normalize_path(a) == normalize_path(b),
-        _ => false,
-    }
-}
-
-/// Does `a` name the same key as the (possibly origin-less) `b`?
-pub fn same_slot_key(a: &SlotKey, fingerprint: Option<&str>, path: Option<&str>, xpub: &str) -> bool {
-    let Some(fp) = fingerprint.filter(|f| !f.is_empty()) else {
-        return false;
-    };
-    a.fingerprint.to_lowercase() == fp.to_lowercase()
-        && same_path(Some(&a.derivation_path), path)
-        && same_extended_key(&a.xpub, xpub)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -177,6 +174,14 @@ mod tests {
     }
 
     #[test]
+    fn reads_depth_and_network() {
+        assert_eq!(extended_key_depth(TPUB), Some(0));
+        assert_eq!(extended_key_depth("tpubnope"), None);
+        assert!(is_test_network_key(TPUB));
+        assert!(!is_test_network_key(XPUB));
+    }
+
+    #[test]
     fn classifies_pasted_keys() {
         assert_eq!(
             classify_pasted_key(&format!("[D34DB33F/48h/1h/0h/2h]{TPUB}/<0;1>/*")),
@@ -198,18 +203,5 @@ mod tests {
         assert_eq!(normalize_path("/84'/1'"), "m/84'/1'");
         assert_eq!(normalize_path("m"), "m");
         assert_eq!(normalize_path(""), "m");
-        assert!(same_path(Some("m/84h/1h/0h"), Some("84'/1'/0'")));
-        assert!(!same_path(None, Some("m")));
-    }
-
-    #[test]
-    fn same_slot_key_needs_origin() {
-        let k = SlotKey {
-            fingerprint: "AABBCCDD".into(),
-            derivation_path: "m/84'/1'/0'".into(),
-            xpub: TPUB.into(),
-        };
-        assert!(same_slot_key(&k, Some("aabbccdd"), Some("m/84h/1h/0h"), XPUB));
-        assert!(!same_slot_key(&k, None, Some("m/84'/1'/0'"), TPUB));
     }
 }

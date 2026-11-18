@@ -17,12 +17,10 @@ mod devices;
 mod qr_modals;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::time::Duration;
 
 use gpui::{
-    div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, FontWeight, KeyDownEvent,
-    PathPromptOptions, SharedString, Task, Window,
+    div, prelude::*, px, Context, Entity, FocusHandle, FontWeight, KeyDownEvent, PathPromptOptions,
+    SharedString, Window,
 };
 use sigvault_core::commands::hwi::WalletConfigInput;
 use sigvault_core::local_wallet::commands::{
@@ -40,7 +38,10 @@ use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::{navigate, toast};
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, button, format_btc, format_sat, icon, InputEvent, TextInput, Tone};
+use crate::ui::{
+    alert, button, card, copy_field, divider, field, footer_bar, format_btc, format_sat, icon,
+    page_frame, stepper, InputEvent, TextInput, Tone, FORM_WIDTH,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
@@ -128,8 +129,6 @@ pub struct SendPage {
     error: Option<SharedString>,
 
     txid: Option<String>,
-    copied_txid: bool,
-    _copied_reset: Option<Task<()>>,
 
     sign_mode: SignMode,
     device_picker: Option<Entity<DevicePicker>>,
@@ -183,8 +182,6 @@ impl SendPage {
             busy: false,
             error: None,
             txid: None,
-            copied_txid: false,
-            _copied_reset: None,
             sign_mode: SignMode::Connected,
             device_picker: None,
             show_qr: None,
@@ -502,7 +499,7 @@ impl SendPage {
         cx.notify();
         let short: String = self.wallet_id.chars().take(8).collect();
         let name = format!("sigvault-{}.psbt", if short.is_empty() { "wallet".into() } else { short });
-        let rx = cx.prompt_for_new_path(&default_dir(), Some(&name));
+        let rx = cx.prompt_for_new_path(&super::widgets::default_save_dir(), Some(&name));
         cx.spawn(async move |this, cx| {
             let path = match rx.await {
                 Ok(Ok(Some(p))) => p,
@@ -572,21 +569,6 @@ impl SendPage {
         .detach();
     }
 
-    fn copy_txid(&mut self, cx: &mut Context<Self>) {
-        let Some(txid) = self.txid.clone() else { return };
-        cx.write_to_clipboard(ClipboardItem::new_string(txid));
-        self.copied_txid = true;
-        cx.notify();
-        self._copied_reset = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(1800)).await;
-            this.update(cx, |this, cx| {
-                this.copied_txid = false;
-                cx.notify();
-            })
-            .ok();
-        }));
-    }
-
     fn back_to_wallet(&self, cx: &mut Context<Self>) {
         navigate(Page::LocalWallet(self.wallet_id.clone()), cx);
     }
@@ -606,28 +588,11 @@ fn non_empty(e: String, fallback: &str) -> SharedString {
     if e.trim().is_empty() { fallback.to_string().into() } else { e.into() }
 }
 
-fn default_dir() -> PathBuf {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    let downloads = home.join("Downloads");
-    if downloads.is_dir() { downloads } else { home }
-}
-
 fn file_name(p: &std::path::Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 // ───────────────────────── rendering ─────────────────────────
-
-fn field_label(text: &'static str) -> gpui::Div {
-    div()
-        .text_size(px(12.))
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(theme().muted_foreground)
-        .child(text)
-}
 
 fn info_panel(content: impl IntoElement) -> gpui::Div {
     let t = theme();
@@ -639,7 +604,7 @@ fn info_panel(content: impl IntoElement) -> gpui::Div {
         .px_4()
         .py_3()
         .text_size(px(12.))
-        .line_height(px(19.))
+        .line_height(px(18.))
         .text_color(t.muted_foreground)
         .child(content)
 }
@@ -658,95 +623,45 @@ fn emphasised(before: &str, strong: &str, after: &str) -> gpui::StyledText {
     )])
 }
 
-fn summary_row(label: &'static str, value: impl IntoElement) -> gpui::Div {
+/// Label/value row inside the review card.
+fn review_row(label: &'static str, value: impl IntoElement) -> gpui::Div {
     div()
         .flex()
-        .flex_col()
-        .gap(px(2.))
+        .flex_row()
+        .items_start()
+        .gap_4()
+        .px_4()
+        .py(px(10.))
         .child(
             div()
-                .text_size(px(11.))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(alpha(theme().muted_foreground, 0.8))
+                .w(px(96.))
+                .flex_none()
+                .text_size(px(12.))
+                .line_height(px(18.))
+                .text_color(theme().muted_foreground)
                 .child(label),
         )
-        .child(value)
+        .child(div().flex_1().min_w_0().text_size(px(13.)).line_height(px(18.)).child(value))
 }
 
-fn back_button(id: &'static str, busy: bool, on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static) -> impl IntoElement {
-    button(id, "← Back").outline().large().disabled(busy).on_click(on_click)
+/// Small sub-heading inside a step body.
+fn sub_label(text: &'static str) -> gpui::Div {
+    div()
+        .text_size(px(13.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(theme().foreground)
+        .child(text)
 }
 
 impl SendPage {
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        div()
-            .flex_none()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .border_b_1()
-            .border_color(t.border)
-            .bg(alpha(t.card, 0.6))
-            .px_6()
-            .py_3()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        div()
-                            .id("send-back")
-                            .size(px(32.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_sm()
-                            .cursor_pointer()
-                            .hover(move |s| s.bg(t.muted))
-                            .on_click(cx.listener(|this, _, _, cx| this.back_to_wallet(cx)))
-                            .child(icon("chevron-left").size(px(16.))),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .text_size(px(14.))
-                                    .line_height(px(16.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(t.foreground)
-                                    .child("Send"),
-                            )
-                            .child(
-                                div()
-                                    .mt_1()
-                                    .text_size(px(12.))
-                                    .line_height(px(14.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(t.muted_foreground)
-                                    .child(match &self.wallet {
-                                        Some(w) => format!("{} · {}", w.name, w.network),
-                                        None => "—".into(),
-                                    }),
-                            ),
-                    ),
-            )
-    }
-
-    fn render_step_indicator(&self) -> impl IntoElement {
-        let t = theme();
+    fn step_labels(&self) -> (&'static [&'static str], usize) {
         let show_path = self.show_path_step();
-        let labels: &[&str] = if show_path {
-            &["Compose", "Path", "Confirm", "Done"]
+        let labels: &'static [&'static str] = if show_path {
+            &["Details", "Spending path", "Review & sign", "Done"]
         } else {
-            &["Compose", "Confirm", "Done"]
+            &["Details", "Review & sign", "Done"]
         };
-        let step_index = match (self.step, show_path) {
+        let ix = match (self.step, show_path) {
             (Step::Compose, _) => 0,
             (Step::Path, true) => 1,
             (Step::Path, false) => 0,
@@ -755,344 +670,222 @@ impl SendPage {
             (Step::Done, true) => 3,
             (Step::Done, false) => 2,
         };
-        div()
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(t.muted_foreground)
-                    .child("Send bitcoin"),
-            )
-            .child(div().mt_3().flex().flex_row().items_center().gap_2().children(
-                labels.iter().enumerate().map(|(i, label)| {
-                    let active = i == step_index;
-                    let done = i < step_index;
-                    div()
-                        .flex_1()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_2()
-                        .child(div().h(px(4.)).flex_1().rounded_full().bg(if done {
-                            t.primary
-                        } else if active {
-                            alpha(t.primary, 0.6)
-                        } else {
-                            t.border
-                        }))
-                        .child(
-                            div()
-                                .text_size(px(10.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(if active || done {
-                                    t.foreground
-                                } else {
-                                    alpha(t.muted_foreground, 0.7)
-                                })
-                                .child(label.to_string()),
-                        )
-                }),
-            ))
+        (labels, ix)
     }
 
     fn render_compose(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let sat = self.sat(cx);
-        let ready = self.compose_ready(cx);
         let exceeds = matches!((self.balance_confirmed, sat), (Some(b), Some(s)) if s > b as i64);
+        let amount_hint = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .text_size(px(12.))
+            .text_color(if exceeds { t.destructive } else { t.muted_foreground })
+            .child(if exceeds {
+                "Amount exceeds confirmed balance".to_string()
+            } else {
+                sat.map_or("Enter an amount in BTC".to_string(), format_sat)
+            })
+            .children(self.balance_confirmed.map(|b| {
+                div()
+                    .text_color(t.muted_foreground)
+                    .child(format!("Available {}", format_btc(b as i64)))
+            }));
         div()
             .flex()
             .flex_col()
-            .gap_6()
+            .gap_5()
+            .child(field("Recipient address", self.recipient.clone(), None))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap_2()
-                    .child(field_label("Recipient address"))
-                    .child(self.recipient.clone()),
+                    .gap(px(6.))
+                    .child(field("Amount (BTC)", self.amount.clone(), None))
+                    .child(amount_hint),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(field_label("Amount (BTC)"))
-                    .child(self.amount.clone())
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .child(sat.map_or("—".to_string(), format_sat))
-                            .children(self.balance_confirmed.map(|b| format!("balance {}", format_btc(b as i64)))),
-                    )
-                    .when(exceeds, |d| {
-                        d.child(
-                            div()
-                                .text_size(px(11.))
-                                .text_color(t.destructive)
-                                .child("Amount exceeds confirmed balance"),
-                        )
-                    }),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(field_label("Fee rate (sat/vbyte)"))
-                    .child(self.fee_rate.clone())
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(alpha(t.muted_foreground, 0.7))
-                            .child("Rounded up to the nearest sat/vbyte"),
-                    ),
-            )
-            .child(
-                button("compose-continue", if self.busy { "Building…" } else { "Continue" })
-                    .large()
-                    .full_width()
-                    .loading(self.busy)
-                    .disabled(!ready)
-                    .when(!self.busy, |b| b.icon_right("arrow-right"))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if this.compose_ready(cx) && !this.busy {
-                            this.advance_from_compose(cx);
-                        }
-                    })),
-            )
+            .child(field(
+                "Fee rate (sat/vB)",
+                self.fee_rate.clone(),
+                Some("Rounded up to the nearest sat/vB.".into()),
+            ))
     }
 
     fn render_path(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let paths = self.paths.clone().unwrap_or_default();
         let count = paths.len();
-        div()
-            .flex()
-            .flex_col()
-            .gap_5()
-            .child(info_panel(emphasised(
-                "This wallet has ",
-                &format!("{count} spending paths"),
-                ". Each path imposes its own conditions (signer set, timelock). Pick the one you want to satisfy with this transaction — the PSBT will be built so the chosen path's signers can finalize it.",
-            )))
-            .child(div().flex().flex_col().gap_2().children(paths.into_iter().enumerate().map(|(i, p)| {
-                let active = self.selected_path_id.as_deref() == Some(p.id.as_str());
-                let id = p.id.clone();
+        let mut list = card().overflow_hidden();
+        for (i, p) in paths.into_iter().enumerate() {
+            if i > 0 {
+                list = list.child(divider());
+            }
+            let active = self.selected_path_id.as_deref() == Some(p.id.as_str());
+            let id = p.id.clone();
+            list = list.child(
                 div()
                     .id(("path", i))
-                    .w_full()
-                    .rounded_md()
-                    .border_1()
+                    .flex()
+                    .flex_row()
+                    .items_start()
+                    .gap_3()
                     .px_4()
                     .py_3()
                     .cursor_pointer()
-                    .map(|d| {
-                        if active {
-                            d.border_color(t.primary).bg(alpha(t.primary, 0.06))
-                        } else {
-                            d.border_color(t.border)
-                                .bg(alpha(t.card, 0.4))
-                                .hover(move |s| s.border_color(alpha(t.primary, 0.5)))
-                        }
-                    })
+                    .when(active, |d| d.bg(alpha(t.primary, 0.06)))
+                    .when(!active, |d| d.hover(move |s| s.bg(alpha(t.muted, 0.5))))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.selected_path_id = Some(id.clone());
+                        this.error = None;
                         cx.notify();
                     }))
+                    .child(radio(active))
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .flex()
-                            .flex_row()
-                            .items_baseline()
-                            .justify_between()
-                            .gap_3()
+                            .flex_col()
+                            .gap(px(4.))
                             .child(
                                 div()
-                                    .min_w_0()
-                                    .text_size(px(13.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(t.foreground)
-                                    .child(p.label.clone()),
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .justify_between()
+                                    .gap_3()
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .text_size(px(13.))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(t.foreground)
+                                            .child(p.label.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .text_size(px(12.))
+                                            .text_color(t.muted_foreground)
+                                            .child(if p.fingerprints.is_empty() {
+                                                "—".to_string()
+                                            } else {
+                                                format!("{}-of-{}", p.threshold, p.fingerprints.len())
+                                            }),
+                                    ),
                             )
-                            .child(
+                            .children(p.description.clone().map(|desc| {
                                 div()
-                                    .flex_none()
                                     .text_size(px(12.))
-                                    .font_weight(FontWeight::MEDIUM)
+                                    .line_height(px(18.))
                                     .text_color(t.muted_foreground)
-                                    .child(if p.fingerprints.is_empty() {
-                                        "—".to_string()
-                                    } else {
-                                        format!("{}-of-{}", p.threshold, p.fingerprints.len())
+                                    .child(desc)
+                            }))
+                            .when(!p.fingerprints.is_empty(), |d| {
+                                d.child(div().flex().flex_row().flex_wrap().gap(px(6.)).children(
+                                    p.fingerprints.iter().map(|fp| {
+                                        div()
+                                            .rounded_sm()
+                                            .border_1()
+                                            .border_color(t.border)
+                                            .bg(t.background)
+                                            .px(px(6.))
+                                            .py(px(1.))
+                                            .font_family(FONT_MONO)
+                                            .text_size(px(12.))
+                                            .text_color(t.muted_foreground)
+                                            .child(fp.clone())
                                     }),
-                            ),
-                    )
-                    .children(p.description.clone().map(|desc| {
-                        div()
-                            .mt(px(6.))
-                            .text_size(px(11.5))
-                            .line_height(px(18.))
-                            .text_color(t.muted_foreground)
-                            .child(desc)
-                    }))
-                    .when(!p.fingerprints.is_empty(), |d| {
-                        d.child(div().mt_2().flex().flex_row().flex_wrap().gap(px(6.)).children(
-                            p.fingerprints.iter().map(|fp| {
-                                div()
-                                    .rounded_sm()
-                                    .border_1()
-                                    .border_color(t.border)
-                                    .bg(t.background)
-                                    .px(px(6.))
-                                    .py(px(2.))
-                                    .font_family(FONT_MONO)
-                                    .text_size(px(9.5))
-                                    .text_color(t.muted_foreground)
-                                    .child(fp.clone())
+                                ))
                             }),
-                        ))
-                    })
-            })))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(back_button(
-                        "path-back",
-                        self.busy,
-                        cx.listener(|this, _, _, cx| {
-                            this.step = Step::Compose;
-                            this.error = None;
-                            cx.notify();
-                        }),
-                    ))
-                    .child(
-                        div().flex_1().child(
-                            button("path-build", if self.busy { "Building…" } else { "Build transaction" })
-                                .large()
-                                .full_width()
-                                .loading(self.busy)
-                                .disabled(self.selected_path_id.is_none())
-                                .on_click(cx.listener(|this, _, _, cx| this.submit_path(cx))),
-                        ),
                     ),
-            )
+            );
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(info_panel(emphasised(
+                "This wallet has ",
+                &format!("{count} spending paths"),
+                ". Each imposes its own conditions (signer set, timelock). Pick the one this transaction should satisfy — the PSBT is built so that path's signers can finalize it.",
+            )))
+            .child(list)
     }
 
     fn render_review(&self, cx: &Context<Self>) -> impl IntoElement {
         let t = theme();
         let sat = self.sat(cx).unwrap_or(0);
         let fee = self.fee_rate.read(cx).text().to_string();
-        div()
-            .rounded_md()
-            .border_1()
-            .border_color(t.border)
-            .bg(t.card)
-            .px_4()
-            .py_4()
-            .child(field_label("Review"))
-            .child(
+        let path_label = self
+            .show_path_step()
+            .then(|| {
+                self.paths
+                    .as_ref()
+                    .and_then(|ps| ps.iter().find(|p| Some(&p.id) == self.selected_path_id.as_ref()))
+                    .map(|p| p.label.clone())
+            })
+            .flatten();
+        card()
+            .child(review_row(
+                "To",
                 div()
-                    .mt_3()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
+                    .font_family(FONT_MONO)
                     .text_size(px(12.))
-                    .child(summary_row(
-                        "To",
-                        div()
-                            .font_family(FONT_MONO)
-                            .text_color(t.foreground)
-                            .child(self.recipient.read(cx).text().to_string()),
-                    ))
-                    .child(summary_row(
-                        "Amount",
-                        div()
-                            .flex()
-                            .flex_row()
-                            .flex_wrap()
-                            .gap_2()
-                            .font_family(FONT_MONO)
-                            .child(div().text_color(t.foreground).child(format_btc(sat)))
-                            .child(div().text_color(alpha(t.muted_foreground, 0.8)).child(format_sat(sat))),
-                    ))
-                    .child(summary_row(
-                        "Fee rate",
-                        div().font_family(FONT_MONO).text_color(t.foreground).child(format!("{fee} sat/vB")),
-                    )),
-            )
-    }
-
-    fn render_confirm(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let has_pass = !self.passphrase.read(cx).text().is_empty();
-        div()
-            .flex()
-            .flex_col()
-            .gap_6()
-            .child(self.render_review(cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(field_label("Passphrase"))
-                    .child(
-                        div()
-                            .mt_1()
-                            .text_size(px(11.))
-                            .line_height(px(17.))
-                            .text_color(t.muted_foreground)
-                            .child("Re-enter the wallet passphrase to authorize signing. The seed is decrypted only for this transaction."),
-                    )
-                    .child(div().mt_2().child(self.passphrase.clone())),
-            )
-            .child(
+                    .text_color(t.foreground)
+                    .child(self.recipient.read(cx).text().trim().to_string()),
+            ))
+            .child(divider())
+            .child(review_row(
+                "Amount",
                 div()
                     .flex()
                     .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(back_button("confirm-back", self.busy, cx.listener(|this, _, _, cx| this.back_from_confirm(cx))))
-                    .child(
-                        div().flex_1().child(
-                            button(
-                                "sign-broadcast",
-                                if self.busy { "Signing & broadcasting…" } else { "Sign & broadcast" },
-                            )
-                            .large()
-                            .full_width()
-                            .loading(self.busy)
-                            .disabled(!has_pass)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                if !this.busy {
-                                    this.sign_and_broadcast(cx);
-                                }
-                            })),
-                        ),
-                    ),
-            )
+                    .flex_wrap()
+                    .items_baseline()
+                    .gap_2()
+                    .child(div().font_family(FONT_MONO).text_color(t.foreground).child(format_btc(sat)))
+                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(format_sat(sat))),
+            ))
+            .child(divider())
+            .child(review_row(
+                "Fee rate",
+                div().font_family(FONT_MONO).text_size(px(12.)).child(format!("{fee} sat/vB")),
+            ))
+            .children(path_label.map(|l| {
+                div().child(divider()).child(review_row("Path", div().child(l)))
+            }))
+            .children(self.wallet.as_ref().map(|w| {
+                div().child(divider()).child(review_row("From", div().child(w.name.clone())))
+            }))
+    }
+
+    fn render_confirm(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap_5()
+            .child(self.render_review(cx))
+            .child(field(
+                "Passphrase",
+                self.passphrase.clone(),
+                Some("Re-enter the wallet passphrase to authorize signing. The seed is decrypted only for this transaction.".into()),
+            ))
     }
 
     fn render_hardware_confirm(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
         let mode = self.sign_mode;
         let busy = self.busy;
-        let section = |title: &'static str| field_label(title);
         let outline = |id: &'static str, label: &'static str| {
-            button(id, label).outline().large().full_width().disabled(busy)
+            button(id, label).outline().full_width().disabled(busy)
         };
         div()
             .flex()
             .flex_col()
-            .gap_6()
+            .gap_5()
             .child(self.render_review(cx))
             .child(segmented(
                 "sign-mode",
@@ -1103,192 +896,225 @@ impl SendPage {
             .when(mode == SignMode::Connected, |d| {
                 d.child(info_panel(emphasised(
                     "Connect and unlock your hardware wallet, then click ",
-                    "Discover Devices",
+                    "Discover devices",
                     ". You'll review and approve the transaction on the device itself — the private keys never leave it.",
                 )))
                 .children(self.device_picker.clone())
             })
             .when(mode == SignMode::External, |d| {
-                d.child(
+                d.child(info_panel(
+                    "Send the unsigned PSBT to a signer on another machine (Coldcard, SeedSigner, Sparrow, Foundation Passport, Specter, Keystone, an air-gapped laptop, …). When it hands back a signed PSBT, import or scan it to broadcast.",
+                ))
+                .child(
                     div()
                         .flex()
                         .flex_col()
-                        .gap_4()
-                        .child(info_panel(
-                            "Send the unsigned PSBT to a signer on another machine (Coldcard, SeedSigner, Sparrow, Foundation Passport, Specter, Keystone, an air-gapped laptop, ...). When it hands you back a signed PSBT, import or scan it to broadcast.",
-                        ))
+                        .gap_2()
+                        .child(sub_label("1. Send PSBT to signer"))
                         .child(
-                            div().child(section("Send PSBT to signer")).child(
-                                div()
-                                    .mt_2()
-                                    .flex()
-                                    .flex_row()
-                                    .gap_3()
-                                    .child(div().flex_1().child(
-                                        outline("save-psbt", "Save .psbt")
-                                            .icon("download")
-                                            .on_click(cx.listener(|this, _, _, cx| this.export_psbt_to_file(cx))),
-                                    ))
-                                    .child(div().flex_1().child(
-                                        outline("show-qr", "Show QR")
-                                            .icon("qr-code")
-                                            .on_click(cx.listener(|this, _, window, cx| this.open_show_qr(window, cx))),
-                                    )),
-                            ),
-                        )
+                            div()
+                                .flex()
+                                .flex_row()
+                                .gap_2()
+                                .child(div().flex_1().child(
+                                    outline("save-psbt", "Save .psbt file")
+                                        .icon("download")
+                                        .on_click(cx.listener(|this, _, _, cx| this.export_psbt_to_file(cx))),
+                                ))
+                                .child(div().flex_1().child(
+                                    outline("show-qr", "Show QR")
+                                        .icon("qr-code")
+                                        .on_click(cx.listener(|this, _, window, cx| this.open_show_qr(window, cx))),
+                                )),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(sub_label("2. Receive signed PSBT"))
                         .child(
-                            div().child(section("Receive signed PSBT")).child(
-                                div()
-                                    .mt_2()
-                                    .flex()
-                                    .flex_row()
-                                    .gap_3()
-                                    .child(div().flex_1().child(
-                                        outline("import-psbt", "Import .psbt")
-                                            .icon("upload")
-                                            .on_click(cx.listener(|this, _, _, cx| this.import_and_broadcast(cx))),
-                                    ))
-                                    .child(div().flex_1().child(
-                                        button("scan-qr", "Scan QR")
-                                            .large()
-                                            .full_width()
-                                            .icon("scan")
-                                            .disabled(busy)
-                                            .on_click(cx.listener(|this, _, window, cx| this.open_scan_qr(window, cx))),
-                                    )),
-                            ),
+                            div()
+                                .flex()
+                                .flex_row()
+                                .gap_2()
+                                .child(div().flex_1().child(
+                                    outline("import-psbt", "Import .psbt file")
+                                        .icon("upload")
+                                        .on_click(cx.listener(|this, _, _, cx| this.import_and_broadcast(cx))),
+                                ))
+                                .child(div().flex_1().child(
+                                    outline("scan-qr", "Scan QR")
+                                        .icon("scan")
+                                        .on_click(cx.listener(|this, _, window, cx| this.open_scan_qr(window, cx))),
+                                )),
                         ),
                 )
             })
+    }
+
+    fn render_done(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme();
+        let txid = self.txid.clone().unwrap_or_default();
+        card()
+            .p_5()
+            .gap_4()
             .child(
                 div()
                     .flex()
                     .flex_row()
-                    .items_center()
+                    .items_start()
                     .gap_3()
-                    .child(back_button("hw-back", busy, cx.listener(|this, _, _, cx| this.back_from_confirm(cx))))
-                    .when(busy, |d| {
-                        d.child(
-                            div()
-                                .text_size(px(12.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(t.muted_foreground)
-                                .child(if mode == SignMode::Connected {
-                                    "Signing & broadcasting…"
-                                } else {
-                                    "Working…"
-                                }),
-                        )
-                    }),
-            )
-    }
-
-    fn render_done(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let txid = self.txid.clone().unwrap_or_default();
-        div()
-            .flex()
-            .flex_col()
-            .items_center()
-            .child(
-                div()
-                    .size(px(56.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .border_1()
-                    .border_color(alpha(t.success, 0.4))
-                    .bg(alpha(t.success, 0.08))
-                    .child(icon("check").size(px(24.)).text_color(t.success)),
-            )
-            .child(
-                div()
-                    .mt_5()
-                    .text_size(px(18.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(t.foreground)
-                    .child("Transaction broadcast."),
-            )
-            .child(
-                div()
-                    .mt_2()
-                    .max_w(px(384.))
-                    .text_center()
-                    .text_size(px(13.))
-                    .line_height(px(21.))
-                    .text_color(t.muted_foreground)
-                    .child("Your transaction is in the mempool. It'll appear in the wallet history once the next sync sees it."),
-            )
-            .child(
-                div()
-                    .id("copy-txid")
-                    .mt_6()
-                    .w_full()
-                    .max_w(px(448.))
-                    .rounded_md()
-                    .border_1()
-                    .border_color(t.border)
-                    .bg(t.card)
-                    .px_4()
-                    .py_3()
-                    .cursor_pointer()
-                    .hover(move |s| s.border_color(alpha(t.primary, 0.6)).bg(alpha(t.primary, 0.03)))
-                    .tooltip(|_, cx| cx.new(|_| TooltipText("Click to copy")).into())
-                    .on_click(cx.listener(|this, _, _, cx| this.copy_txid(cx)))
                     .child(
                         div()
+                            .size(px(32.))
+                            .flex_none()
                             .flex()
-                            .flex_row()
                             .items_center()
-                            .justify_between()
-                            .gap_3()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(alpha(t.success, 0.12))
+                            .child(icon("check").size(px(16.)).text_color(t.success)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
                             .child(
                                 div()
-                                    .min_w_0()
-                                    .flex_1()
-                                    .font_family(FONT_MONO)
-                                    .text_size(px(12.))
-                                    .text_color(t.foreground)
-                                    .child(txid),
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Transaction broadcast"),
                             )
                             .child(
                                 div()
-                                    .flex_none()
-                                    .text_size(px(12.))
+                                    .text_size(px(13.))
+                                    .line_height(px(19.))
                                     .text_color(t.muted_foreground)
-                                    .child(if self.copied_txid { "✓ Copied" } else { "Copy" }),
+                                    .child("It's in the mempool now and will appear in the wallet's activity after the next sync."),
                             ),
                     ),
             )
             .child(
-                div().mt_8().child(
-                    button("finish", "Back to wallet")
-                        .large()
-                        .icon_right("arrow-right")
-                        .on_click(cx.listener(|this, _, _, cx| this.back_to_wallet(cx))),
-                ),
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Transaction ID"))
+                    .child(copy_field("copy-txid", txid)),
             )
+    }
+
+    fn render_footer(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let busy = self.busy;
+        let hardware = self.is_hardware_only();
+        let back = |id: &'static str| button(id, "Back").ghost().icon("arrow-left").disabled(busy);
+        let cancel = button("cancel", "Cancel")
+            .ghost()
+            .disabled(busy)
+            .on_click(cx.listener(|this, _, _, cx| this.back_to_wallet(cx)))
+            .into_any_element();
+        match self.step {
+            Step::Compose => footer_bar(
+                vec![],
+                vec![
+                    cancel,
+                    button("compose-continue", if busy { "Building…" } else { "Continue" })
+                        .loading(busy)
+                        .disabled(!self.compose_ready(cx))
+                        .when(!busy, |b| b.icon_right("arrow-right"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if this.compose_ready(cx) && !this.busy {
+                                this.advance_from_compose(cx);
+                            }
+                        }))
+                        .into_any_element(),
+                ],
+            ),
+            Step::Path => footer_bar(
+                vec![back("path-back")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.step = Step::Compose;
+                        this.error = None;
+                        cx.notify();
+                    }))
+                    .into_any_element()],
+                vec![
+                    cancel,
+                    button("path-build", if busy { "Building…" } else { "Build transaction" })
+                        .loading(busy)
+                        .disabled(self.selected_path_id.is_none())
+                        .when(!busy, |b| b.icon_right("arrow-right"))
+                        .on_click(cx.listener(|this, _, _, cx| this.submit_path(cx)))
+                        .into_any_element(),
+                ],
+            ),
+            Step::Confirm => {
+                let left = vec![back("confirm-back")
+                    .on_click(cx.listener(|this, _, _, cx| this.back_from_confirm(cx)))
+                    .into_any_element()];
+                let right = if hardware {
+                    let status = busy.then(|| {
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .text_size(px(12.))
+                            .text_color(theme().muted_foreground)
+                            .child(crate::ui::spinner(px(12.)))
+                            .child(if self.sign_mode == SignMode::Connected {
+                                "Signing & broadcasting…"
+                            } else {
+                                "Working…"
+                            })
+                            .into_any_element()
+                    });
+                    status.into_iter().chain([cancel]).collect()
+                } else {
+                    let has_pass = !self.passphrase.read(cx).text().is_empty();
+                    vec![
+                        cancel,
+                        button("sign-broadcast", if busy { "Signing & broadcasting…" } else { "Sign & broadcast" })
+                            .loading(busy)
+                            .disabled(!has_pass)
+                            .icon("arrow-up-right")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if !this.busy {
+                                    this.sign_and_broadcast(cx);
+                                }
+                            }))
+                            .into_any_element(),
+                    ]
+                };
+                footer_bar(left, right)
+            }
+            Step::Done => footer_bar(
+                vec![],
+                vec![button("finish", "Back to wallet")
+                    .on_click(cx.listener(|this, _, _, cx| this.back_to_wallet(cx)))
+                    .into_any_element()],
+            ),
+        }
     }
 }
 
-/// Minimal tooltip view (`title="Click to copy"`).
-struct TooltipText(&'static str);
-
-impl Render for TooltipText {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        div()
-            .rounded_md()
-            .border_1()
-            .border_color(t.border)
-            .bg(t.popover)
-            .px_2()
-            .py_1()
-            .text_size(px(11.))
-            .text_color(t.foreground)
-            .child(self.0)
-    }
+fn radio(selected: bool) -> impl IntoElement {
+    let t = theme();
+    div()
+        .mt(px(2.))
+        .size(px(14.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .border_1()
+        .border_color(if selected { t.primary } else { t.border })
+        .when(selected, |d| d.child(div().size(px(6.)).rounded_full().bg(t.primary)))
 }
 
 impl Render for SendPage {
@@ -1307,6 +1133,13 @@ impl Render for SendPage {
             Step::Done if self.txid.is_some() => self.render_done(cx).into_any_element(),
             Step::Done => div().into_any_element(),
         };
+        let name = self.wallet.as_ref().map(|w| w.name.clone()).unwrap_or_else(|| "Wallet".into());
+        let subtitle = match self.balance_confirmed {
+            Some(b) => format!("From {name} · {} available", format_btc(b as i64)),
+            None => format!("From {name}"),
+        };
+        let (labels, step_ix) = self.step_labels();
+        let footer = self.render_footer(cx);
 
         div()
             .id("send-page")
@@ -1314,25 +1147,25 @@ impl Render for SendPage {
             .on_key_down(cx.listener(Self::on_key_down))
             .relative()
             .size_full()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .child(self.render_header(cx))
             .child(
-                div().flex_1().min_h_0().child(
-                    div().id("send-scroll").size_full().overflow_y_scroll().px_6().py_8().child(
+                page_frame("send")
+                    .crumb("Wallets", Some(Page::LocalWallets))
+                    .crumb(name, Some(Page::LocalWallet(self.wallet_id.clone())))
+                    .crumb("Send", None)
+                    .title("Send bitcoin")
+                    .subtitle(subtitle)
+                    .header_extra(stepper(labels, step_ix))
+                    .footer(footer)
+                    .child(
                         div()
-                            .mx_auto()
                             .w_full()
-                            .max_w(px(520.))
+                            .max_w(FORM_WIDTH)
                             .flex()
                             .flex_col()
-                            .gap_8()
-                            .child(self.render_step_indicator())
+                            .gap_5()
                             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
                             .child(body),
                     ),
-                ),
             )
             .children(self.render_show_qr(cx))
             .children(self.render_scan_qr(cx))

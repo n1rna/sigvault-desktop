@@ -174,6 +174,8 @@ impl RenderOnce for Section {
                     .gap_3()
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap(px(2.))

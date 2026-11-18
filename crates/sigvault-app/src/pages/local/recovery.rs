@@ -1,56 +1,56 @@
-//! `pages/local/RecoveryFlow.tsx` — wallet recovery wizard. Same slot
-//! model as creation, entered from the other end:
+//! Restore wallet. Wallets are restored from their *wallet backup* (or the
+//! descriptor inside it); private keys come from the key library:
 //!
-//!   • From a descriptor — paste it (or open a wallet backup file). The
-//!     backend parses it into spending paths and the keys it names; the
-//!     user then attaches private keys to whichever slots they hold
-//!     (seed, hardware wallet, key file, xprv). Every attached key must
-//!     reproduce the descriptor's key exactly. Slots left alone stay
-//!     watch-only and sign elsewhere.
-//!   • From keys — no descriptor. Pick the policy the wallet used and
-//!     fill every slot; this rebuilds the descriptor. Works for
-//!     single-key wallets from a seed, or multi-key wallets when every
-//!     cosigner's key is at hand.
+//!   1. Backup — open a `.wallet-backup.json` or paste a descriptor; the
+//!      backend parses it into spending paths and the keys it names.
+//!   2. Keys   — every key is matched against the library by fingerprint +
+//!      xpub. Unmatched keys can be added to the library in place (seed,
+//!      key file, hardware wallet…) or left watch-only.
+//!   3. Review — summary, slot → key mapping and, when matched keys hold
+//!      private keys here, the wallet passphrase.
+//!   4. Done   — save a fresh wallet backup.
+//!
+//! Having only keys (no backup) isn't a separate route any more: restoring
+//! keys means importing them into the library, then creating the wallet
+//! with the same policy through "New wallet". The backup step explains this.
 
-use gpui::{div, prelude::*, px, Context, Entity, FontWeight, SharedString, Subscription, Window};
+use std::collections::{HashMap, HashSet};
 
+use gpui::{
+    div, prelude::*, px, AnyElement, App, Context, Entity, FontWeight, SharedString, Subscription,
+    Window,
+};
+
+use super::key_picker::fetch_secrets;
+use super::keys::add_flow::{AddKeyEvent, AddKeyFlow};
+use super::keys::unlock::{KeychainUnlock, UnlockEvent};
 use super::setup::api::{
     self, CreateFromSlots, CreateWatchOnly, DescriptorAnalysis, SlotKey, SlotSource, WirePolicy,
     WireSlot,
 };
 use super::setup::files::open_text_file;
-use super::setup::finish::{DoneEvent, DoneStep, SecureEvent, SecureStep};
-use super::setup::policy::{
-    describe_timelock, layout_for_analysis, layout_for_policy, policy_problem, policy_summary,
-    to_wire_policy, to_wire_slots, PolicyDraft, SlotLayout,
-};
-use super::setup::policy_picker::{PolicyPicker, PolicyPickerEvent};
-use super::setup::slot_board::{slot_board, SlotBoardHost};
-use super::setup::slot_editor::{Mode, SlotEditor, SlotEditorEvent};
-use super::setup::ui::{
-    alert_text, field_label, fingerprint, network_picker, option_card, primary_button,
-    secondary_button, seg, segmented, step_header, AlertTone,
-};
+use super::setup::finish::{network_label, DoneStep, ReviewData, ReviewEvent, ReviewRow, ReviewStep};
+use super::setup::policy::{describe_timelock, layout_for_analysis, paths_spendable_by, SlotLayout};
+use super::setup::slot_board::{meta_line, slot_board, BoardKey, BoardMode, SlotBoardHost, SlotState};
+use super::setup::ui::network_options;
+use crate::keychain::{keychain, KeyRecord, KeychainEvent};
 use crate::router::Page;
 use crate::shell::navigate;
-use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{badge, InputEvent, TextInput, Tone};
+use crate::theme::{theme, FONT_MONO};
+use crate::ui::{
+    alert, badge, button, card, divider, field, footer_bar, icon, modal, page_frame, section,
+    stepper, InputEvent, TextInput, Tone, FORM_WIDTH,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
-    Source,
+    Backup,
     Keys,
-    Secure,
+    Review,
     Done,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Route {
-    Descriptor,
-    Policy,
-}
-
-const STEP_LABELS: [&str; 4] = ["Source", "Keys", "Secure", "Done"];
+const STEP_LABELS: [&str; 4] = ["Backup", "Keys", "Review", "Done"];
 
 fn kind_label(kind: &str) -> &'static str {
     match kind {
@@ -72,37 +72,29 @@ fn script_label(script: &str) -> &'static str {
     }
 }
 
-fn format_thousands(n: u32) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    out
-}
-
 pub struct RecoveryFlowPage {
     step: Step,
-    route: Route,
     name: Entity<TextInput>,
     network: &'static str,
     descriptor: Entity<TextInput>,
+    file_name: Option<String>,
     analysis: Option<DescriptorAnalysis>,
     reading: bool,
     read_error: Option<SharedString>,
-    picker: Entity<PolicyPicker>,
     layout: Option<SlotLayout>,
-    editor: Option<Entity<SlotEditor>>,
-    watch_only: bool,
-    secure: Entity<SecureStep>,
-    done: Option<Entity<DoneStep>>,
+    /// Slots whose matched library key the user chose not to use.
+    skipped: HashSet<String>,
+    /// Slot the add-key modal is filling, and the flow itself.
+    adding: Option<(String, Entity<AddKeyFlow>)>,
+    add_notice: Option<(Tone, SharedString)>,
+    unlock: Option<Entity<KeychainUnlock>>,
+    review: Entity<ReviewStep>,
+    done: Option<(String, Entity<DoneStep>)>,
     submitting: bool,
     error: Option<SharedString>,
+    dev_stage: Option<String>,
     _subs: Vec<Subscription>,
-    _editor_sub: Option<Subscription>,
+    _modal_sub: Option<Subscription>,
 }
 
 impl RecoveryFlowPage {
@@ -114,88 +106,102 @@ impl RecoveryFlowPage {
                 .multiline(5)
                 .placeholder("wsh(sortedmulti(2,[a1b2c3d4/48'/1'/0'/2']tpub…/<0;1>/*,…))#checksum")
         });
-        let picker = cx.new(|cx| PolicyPicker::new(PolicyDraft::Singlesig, window, cx));
-        let secure = cx.new(|cx| SecureStep::new("Recover wallet", window, cx));
+        let review = cx.new(|cx| ReviewStep::new(window, cx));
         let subs = vec![
             cx.subscribe(&name, |_, _, _: &InputEvent, cx| cx.notify()),
             cx.subscribe(&descriptor, |this, _, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Changed) {
                     this.analysis = None;
+                    this.file_name = None;
+                    this.read_error = None;
                     cx.notify();
                 }
             }),
-            cx.subscribe(&picker, |_, _, _: &PolicyPickerEvent, cx| cx.notify()),
-            cx.subscribe(&secure, |this, _, ev: &SecureEvent, cx| match ev {
-                SecureEvent::Back => {
-                    this.step = Step::Keys;
-                    cx.notify();
-                }
-                SecureEvent::Submit => this.submit(cx),
+            cx.subscribe_in(&review, window, |this, _, ev: &ReviewEvent, window, cx| match ev {
+                ReviewEvent::Submit => this.submit(window, cx),
             }),
+            cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()),
         ];
-        Self {
-            step: Step::Source,
-            route: Route::Descriptor,
+        let mut this = Self {
+            step: Step::Backup,
             name,
             network: "regtest",
             descriptor,
+            file_name: None,
             analysis: None,
             reading: false,
             read_error: None,
-            picker,
             layout: None,
-            editor: None,
-            watch_only: false,
-            secure,
+            skipped: HashSet::new(),
+            adding: None,
+            add_notice: None,
+            unlock: None,
+            review,
             done: None,
             submitting: false,
             error: None,
+            dev_stage: None,
             _subs: subs,
-            _editor_sub: None,
+            _modal_sub: None,
+        };
+        // Debug builds: SIGVAULT_DEV_DESCRIPTOR=<text> SIGVAULT_DEV_WIZARD=keys|review
+        if cfg!(debug_assertions) {
+            if let Ok(text) = std::env::var("SIGVAULT_DEV_DESCRIPTOR") {
+                this.dev_stage = std::env::var("SIGVAULT_DEV_WIZARD").ok();
+                this.descriptor.update(cx, |d, cx| d.set_text(text.clone(), cx));
+                this.read_descriptor(text, cx);
+            }
         }
+        this
     }
 
-    fn policy(&self, cx: &gpui::App) -> PolicyDraft {
-        self.picker.read(cx).value().clone()
-    }
-
-    fn name_text(&self, cx: &gpui::App) -> String {
+    fn name_text(&self, cx: &App) -> String {
         self.name.read(cx).text().trim().to_string()
     }
 
-    fn attached(&self) -> usize {
-        self.layout
-            .as_ref()
-            .map(|l| l.slots.iter().filter(|s| s.filled.is_some()).count())
-            .unwrap_or(0)
+    fn backup_ready(&self, cx: &App) -> bool {
+        self.analysis.is_some() && !self.name_text(cx).is_empty()
     }
 
-    fn hot_attached(&self) -> usize {
-        self.layout
-            .as_ref()
-            .map(|l| {
-                l.slots
-                    .iter()
-                    .filter(|s| s.filled.as_ref().is_some_and(|f| f.secret.is_some()))
-                    .count()
+    /// The library key matching a slot's descriptor key, on this network.
+    fn matched<'a>(&self, slot_id: &str, kc: &'a crate::keychain::Keychain) -> Option<&'a KeyRecord> {
+        let e = self.layout.as_ref()?.slot(slot_id)?.expected.as_ref()?;
+        kc.find_match(e.fingerprint.as_deref(), &e.xpub).filter(|k| k.network == self.network)
+    }
+
+    /// Slot → library key actually used (matched and not skipped).
+    fn used_keys(&self, cx: &App) -> HashMap<String, KeyRecord> {
+        let kc = keychain(cx).read(cx);
+        let Some(layout) = &self.layout else { return HashMap::new() };
+        layout
+            .slots
+            .iter()
+            .filter(|s| !self.skipped.contains(&s.id))
+            .filter_map(|s| Some((s.id.clone(), self.matched(&s.id, kc)?.clone())))
+            .collect()
+    }
+
+    fn slot_states(&self, cx: &App) -> HashMap<String, SlotState> {
+        let kc = keychain(cx).read(cx);
+        let Some(layout) = &self.layout else { return HashMap::new() };
+        layout
+            .slots
+            .iter()
+            .map(|s| {
+                let m = self.matched(&s.id, kc).map(BoardKey::from_record);
+                let state = match m {
+                    Some(k) if !self.skipped.contains(&s.id) => SlotState::Assigned(k),
+                    Some(k) => SlotState::WatchOnly { skipped: Some(k) },
+                    None => SlotState::WatchOnly { skipped: None },
+                };
+                (s.id.clone(), state)
             })
-            .unwrap_or(0)
+            .collect()
     }
 
-    fn keys_ready(&self) -> bool {
-        match &self.layout {
-            None => false,
-            Some(l) => self.route == Route::Descriptor || l.slots.iter().all(|s| s.filled.is_some()),
-        }
-    }
-
-    fn summary(&self, cx: &gpui::App) -> String {
-        match (&self.analysis, self.route) {
-            (Some(a), Route::Descriptor) => {
-                format!("{} · {}", kind_label(&a.kind), script_label(&a.script))
-            }
-            _ => policy_summary(&self.policy(cx)),
-        }
+    /// No used key can sign anywhere → create a watch-only wallet.
+    fn watch_only(&self, cx: &App) -> bool {
+        !self.used_keys(cx).values().any(|k| k.is_hot() || k.source == "hardware")
     }
 
     fn set_analysis(&mut self, a: DescriptorAnalysis, cx: &mut Context<Self>) {
@@ -217,11 +223,14 @@ impl RecoveryFlowPage {
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
+                this.reading = false;
                 match res {
-                    Ok(a) => this.set_analysis(a, cx),
+                    Ok(a) => {
+                        this.set_analysis(a, cx);
+                        this.run_dev_stage(cx);
+                    }
                     Err(e) => this.read_error = Some(e.into()),
                 }
-                this.reading = false;
                 cx.notify();
             })
             .ok();
@@ -238,6 +247,7 @@ impl RecoveryFlowPage {
                 Ok(Some(file)) => {
                     let trimmed = file.contents.trim().to_string();
                     this.descriptor.update(cx, |d, cx| d.set_text(trimmed, cx));
+                    this.file_name = Some(file.name);
                     this.analysis = None;
                     this.read_descriptor(file.contents, cx);
                 }
@@ -252,176 +262,168 @@ impl RecoveryFlowPage {
         .detach();
     }
 
-    fn source_ready(&self, cx: &gpui::App) -> bool {
-        !self.name_text(cx).is_empty()
-            && match self.route {
-                Route::Descriptor => self.analysis.is_some(),
-                Route::Policy => policy_problem(&self.policy(cx)).is_none(),
-            }
-    }
-
-    fn start_keys(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.error = None;
-        match self.route {
-            Route::Descriptor => {
-                let Some(a) = &self.analysis else {
-                    return;
-                };
-                self.layout = Some(layout_for_analysis(a));
-                self.open_editor(None, window, cx);
-            }
-            Route::Policy => {
-                let next = layout_for_policy(&self.policy(cx), self.network);
-                let first = next.slots.first().map(|s| s.id.clone());
-                self.layout = Some(next);
-                self.open_editor(first, window, cx);
-            }
+    fn continue_from_backup(&mut self, cx: &mut Context<Self>) {
+        if !self.backup_ready(cx) {
+            return;
         }
-        self.watch_only = false;
+        let Some(a) = &self.analysis else { return };
+        let next = layout_for_analysis(a);
+        if self.layout.as_ref() != Some(&next) {
+            self.layout = Some(next);
+            self.skipped.clear();
+        }
+        self.add_notice = None;
+        self.error = None;
         self.step = Step::Keys;
         cx.notify();
     }
 
-    fn open_editor(&mut self, slot_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
-        self.editor = None;
-        self._editor_sub = None;
-        let (Some(id), Some(layout)) = (slot_id, self.layout.as_ref()) else {
-            cx.notify();
-            return;
-        };
-        let Some(slot) = layout.slot(&id).cloned() else {
-            return;
-        };
-        let slots = layout.slots.clone();
-        let network = self.network.to_string();
-        let wallet_name = self.name.read(cx).text().to_string();
-        let editor =
-            cx.new(|cx| SlotEditor::new(Mode::Recover, slot, slots, network, wallet_name, window, cx));
-        self._editor_sub = Some(cx.subscribe_in(&editor, window, move |this, _, ev: &SlotEditorEvent, window, cx| {
-            match ev {
-                SlotEditorEvent::Fill(filled) => {
-                    let mut next = None;
-                    let route = this.route;
-                    if let Some(layout) = this.layout.as_mut() {
-                        if let Some(s) = layout.slot_mut(&id) {
-                            s.filled = Some(filled.clone());
-                        }
-                        if route == Route::Policy {
-                            next = layout
-                                .slots
-                                .iter()
-                                .find(|s| s.id != id && s.filled.is_none())
-                                .map(|s| s.id.clone());
-                        }
-                    }
-                    this.open_editor(next, window, cx);
+    fn continue_from_keys(&mut self, cx: &mut Context<Self>) {
+        let Some(layout) = self.layout.clone() else { return };
+        let used = self.used_keys(cx);
+        let rows = layout
+            .slots
+            .iter()
+            .map(|s| {
+                let e = s.expected.as_ref();
+                ReviewRow {
+                    slot_label: s.label.clone(),
+                    path_title: layout
+                        .paths
+                        .iter()
+                        .find(|p| p.id == s.path_id)
+                        .map(|p| p.title.clone())
+                        .unwrap_or_default(),
+                    key: used.get(&s.id).map(BoardKey::from_record),
+                    fingerprint: e.and_then(|e| e.fingerprint.clone()).unwrap_or_default(),
+                    derivation_path: e.and_then(|e| e.derivation_path.clone()).unwrap_or_default(),
                 }
-                SlotEditorEvent::Close => this.open_editor(None, window, cx),
-            }
-        }));
-        self.editor = Some(editor);
+            })
+            .collect();
+        let is_hot = |id: &str| used.get(id).is_some_and(|k| k.is_hot());
+        let hot = layout.slots.iter().filter(|s| is_hot(&s.id)).count();
+        let exposed = paths_spendable_by(&layout, |s| is_hot(&s.id)).into_iter().map(|p| p.title).collect();
+        let a = self.analysis.as_ref();
+        let data = ReviewData {
+            name: self.name_text(cx),
+            network: self.network.to_string(),
+            summary: a
+                .map(|a| format!("{} · {}", kind_label(&a.kind), script_label(&a.script)))
+                .unwrap_or_default(),
+            rows,
+            hot,
+            exposed,
+            watch_only: self.watch_only(cx),
+        };
+        self.review.update(cx, |r, cx| r.configure(data, cx));
+        self.step = Step::Review;
         cx.notify();
     }
 
-    /// Descriptor route: every slot that has origin info is sent so its
-    /// label sticks; only attached ones carry a source other than xpub.
-    fn descriptor_slots(layout: &SlotLayout) -> Vec<WireSlot> {
-        layout
-            .slots
-            .iter()
-            .filter_map(|s| {
-                if let Some(f) = &s.filled {
-                    return Some(WireSlot {
-                        label: s.label.clone(),
-                        source: f.source,
-                        key: f.key.clone(),
-                        secret: f.secret.clone(),
-                    });
-                }
-                let e = s.expected.as_ref()?;
-                let (fp, path) = (e.fingerprint.clone()?, e.derivation_path.clone()?);
-                Some(WireSlot {
-                    label: s.label.clone(),
-                    source: SlotSource::Xpub,
-                    key: SlotKey {
-                        fingerprint: fp,
-                        derivation_path: path,
-                        xpub: e.xpub.clone(),
-                    },
-                    secret: None,
-                })
-            })
-            .collect()
+    fn close_modal(&mut self, cx: &mut Context<Self>) {
+        self.adding = None;
+        self.unlock = None;
+        self._modal_sub = None;
+        cx.notify();
     }
 
-    fn submit(&mut self, cx: &mut Context<Self>) {
-        let Some(layout) = self.layout.clone() else {
+    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.submitting || !self.review.read(cx).ready(cx) {
             return;
-        };
-        let hot = self.hot_attached() > 0;
-        let passphrase = self.secure.read(cx).passphrase(cx);
+        }
+        let (Some(layout), Some(a)) = (self.layout.clone(), self.analysis.clone()) else { return };
+        let used = self.used_keys(cx);
+        let hot: Vec<(String, String)> =
+            used.iter().filter(|(_, k)| k.is_hot()).map(|(s, k)| (s.clone(), k.id.clone())).collect();
+
+        if !hot.is_empty() && !keychain(cx).read(cx).is_unlocked() {
+            let unlock = cx.new(|cx| KeychainUnlock::new("to copy the private keys into this wallet", window, cx));
+            self._modal_sub = Some(cx.subscribe_in(&unlock, window, |this, _, ev: &UnlockEvent, window, cx| {
+                this.close_modal(cx);
+                if matches!(ev, UnlockEvent::Unlocked) {
+                    this.submit(window, cx);
+                }
+            }));
+            self.unlock = Some(unlock);
+            cx.notify();
+            return;
+        }
+
         let name = self.name_text(cx);
         let network = self.network.to_string();
+        let watch_only = self.watch_only(cx);
+        let has_hot = !hot.is_empty();
+        let passphrase = self.review.read(cx).passphrase(cx);
 
-        let create = match (&self.analysis, self.route) {
-            (Some(a), Route::Descriptor) if self.watch_only && !hot => api::create_watch_only(
-                cx,
-                CreateWatchOnly {
-                    name: name.clone(),
-                    network,
-                    external_descriptor: a.external_descriptor.clone(),
-                    internal_descriptor: a.internal_descriptor.clone(),
-                    fingerprints: a.slots.iter().filter_map(|s| s.fingerprint.clone()).collect(),
-                },
-            ),
-            _ => {
-                let (policy, slots) = match (&self.analysis, self.route) {
-                    (Some(a), Route::Descriptor) => (
-                        WirePolicy::Descriptor {
-                            external_descriptor: a.external_descriptor.clone(),
-                            internal_descriptor: a.internal_descriptor.clone(),
-                        },
-                        Self::descriptor_slots(&layout),
-                    ),
-                    _ => {
-                        let slots = if self.route == Route::Descriptor {
-                            Self::descriptor_slots(&layout)
-                        } else {
-                            match to_wire_slots(&layout.slots) {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    self.error = Some(e.into());
-                                    cx.notify();
-                                    return;
-                                }
-                            }
-                        };
-                        (to_wire_policy(&self.policy(cx), &layout), slots)
-                    }
-                };
-                api::create_from_slots(
-                    cx,
-                    CreateFromSlots {
-                        name: name.clone(),
-                        network,
-                        policy,
-                        slots,
-                        encrypt_passphrase: hot.then(|| passphrase.clone()),
-                    },
-                )
-            }
-        };
+        // Every slot with origin info is sent so its label sticks; the key
+        // is the descriptor's own, the source and secret come from the
+        // matched library key.
+        let mut index = HashMap::new();
+        let mut slots = Vec::new();
+        for s in &layout.slots {
+            let Some(e) = s.expected.as_ref() else { continue };
+            let (Some(fp), Some(path)) = (e.fingerprint.clone(), e.derivation_path.clone()) else { continue };
+            let k = used.get(&s.id);
+            index.insert(s.id.clone(), slots.len());
+            slots.push(WireSlot {
+                label: k.map(|k| k.label.clone()).unwrap_or_else(|| s.label.clone()),
+                source: k
+                    .and_then(|k| SlotSource::from_key_source(&k.source))
+                    .unwrap_or(SlotSource::Xpub),
+                key: SlotKey { fingerprint: fp, derivation_path: path, xpub: e.xpub.clone() },
+                secret: None,
+            });
+        }
 
         self.submitting = true;
         self.error = None;
-        self.secure.update(cx, |s, cx| s.set_submitting(true, cx));
+        self.review.update(cx, |r, cx| r.set_submitting(true, cx));
         cx.notify();
+
+        let secrets = fetch_secrets(cx, hot);
         let multi_key = layout.slots.len() > 1;
         cx.spawn(async move |this, cx| {
             let res: Result<String, String> = async {
+                let create = if watch_only {
+                    cx.update(|cx| {
+                        api::create_watch_only(
+                            cx,
+                            CreateWatchOnly {
+                                name: name.clone(),
+                                network,
+                                external_descriptor: a.external_descriptor.clone(),
+                                internal_descriptor: a.internal_descriptor.clone(),
+                                fingerprints: a.slots.iter().filter_map(|s| s.fingerprint.clone()).collect(),
+                            },
+                        )
+                    })
+                    .map_err(|e| e.to_string())?
+                } else {
+                    for (slot, secret) in secrets.await? {
+                        if let Some(i) = index.get(&slot) {
+                            slots[*i].secret = Some(secret);
+                        }
+                    }
+                    cx.update(|cx| {
+                        api::create_from_slots(
+                            cx,
+                            CreateFromSlots {
+                                name: name.clone(),
+                                network,
+                                policy: WirePolicy::Descriptor {
+                                    external_descriptor: a.external_descriptor.clone(),
+                                    internal_descriptor: a.internal_descriptor.clone(),
+                                },
+                                slots,
+                                encrypt_passphrase: has_hot.then(|| passphrase.clone()),
+                            },
+                        )
+                    })
+                    .map_err(|e| e.to_string())?
+                };
                 let id = create.await?;
                 let unlock = cx
-                    .update(|cx| api::unlock_wallet(cx, id.clone(), if hot { passphrase } else { String::new() }))
+                    .update(|cx| api::unlock_wallet(cx, id.clone(), if has_hot { passphrase } else { String::new() }))
                     .map_err(|e| e.to_string())?;
                 unlock.await?;
                 Ok(id)
@@ -429,14 +431,12 @@ impl RecoveryFlowPage {
             .await;
             this.update(cx, |this, cx| {
                 this.submitting = false;
-                this.secure.update(cx, |s, cx| s.set_submitting(false, cx));
+                this.review.update(cx, |r, cx| r.set_submitting(false, cx));
                 match res {
                     Ok(id) => {
-                        let done = cx.new(|_| DoneStep::new("Wallet recovered.", id.clone(), name, multi_key));
-                        this._subs.push(cx.subscribe(&done, move |_, _, ev: &DoneEvent, cx| match ev {
-                            DoneEvent::Open => navigate(Page::LocalWallet(id.clone()), cx),
-                        }));
-                        this.done = Some(done);
+                        crate::state::local_changed(cx);
+                        let done = cx.new(|_| DoneStep::new("Wallet restored", id.clone(), name, multi_key));
+                        this.done = Some((id, done));
                         this.step = Step::Done;
                     }
                     Err(e) => this.error = Some(e.into()),
@@ -448,367 +448,401 @@ impl RecoveryFlowPage {
         .detach();
     }
 
+    fn run_dev_stage(&mut self, cx: &mut Context<Self>) {
+        let Some(stage) = self.dev_stage.take() else { return };
+        if self.name_text(cx).is_empty() {
+            self.name.update(cx, |n, cx| n.set_text("Family vault".to_string(), cx));
+        }
+        self.continue_from_backup(cx);
+        if stage == "review" {
+            self.continue_from_keys(cx);
+        }
+    }
+
+    // ── rendering ──
+
     fn render_analysis(&self, a: &DescriptorAnalysis) -> impl IntoElement {
         let t = theme();
         let n = a.slots.len();
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .rounded_md()
-            .border_1()
-            .border_color(alpha(t.success, 0.4))
-            .bg(alpha(t.success, 0.04))
-            .p_4()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(t.foreground)
-                            .child(kind_label(&a.kind)),
-                    )
-                    .child(badge(script_label(&a.script), Tone::Outline))
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .child(format!("{n} key{} detected", if n == 1 { "" } else { "s" })),
-                    ),
-            )
-            .child(div().flex().flex_col().gap_2().children(a.paths.iter().map(|p| {
+        let mut rows: Vec<AnyElement> = Vec::new();
+        rows.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .px_4()
+                .h(px(44.))
+                .child(icon("circle-check").size(px(15.)).text_color(t.success))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(t.foreground)
+                        .child(kind_label(&a.kind)),
+                )
+                .child(badge(script_label(&a.script), Tone::Outline))
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(format!("{n} key{}", if n == 1 { "" } else { "s" })),
+                )
+                .into_any_element(),
+        );
+        for p in &a.paths {
+            rows.push(divider().into_any_element());
+            rows.push(
                 div()
                     .flex()
                     .flex_col()
-                    .text_size(px(12.))
+                    .gap(px(2.))
+                    .px_4()
+                    .py_2()
                     .child(
                         div()
                             .flex()
                             .flex_row()
                             .gap_1()
+                            .text_size(px(13.))
                             .text_color(t.foreground)
                             .child(p.label.clone())
                             .children(p.timelock_blocks.map(|b| {
-                                div().text_color(t.muted_foreground).child(format!(
-                                    "· {} blocks ({})",
-                                    format_thousands(b),
-                                    describe_timelock(b)
-                                ))
+                                div().text_color(t.muted_foreground).child(format!("· after {}", describe_timelock(b)))
                             })),
                     )
-                    .child(
-                        div()
-                            .mt(px(2.))
-                            .flex()
-                            .flex_row()
-                            .flex_wrap()
-                            .gap_x_3()
-                            .gap_y(px(2.))
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .children(p.slot_ids.iter().filter_map(|id| {
-                                let s = a.slots.iter().find(|s| &s.id == id)?;
-                                Some(
-                                    div()
-                                        .flex()
-                                        .flex_row()
-                                        .gap_1()
-                                        .child(match &s.fingerprint {
-                                            Some(fp) => fingerprint(fp).into_any_element(),
-                                            None => "no origin".into_any_element(),
-                                        })
-                                        .children(s.derivation_path.clone().map(|dp| {
-                                            div().font_family(FONT_MONO).child(dp)
-                                        })),
-                                )
-                            })),
-                    )
-            })))
-            .children(a.warnings.iter().map(|w| alert_text(AlertTone::Warning, w.clone())))
-    }
-
-    fn render_source_step(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let ready = self.source_ready(cx);
-        let route = self.route;
-        let this = cx.entity().downgrade();
-        let has_text = !self.descriptor.read(cx).text().trim().is_empty();
-
-        let routes = [
-            (
-                Route::Descriptor,
-                "route-descriptor",
-                "I have the descriptor",
-                "Paste it or open a wallet backup file. Needed for any multi-key wallet.",
-            ),
-            (
-                Route::Policy,
-                "route-policy",
-                "I only have keys",
-                "Pick the policy and add each key. Typical for a single-key seed.",
-            ),
-        ];
-
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(28.))
-            .child(div().flex().flex_row().gap_2().children(routes.into_iter().map(|(r, id, title, hint)| {
-                option_card(id, route == r)
-                    .flex_1()
-                    .flex_basis(px(0.))
-                    .min_w_0()
-                    .p_3()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.route = r;
-                        cx.notify();
-                    }))
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .mt_1()
-                            .text_size(px(11.))
-                            .line_height(px(17.))
-                            .text_color(t.muted_foreground)
-                            .child(hint),
-                    )
-            })))
-            .child(network_picker(self.network, move |id, _, cx| {
-                this.update(cx, |this, cx| {
-                    this.network = id;
-                    this.analysis = None;
-                    cx.notify();
-                })
-                .ok();
-            }))
-            .child(match route {
-                Route::Descriptor => div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_end()
-                            .justify_between()
-                            .gap_3()
-                            .child(div().flex_1().min_w_0().child(field_label(
-                                "Descriptor",
-                                Some("A multipath descriptor (…/<0;1>/*), a receive + change pair on separate lines, or a SigVault wallet backup.".into()),
-                            )))
-                            .child(
-                                secondary_button("open-file", "Open file…")
-                                    .small()
-                                    .on_click(cx.listener(|this, _, _, cx| this.open_file(cx))),
-                            ),
-                    )
-                    .child(self.descriptor.clone())
-                    .when(self.analysis.is_none(), |d| {
-                        d.child(
-                            secondary_button("read-descriptor", if self.reading { "Reading…" } else { "Read descriptor" })
-                                .full_width()
-                                .disabled(!has_text || self.reading)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    let text = this.descriptor.read(cx).text().to_string();
-                                    this.read_descriptor(text, cx);
-                                })),
-                        )
-                    })
-                    .children(self.read_error.clone().map(|e| alert_text(AlertTone::Error, e)))
-                    .children(self.analysis.as_ref().map(|a| self.render_analysis(a)))
-                    .into_any_element(),
-                Route::Policy => div()
-                    .flex()
-                    .flex_col()
-                    .child(field_label(
-                        "Spending policy",
-                        Some("Choose the setup the wallet was created with. Default derivation paths apply; you can change a slot's path when adding its key.".into()),
-                    ))
-                    .child(div().mt_3().child(self.picker.clone()))
-                    .into_any_element(),
-            })
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(field_label("Wallet name", None))
-                    .child(self.name.clone()),
-            )
-            .child(
-                primary_button(
-                    "source-next",
-                    if route == Route::Descriptor { "Continue to keys" } else { "Add keys" },
-                )
-                .full_width()
-                .icon_right("arrow-right")
-                .disabled(!ready)
-                .on_click(cx.listener(|this, _, w, cx| {
-                    if this.source_ready(cx) {
-                        this.start_keys(w, cx);
-                    }
-                })),
-            )
-    }
-
-    fn render_keys_step(&self, layout: &SlotLayout, cx: &mut Context<Self>) -> impl IntoElement {
-        let route = self.route;
-        let attached = self.attached();
-        let hot_attached = self.hot_attached();
-        let keys_ready = self.keys_ready();
-        let missing = layout.slots.iter().filter(|s| s.filled.is_none()).count();
-        let this = cx.entity().downgrade();
-
-        div()
-            .flex()
-            .flex_col()
-            .gap_6()
-            .child(alert_text(
-                AlertTone::Info,
-                if route == Route::Descriptor {
-                    "Attach private keys for the slots you hold. Each one is checked against the descriptor. Slots you skip stay watch-only and can still sign later with a hardware wallet or an exported PSBT."
-                } else {
-                    "Add every key the wallet used. Seeds and key files give you signing keys here; hardware wallets and pasted public keys sign elsewhere."
-                },
-            ))
-            .child(slot_board(layout, self.editor.as_ref(), cx))
-            .when(route == Route::Descriptor && hot_attached == 0, |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .child(field_label(
-                            "How will this wallet be used?",
-                            Some(
-                                if attached == 0 { "No private keys attached." } else { "Only hardware keys attached." }
-                                    .into(),
-                            ),
+                    .child(div().flex().flex_row().flex_wrap().gap_x_4().children(p.slot_ids.iter().filter_map(|id| {
+                        let s = a.slots.iter().find(|s| &s.id == id)?;
+                        Some(meta_line(
+                            s.fingerprint.as_deref().unwrap_or(""),
+                            s.derivation_path.as_deref().unwrap_or(""),
                         ))
-                        .child(segmented(
-                            "usage",
-                            if self.watch_only { "watch" } else { "spend" },
-                            vec![seg("spend", "Spend with hardware / PSBT"), seg("watch", "Watch only")],
-                            false,
-                            move |v, _, cx| {
-                                this.update(cx, |this, cx| {
-                                    this.watch_only = v.as_ref() == "watch";
-                                    cx.notify();
-                                })
-                                .ok();
-                            },
-                        )),
-                )
-            })
+                    })))
+                    .into_any_element(),
+            );
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(card().children(rows))
+            .children(a.warnings.iter().map(|w| alert(Tone::Warning, w.clone())))
+    }
+
+    fn render_backup_step(&self, cx: &mut Context<Self>) -> AnyElement {
+        let t = theme();
+        let has_text = !self.descriptor.read(cx).text().trim().is_empty();
+        let this = cx.entity().downgrade();
+
+        let keys_only = card()
+            .px_4()
+            .py_4()
+            .gap_3()
             .child(
                 div()
                     .flex()
                     .flex_row()
-                    .items_center()
+                    .items_start()
                     .gap_3()
-                    .child(secondary_button("keys-back", "← Back").on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.step = Step::Source;
-                            cx.notify();
-                        },
-                    )))
+                    .child(icon("key").size(px(16.)).mt(px(1.)))
                     .child(
-                        div().flex_1().child(
-                            primary_button(
-                                "keys-continue",
-                                if keys_ready { "Continue".to_string() } else { format!("{missing} key(s) to go") },
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(t.foreground)
+                                    .child("Only have a recovery phrase or keys?"),
                             )
-                            .full_width()
-                            .when(keys_ready, |b| b.icon_right("arrow-right"))
-                            .disabled(!keys_ready)
-                            .on_click(cx.listener(|this, _, w, cx| {
-                                this.open_editor(None, w, cx);
-                                let Some(layout) = this.layout.clone() else {
-                                    return;
-                                };
-                                let summary = this.summary(cx);
-                                let name = this.name_text(cx);
-                                let network = this.network.to_string();
-                                this.secure.update(cx, |s, cx| s.configure(layout, summary, name, network, cx));
-                                this.step = Step::Secure;
-                                cx.notify();
-                            })),
-                        ),
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .line_height(px(19.))
+                                    .text_color(t.muted_foreground)
+                                    .child("Restoring keys means importing them into your Key library: add each one there (recovery phrase, key file, extended key, hardware wallet or xpub), then create the wallet again with New wallet using the same policy. For a single-key wallet that's all you need. A multi-key wallet also needs its descriptor, so use the backup file if anyone has a copy."),
+                            ),
                     ),
             )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_2()
+                    .pl(px(28.))
+                    .child(
+                        button("goto-add-key", "Add key to library")
+                            .outline()
+                            .small()
+                            .icon("plus")
+                            .on_click(|_, _, cx| navigate(Page::LocalKeyAdd, cx)),
+                    )
+                    .child(
+                        button("goto-new-wallet", "New wallet")
+                            .ghost()
+                            .small()
+                            .icon_right("arrow-right")
+                            .on_click(|_, _, cx| navigate(Page::LocalWalletNew, cx)),
+                    ),
+            );
+
+        div()
+            .max_w(FORM_WIDTH)
+            .flex()
+            .flex_col()
+            .gap_6()
+            .child(field(
+                "Network",
+                network_options(self.network, move |id, _, cx| {
+                    this.update(cx, |this, cx| {
+                        if this.network != id {
+                            this.network = id;
+                            this.analysis = None;
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                }),
+                None,
+            ))
+            .child(
+                section("Wallet backup")
+                    .description("Open the .wallet-backup.json saved when the wallet was created, or paste its descriptor.")
+                    .action(
+                        button("open-file", "Open file…")
+                            .outline()
+                            .small()
+                            .icon("file")
+                            .on_click(cx.listener(|this, _, _, cx| this.open_file(cx))),
+                    )
+                    .child(self.descriptor.clone())
+                    .children(self.file_name.clone().map(|f| {
+                        div()
+                            .font_family(FONT_MONO)
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(f)
+                    }))
+                    .when(self.analysis.is_none(), |d| {
+                        d.child(
+                            div().child(
+                                button("read-descriptor", "Read backup")
+                                    .outline()
+                                    .loading(self.reading)
+                                    .disabled(!has_text || self.reading)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let text = this.descriptor.read(cx).text().to_string();
+                                        this.read_descriptor(text, cx);
+                                    })),
+                            ),
+                        )
+                    })
+                    .children(self.read_error.clone().map(|e| alert(Tone::Destructive, e)))
+                    .children(self.analysis.as_ref().map(|a| self.render_analysis(a))),
+            )
+            .when(self.analysis.is_some(), |d| d.child(field("Wallet name", self.name.clone(), None)))
+            .child(keys_only)
+            .into_any_element()
+    }
+
+    fn render_keys_step(&self, layout: &SlotLayout, cx: &mut Context<Self>) -> AnyElement {
+        let states = self.slot_states(cx);
+        let total = layout.slots.len();
+        let found = states.values().filter(|s| !matches!(s, SlotState::WatchOnly { skipped: None })).count();
+        let net = network_label(self.network);
+        let summary = if found == total {
+            (Tone::Success, format!("All {total} key{} found in your key library.", if total == 1 { "" } else { "s" }))
+        } else if found == 0 {
+            (
+                Tone::Secondary,
+                format!("None of this wallet's keys are in your {net} key library. Add the ones you hold, or continue to restore it watch-only."),
+            )
+        } else {
+            (
+                Tone::Secondary,
+                format!("{found} of {total} keys found in your key library. Add the others you hold, or leave them watch-only: they can still sign elsewhere (hardware wallet or another key holder)."),
+            )
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_6()
+            .child(alert(summary.0, summary.1))
+            .children(self.add_notice.clone().map(|(tone, msg)| alert(tone, msg)))
+            .child(slot_board(layout, &states, BoardMode::Restore, cx))
+            .into_any_element()
+    }
+
+    fn render_modal(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let dismiss = cx.listener(|this, _, _, cx| this.close_modal(cx));
+        if let Some(u) = &self.unlock {
+            return Some(modal("keychain-unlock", 420.).on_dismiss(dismiss).child(u.clone()).into_any_element());
+        }
+        let (_, flow) = self.adding.as_ref()?;
+        Some(modal("add-key", 640.).on_dismiss(dismiss).child(flow.clone()).into_any_element())
+    }
+
+    fn render_footer(&self, cx: &mut Context<Self>) -> AnyElement {
+        let back = |step: Step| {
+            button("wizard-back", "Back")
+                .outline()
+                .icon("arrow-left")
+                .disabled(self.submitting)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.step = step;
+                    this.error = None;
+                    cx.notify();
+                }))
+                .into_any_element()
+        };
+        let cancel = button("wizard-cancel", "Cancel")
+            .ghost()
+            .disabled(self.submitting)
+            .on_click(|_, _, cx| navigate(Page::LocalWallets, cx))
+            .into_any_element();
+        let (left, right) = match self.step {
+            Step::Backup => (
+                vec![],
+                vec![
+                    cancel,
+                    button("wizard-continue", "Continue")
+                        .icon_right("arrow-right")
+                        .disabled(!self.backup_ready(cx))
+                        .on_click(cx.listener(|this, _, _, cx| this.continue_from_backup(cx)))
+                        .into_any_element(),
+                ],
+            ),
+            Step::Keys => (
+                vec![back(Step::Backup)],
+                vec![
+                    cancel,
+                    button("wizard-continue", "Continue")
+                        .icon_right("arrow-right")
+                        .on_click(cx.listener(|this, _, _, cx| this.continue_from_keys(cx)))
+                        .into_any_element(),
+                ],
+            ),
+            Step::Review => (
+                vec![back(Step::Keys)],
+                vec![
+                    cancel,
+                    button("wizard-create", "Restore wallet")
+                        .loading(self.submitting)
+                        .disabled(!self.review.read(cx).ready(cx))
+                        .on_click(cx.listener(|this, _, w, cx| this.submit(w, cx)))
+                        .into_any_element(),
+                ],
+            ),
+            Step::Done => {
+                let id = self.done.as_ref().map(|(id, _)| id.clone()).unwrap_or_default();
+                (
+                    vec![button("wizard-all-wallets", "All wallets")
+                        .ghost()
+                        .on_click(|_, _, cx| navigate(Page::LocalWallets, cx))
+                        .into_any_element()],
+                    vec![button("wizard-open", "Open wallet")
+                        .icon_right("arrow-right")
+                        .on_click(move |_, _, cx| navigate(Page::LocalWallet(id.clone()), cx))
+                        .into_any_element()],
+                )
+            }
+        };
+        footer_bar(left, right).into_any_element()
     }
 }
 
 impl SlotBoardHost for RecoveryFlowPage {
-    fn edit_slot(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_editor(Some(slot_id), window, cx);
+    fn pick_key(&mut self, slot_id: String, _window: &mut Window, cx: &mut Context<Self>) {
+        self.skipped.remove(&slot_id);
+        cx.notify();
     }
 
     fn clear_slot(&mut self, slot_id: String, _window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(s) = self.layout.as_mut().and_then(|l| l.slot_mut(&slot_id)) {
-            s.filled = None;
-        }
+        self.skipped.insert(slot_id);
+        cx.notify();
+    }
+
+    fn add_key(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>) {
+        let network = self.network.to_string();
+        let flow = cx.new(|cx| AddKeyFlow::new(Some(network), window, cx));
+        let sid = slot_id.clone();
+        self._modal_sub = Some(cx.subscribe(&flow, move |this, _, ev: &AddKeyEvent, cx| {
+            if let AddKeyEvent::Added(id) = ev {
+                let slot_label = this.layout.as_ref().and_then(|l| l.slot(&sid)).map(|s| s.label.clone());
+                let kc = keychain(cx).read(cx);
+                let added = kc.get(id).map(|k| k.label.clone()).unwrap_or_default();
+                let fits = this.matched(&sid, kc).is_some_and(|k| &k.id == id);
+                this.skipped.remove(&sid);
+                this.add_notice = Some(if fits {
+                    (Tone::Success, format!("“{added}” matches {}.", slot_label.unwrap_or_default()).into())
+                } else {
+                    let fp = this
+                        .layout
+                        .as_ref()
+                        .and_then(|l| l.slot(&sid))
+                        .and_then(|s| s.expected.as_ref())
+                        .and_then(|e| e.fingerprint.clone())
+                        .unwrap_or_else(|| "?".into());
+                    (
+                        Tone::Warning,
+                        format!(
+                            "“{added}” was added to your library, but it isn't the key {} needs (fingerprint {fp}, same derivation path). Check the recovery phrase, passphrase and path.",
+                            slot_label.unwrap_or_default()
+                        )
+                        .into(),
+                    )
+                });
+            }
+            this.close_modal(cx);
+        }));
+        self.adding = Some((slot_id, flow));
         cx.notify();
     }
 }
 
 impl Render for RecoveryFlowPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let name = self.name_text(cx);
-        let title = if self.step == Step::Source || name.is_empty() {
-            "Restore a wallet".to_string()
-        } else {
-            name
-        };
         let current = match self.step {
-            Step::Source => 0,
+            Step::Backup => 0,
             Step::Keys => 1,
-            Step::Secure => 2,
+            Step::Review => 2,
             Step::Done => 3,
         };
-        let body = match self.step {
-            Step::Source => Some(self.render_source_step(cx).into_any_element()),
-            Step::Keys => self
-                .layout
-                .clone()
-                .map(|l| self.render_keys_step(&l, cx).into_any_element()),
-            Step::Secure => self.layout.as_ref().map(|_| self.secure.clone().into_any_element()),
-            Step::Done => self.done.clone().map(|d| d.into_any_element()),
+        let name = self.name_text(cx);
+        let title = if self.step == Step::Backup || name.is_empty() { "Restore wallet".to_string() } else { name };
+        let subtitle = match self.step {
+            Step::Backup => "Bring back a wallet from its backup file or descriptor.",
+            Step::Keys => "Keys are matched against your key library.",
+            Step::Review => "Check the setup, then restore the wallet.",
+            Step::Done => "The wallet is ready.",
         };
+        let body = match self.step {
+            Step::Backup => Some(self.render_backup_step(cx)),
+            Step::Keys => self.layout.clone().map(|l| self.render_keys_step(&l, cx)),
+            Step::Review => Some(self.review.clone().into_any_element()),
+            Step::Done => self.done.as_ref().map(|(_, d)| d.clone().into_any_element()),
+        };
+        let footer = self.render_footer(cx);
 
-        div().size_full().child(
-            div().id("recover-wallet-scroll").size_full().overflow_y_scroll().child(
-                div().w_full().flex().flex_col().items_center().child(
-                    div()
-                        .w_full()
-                        .max_w(px(640.))
-                        .px_6()
-                        .py_10()
-                        .flex()
-                        .flex_col()
-                        .child(step_header(
-                            "Recover wallet",
-                            title,
-                            &STEP_LABELS,
-                            current,
-                            |_, _, cx| navigate(Page::LocalWallets, cx),
-                        ))
-                        .children(self.error.clone().map(|e| alert_text(AlertTone::Error, e).mt_6()))
-                        .child(div().mt_8().children(body)),
-                ),
-            ),
-        )
+        div()
+            .size_full()
+            .relative()
+            .child(
+                page_frame("restore-wallet")
+                    .crumb("Wallets", Some(Page::LocalWallets))
+                    .crumb("Restore wallet", None)
+                    .title(title)
+                    .subtitle(subtitle)
+                    .header_extra(stepper(&STEP_LABELS, current))
+                    .footer(footer)
+                    .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
+                    .children(body),
+            )
+            .children(self.render_modal(cx))
     }
 }

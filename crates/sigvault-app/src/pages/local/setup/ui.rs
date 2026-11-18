@@ -1,8 +1,10 @@
 //! `setup/ui.tsx` — small presentational pieces shared by the create and
 //! recover wizards.
+// A shared kit: some helpers are only used by the key-source flows.
+#![allow(dead_code)]
 
 use gpui::{
-    div, prelude::*, px, AnyElement, App, ClickEvent, Div, ElementId, FontWeight, SharedString,
+    div, prelude::*, px, AnyElement, App, Div, ElementId, FontWeight, SharedString,
     Stateful, Window,
 };
 
@@ -11,9 +13,9 @@ use crate::ui::{button, Button};
 
 /// Mirrors `constants/networks.ts` (mainnet intentionally absent).
 pub const SUPPORTED_NETWORKS: [(&str, &str, &str); 3] = [
-    ("regtest", "Regtest", "Local dev / integration"),
+    ("regtest", "Regtest", "Local testing"),
     ("signet", "Signet", "Public test network"),
-    ("testnet4", "Testnet 4", "Newer public testnet"),
+    ("testnet4", "Testnet 4", "Public testnet"),
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -85,7 +87,7 @@ pub fn field_label(text: impl Into<SharedString>, hint: Option<SharedString>) ->
         .children(hint.map(|h| {
             div()
                 .mt_1()
-                .text_size(px(11.))
+                .text_size(px(12.))
                 .line_height(px(17.))
                 .text_color(t.muted_foreground)
                 .child(h)
@@ -140,7 +142,7 @@ pub fn segmented(
                 .font_weight(FontWeight::MEDIUM)
                 .map(|d| {
                     if small {
-                        d.px(px(10.)).py(px(4.)).text_size(px(11.))
+                        d.px(px(10.)).py(px(4.)).text_size(px(12.))
                     } else {
                         d.h(px(32.)).flex_1().text_size(px(12.))
                     }
@@ -167,65 +169,6 @@ pub fn secondary_button(id: impl Into<ElementId>, label: impl Into<SharedString>
     button(id, label).outline().large()
 }
 
-/// `<StepHeader>` — "Eyebrow · Step n of N · Label" + Cancel + title.
-pub fn step_header(
-    eyebrow: &str,
-    title: impl Into<SharedString>,
-    steps: &[&str],
-    current: usize,
-    on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> Div {
-    let t = theme();
-    let dot = || div().mx(px(6.)).text_color(alpha(t.muted_foreground, 0.5)).child("·");
-    div()
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .text_size(px(11.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(t.muted_foreground)
-                        .child(eyebrow.to_string())
-                        .child(dot())
-                        .child(format!("Step {} of {}", current + 1, steps.len()))
-                        .child(dot())
-                        .child(
-                            div()
-                                .text_color(t.foreground)
-                                .child(steps.get(current).copied().unwrap_or("").to_string()),
-                        ),
-                )
-                .child(
-                    div()
-                        .id("wizard-cancel")
-                        .text_size(px(12.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(t.muted_foreground)
-                        .cursor_pointer()
-                        .hover(move |s| s.text_color(t.foreground))
-                        .on_click(on_cancel)
-                        .child("Cancel"),
-                ),
-        )
-        .child(
-            div()
-                .mt_3()
-                .text_size(px(22.))
-                .line_height(px(28.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(t.foreground)
-                .child(title.into()),
-        )
-}
-
 /// Bordered option card used by the network / preset / method grids.
 pub fn option_card(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
     let t = theme();
@@ -247,50 +190,57 @@ pub fn network_picker(
     value: &str,
     on_change: impl Fn(&'static str, &mut Window, &mut App) + Clone + 'static,
 ) -> Div {
-    let t = theme();
     div()
         .flex()
         .flex_col()
         .child(field_label("Network", None))
-        .child(
-            div()
-                .mt_2()
-                .flex()
-                .flex_row()
-                .gap_2()
-                .children(SUPPORTED_NETWORKS.iter().map(|(id, label, hint)| {
-                    let handler = on_change.clone();
-                    let id: &'static str = id;
-                    option_card(SharedString::from(format!("net-{id}")), value == id)
-                        .flex_1()
-                        .flex_basis(px(0.))
-                        .min_w_0()
-                        .px_3()
-                        .py(px(10.))
-                        .on_click(move |_, w, cx| handler(id, w, cx))
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(t.foreground)
-                                .child(*label),
-                        )
-                        .child(
-                            div()
-                                .mt(px(2.))
-                                .text_size(px(11.))
-                                .text_color(t.muted_foreground)
-                                .child(*hint),
-                        )
-                })),
-        )
+        .child(network_options(value, on_change).mt_2())
+}
+
+/// The network option cards without a label (wrap in `crate::ui::field`).
+pub fn network_options(
+    value: &str,
+    on_change: impl Fn(&'static str, &mut Window, &mut App) + Clone + 'static,
+) -> Div {
+    let t = theme();
+    div()
+        .flex()
+        .flex_row()
+        .gap_2()
+        .children(SUPPORTED_NETWORKS.iter().map(|(id, label, hint)| {
+            let handler = on_change.clone();
+            let id: &'static str = id;
+            option_card(SharedString::from(format!("net-{id}")), value == id)
+                .flex_1()
+                .flex_basis(px(0.))
+                .min_w_0()
+                .px_3()
+                .py(px(10.))
+                .on_click(move |_, w, cx| handler(id, w, cx))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(t.foreground)
+                        .child(*label),
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .truncate()
+                        .mt(px(2.))
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(*hint),
+                )
+        }))
 }
 
 /// `<Fingerprint>` — lower-cased mono.
 pub fn fingerprint(value: &str) -> Div {
     div()
         .font_family(FONT_MONO)
-        .text_size(px(11.))
+        .text_size(px(12.))
         .text_color(theme().foreground)
         .child(value.to_lowercase())
 }
@@ -309,7 +259,7 @@ pub fn truncate_middle(s: &str, head: usize, tail: usize) -> String {
 /// Small destructive inline message (`text-[11px] text-destructive`).
 pub fn error_line(text: impl Into<SharedString>) -> Div {
     div()
-        .text_size(px(11.))
+        .text_size(px(12.))
         .text_color(theme().destructive)
         .child(text.into())
 }
@@ -318,7 +268,7 @@ pub fn error_line(text: impl Into<SharedString>) -> Div {
 pub fn hint_text(text: impl Into<SharedString>) -> Div {
     let t = theme();
     div()
-        .text_size(px(11.))
+        .text_size(px(12.))
         .line_height(px(17.))
         .text_color(t.muted_foreground)
         .child(text.into())

@@ -291,7 +291,7 @@ impl DevicePicker {
                         "Firmware",
                         div()
                             .font_family(FONT_MONO)
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .text_color(t.foreground)
                             .child(v.clone())
                             .into_any_element(),
@@ -385,10 +385,10 @@ impl DevicePicker {
                 div()
                     .flex()
                     .flex_col()
-                    .gap_4()
-                    .py_5()
-                    .pl_6()
-                    .pr_5()
+                    .gap_3()
+                    .py_4()
+                    .pl_5()
+                    .pr_4()
                     .child(
                         div()
                             .flex()
@@ -428,7 +428,7 @@ impl DevicePicker {
                                                     .child(dot(dot_color))
                                                     .child(
                                                         div()
-                                                            .text_size(px(15.))
+                                                            .text_size(px(13.))
                                                             .font_weight(FontWeight::SEMIBOLD)
                                                             .text_color(t.foreground)
                                                             .child(device.model.clone()),
@@ -494,7 +494,7 @@ impl DevicePicker {
                                     .mt_2()
                                     .flex()
                                     .justify_center()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .text_color(t.muted_foreground)
                                     .child("Confirm on device display"),
                             )
@@ -528,12 +528,12 @@ impl Render for DevicePicker {
         div()
             .flex()
             .flex_col()
-            .gap_6()
+            .gap_4()
             .rounded_lg()
             .border_1()
             .border_color(t.border)
             .bg(t.card)
-            .p_6()
+            .p_5()
             .child(
                 div()
                     .flex()
@@ -548,7 +548,7 @@ impl Render for DevicePicker {
                             .min_w_0()
                             .child(
                                 div()
-                                    .text_size(px(15.))
+                                    .text_size(px(13.))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(t.foreground)
                                     .child("Hardware wallet"),
@@ -563,6 +563,9 @@ impl Render for DevicePicker {
                     )
                     .child(
                         button("discover", if self.discovering { "Scanning…" } else { "Discover devices" })
+                            .outline()
+                            .small()
+                            .icon("usb")
                             .loading(self.discovering)
                             .on_click(cx.listener(|this, _, _, cx| this.discover(cx))),
                     ),
@@ -575,7 +578,6 @@ impl Render for DevicePicker {
                             "extract",
                             if self.extracting { "Extracting device info…" } else { "Continue with selected device" },
                         )
-                        .large()
                         .full_width()
                         .loading(self.extracting)
                         .on_click(cx.listener(|this, _, _, cx| this.extract_info(cx))),

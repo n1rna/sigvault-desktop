@@ -26,7 +26,6 @@ pub struct LocalSyncState {
     /// `connecting` | `fetching_history` | `persisting` | `complete`.
     pub phase: Option<String>,
     pub percent: u32,
-    pub message: String,
     /// Cleared when a fresh sync starts.
     #[allow(dead_code)]
     pub error: Option<String>,
@@ -38,7 +37,6 @@ impl LocalSyncState {
             status: LocalSyncStatus::Idle,
             phase: None,
             percent: 0,
-            message: String::new(),
             error: None,
         }
     }
@@ -52,7 +50,6 @@ impl LocalSyncState {
             },
             phase: Some(p.phase.clone()),
             percent: p.percent,
-            message: p.message.clone(),
             error: None,
         }
     }

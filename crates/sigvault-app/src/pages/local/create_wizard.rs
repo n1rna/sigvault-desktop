@@ -1,47 +1,51 @@
-//! `pages/local/CreateWalletWizard.tsx` — wallet creation wizard.
+//! New wallet wizard. Wallets are built from keys in the key library
+//! (`crate::keychain`), so creating keys and creating wallets are separate:
 //!
 //!   1. Policy — name, network, and the spending policy (single key,
 //!      multisig, timelocked recovery, or a custom shape).
-//!   2. Keys   — one slot per key the policy needs. Each slot is filled
-//!      by generating a key here (with a confirmed backup), reading a
-//!      hardware wallet, typing a seed, opening a key file, or pasting
-//!      a key.
-//!   3. Secure — wallet passphrase for any keys stored on this computer,
-//!      plus a review.
+//!   2. Keys   — one slot per key the policy needs; each is filled with a
+//!      library key through the key picker (which can also add a new key).
+//!   3. Review — summary, slot → key mapping, and a wallet passphrase when
+//!      any chosen key has its private key on this computer (the wallet
+//!      encrypts its own copy of those secrets).
 //!   4. Done   — prompt to save the wallet backup (descriptor + key info).
 //!
 //! Everything is persisted in one `cmd_local_create_from_slots` call; the
 //! backend re-derives every private key and checks it against its slot.
 
-use gpui::{div, prelude::*, px, Context, Entity, FontWeight, SharedString, Subscription, Window};
+use std::collections::{HashMap, HashSet};
 
-use super::setup::api::{self, CreateFromSlots};
-use super::setup::finish::{DoneEvent, DoneStep, SecureEvent, SecureStep};
+use gpui::{div, prelude::*, AnyElement, App, Context, Entity, SharedString, Subscription, Window};
+
+use super::key_picker::{fetch_secrets, key_identity, KeyPicker, KeyPickerEvent};
+use super::keys::unlock::{KeychainUnlock, UnlockEvent};
+use super::setup::api::{self, CreateFromSlots, SlotKey, SlotSource, WireSlot};
+use super::setup::finish::{network_label, DoneStep, ReviewData, ReviewEvent, ReviewRow, ReviewStep};
 use super::setup::policy::{
-    layout_for_policy, policy_problem, policy_summary, to_wire_policy, to_wire_slots, PolicyDraft,
-    SlotLayout,
+    layout_for_policy, paths_spendable_by, policy_problem, policy_summary, to_wire_policy,
+    PolicyDraft, Slot, SlotLayout,
 };
 use super::setup::policy_picker::{PolicyPicker, PolicyPickerEvent};
-use super::setup::slot_board::{slot_board, SlotBoardHost};
-use super::setup::slot_editor::{Mode, SlotEditor, SlotEditorEvent};
-use super::setup::ui::{
-    alert_text, field_label, network_picker, primary_button, secondary_button, setup_alert,
-    step_header, AlertTone,
-};
+use super::setup::slot_board::{slot_board, BoardKey, BoardMode, SlotBoardHost, SlotState};
+use super::setup::ui::network_options;
+use crate::keychain::{keychain, KeychainEvent};
 use crate::router::Page;
 use crate::shell::navigate;
 use crate::theme::theme;
-use crate::ui::{InputEvent, TextInput};
+use crate::ui::{
+    alert, button, field, footer_bar, modal, page_frame, section, stepper, InputEvent, TextInput,
+    Tone, FORM_WIDTH,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
     Policy,
     Keys,
-    Secure,
+    Review,
     Done,
 }
 
-const STEP_LABELS: [&str; 4] = ["Policy", "Keys", "Secure", "Done"];
+const STEP_LABELS: [&str; 4] = ["Policy", "Keys", "Review", "Done"];
 
 pub struct CreateWalletWizardPage {
     step: Step,
@@ -50,186 +54,270 @@ pub struct CreateWalletWizardPage {
     picker: Entity<PolicyPicker>,
     layout: Option<SlotLayout>,
     /// Which policy+network the current layout was built for, so going
-    /// back and forth without changes keeps the keys already added.
+    /// back and forth without changes keeps the keys already chosen.
     layout_for: Option<(PolicyDraft, &'static str)>,
-    editor: Option<Entity<SlotEditor>>,
-    secure: Entity<SecureStep>,
-    done: Option<Entity<DoneStep>>,
+    /// Slot id → key-library id.
+    assigned: HashMap<String, String>,
+    key_picker: Option<(String, Entity<KeyPicker>)>,
+    unlock: Option<Entity<KeychainUnlock>>,
+    review: Entity<ReviewStep>,
+    done: Option<(String, Entity<DoneStep>)>,
     submitting: bool,
     error: Option<SharedString>,
-    confirm_discard: bool,
     _subs: Vec<Subscription>,
-    _editor_sub: Option<Subscription>,
+    _modal_sub: Option<Subscription>,
 }
 
 impl CreateWalletWizardPage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let dev = dev_preset();
         let name = cx.new(|cx| TextInput::new(window, cx).placeholder("Savings"));
-        let picker = cx.new(|cx| PolicyPicker::new(PolicyDraft::Singlesig, window, cx));
-        let secure = cx.new(|cx| SecureStep::new("Create wallet", window, cx));
+        let initial = if dev.is_some() { PolicyDraft::Multisig { threshold: 2, n: 3 } } else { PolicyDraft::Singlesig };
+        let picker = cx.new(|cx| PolicyPicker::new(initial, window, cx));
+        let review = cx.new(|cx| ReviewStep::new(window, cx));
         let subs = vec![
             cx.subscribe_in(&name, window, |this, _, ev: &InputEvent, window, cx| match ev {
                 InputEvent::Changed => cx.notify(),
-                InputEvent::Submit => {
-                    if this.policy_ready(cx) {
-                        this.go_to_keys(window, cx);
-                    }
-                }
+                InputEvent::Submit => this.continue_from_policy(window, cx),
             }),
             cx.subscribe(&picker, |_, _, _: &PolicyPickerEvent, cx| cx.notify()),
-            cx.subscribe(&secure, |this, _, ev: &SecureEvent, cx| match ev {
-                SecureEvent::Back => {
-                    this.step = Step::Keys;
-                    cx.notify();
+            cx.subscribe_in(&review, window, |this, _, ev: &ReviewEvent, window, cx| match ev {
+                ReviewEvent::Submit => this.submit(window, cx),
+            }),
+            cx.subscribe(&keychain(cx), |this, _, ev: &KeychainEvent, cx| {
+                if matches!(ev, KeychainEvent::Changed) {
+                    // Drop choices whose key was deleted from the library.
+                    let kc = keychain(cx).read(cx);
+                    this.assigned.retain(|_, id| kc.get(id).is_some());
                 }
-                SecureEvent::Submit => this.submit(cx),
+                cx.notify();
             }),
         ];
-        Self {
+        name.read(cx).focus(window);
+        let mut this = Self {
             step: Step::Policy,
             name,
             network: "regtest",
             picker,
             layout: None,
             layout_for: None,
-            editor: None,
-            secure,
+            assigned: HashMap::new(),
+            key_picker: None,
+            unlock: None,
+            review,
             done: None,
             submitting: false,
             error: None,
-            confirm_discard: false,
             _subs: subs,
-            _editor_sub: None,
+            _modal_sub: None,
+        };
+        if let Some(stage) = dev {
+            this.apply_dev_preset(&stage, window, cx);
         }
+        this
     }
 
-    fn policy(&self, cx: &gpui::App) -> PolicyDraft {
+    fn policy(&self, cx: &App) -> PolicyDraft {
         self.picker.read(cx).value().clone()
     }
 
-    fn name_text(&self, cx: &gpui::App) -> String {
+    fn name_text(&self, cx: &App) -> String {
         self.name.read(cx).text().trim().to_string()
     }
 
-    fn policy_key(&self, cx: &gpui::App) -> (PolicyDraft, &'static str) {
+    fn policy_key(&self, cx: &App) -> (PolicyDraft, &'static str) {
         (self.policy(cx), self.network)
     }
 
-    fn filled_count(&self) -> usize {
-        self.layout
-            .as_ref()
-            .map(|l| l.slots.iter().filter(|s| s.filled.is_some()).count())
-            .unwrap_or(0)
-    }
-
-    fn has_keys(&self) -> bool {
-        self.filled_count() > 0
-    }
-
-    fn policy_ready(&self, cx: &gpui::App) -> bool {
+    fn policy_ready(&self, cx: &App) -> bool {
         !self.name_text(cx).is_empty() && policy_problem(&self.policy(cx)).is_none()
     }
 
-    fn go_to_keys(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn slot_count(&self) -> usize {
+        self.layout.as_ref().map(|l| l.slots.len()).unwrap_or(0)
+    }
+
+    fn keys_ready(&self) -> bool {
+        self.layout
+            .as_ref()
+            .is_some_and(|l| l.slots.iter().all(|s| self.assigned.contains_key(&s.id)))
+    }
+
+    fn is_hot_slot(&self, s: &Slot, cx: &App) -> bool {
+        self.assigned
+            .get(&s.id)
+            .and_then(|id| keychain(cx).read(cx).get(id).map(|k| k.is_hot()))
+            .unwrap_or(false)
+    }
+
+    fn continue_from_policy(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.policy_ready(cx) {
+            return;
+        }
         let key = self.policy_key(cx);
         if self.layout.is_none() || self.layout_for.as_ref() != Some(&key) {
-            let mut next = layout_for_policy(&key.0, key.1);
-            // Keep keys for slots that survive the change (same id, same path).
-            if let Some(prev) = &self.layout {
-                for s in next.slots.iter_mut() {
-                    if let Some(p) = prev.slot(&s.id) {
-                        if p.filled.is_some() && p.derivation_path == s.derivation_path {
-                            s.filled = p.filled.clone();
-                        }
-                    }
-                }
-            }
-            let first_empty = next.slots.iter().find(|s| s.filled.is_none()).map(|s| s.id.clone());
+            let next = layout_for_policy(&key.0, key.1);
+            // Keep choices for slots that survive the change, as long as
+            // the key is on the (possibly new) network.
+            let kc = keychain(cx).read(cx);
+            let ids: HashSet<&str> = next.slots.iter().map(|s| s.id.as_str()).collect();
+            self.assigned.retain(|slot, key_id| {
+                ids.contains(slot.as_str()) && kc.get(key_id).is_some_and(|k| k.network == key.1)
+            });
             self.layout = Some(next);
             self.layout_for = Some(key);
-            self.open_editor(first_empty, window, cx);
         }
         self.error = None;
         self.step = Step::Keys;
+        // Single-slot wallets: open the picker straight away.
+        if self.slot_count() == 1 && self.assigned.is_empty() {
+            if let Some(id) = self.layout.as_ref().map(|l| l.slots[0].id.clone()) {
+                self.pick_key(id, window, cx);
+            }
+        }
         cx.notify();
     }
 
-    fn open_editor(&mut self, slot_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
-        self.editor = None;
-        self._editor_sub = None;
-        let (Some(id), Some(layout)) = (slot_id, self.layout.as_ref()) else {
+    fn continue_from_keys(&mut self, cx: &mut Context<Self>) {
+        if !self.keys_ready() {
+            return;
+        }
+        let Some(layout) = self.layout.clone() else { return };
+        let kc = keychain(cx).read(cx);
+        let rows = layout
+            .slots
+            .iter()
+            .map(|s| {
+                let key = self.assigned.get(&s.id).and_then(|id| kc.get(id)).map(BoardKey::from_record);
+                ReviewRow {
+                    slot_label: s.label.clone(),
+                    path_title: layout
+                        .paths
+                        .iter()
+                        .find(|p| p.id == s.path_id)
+                        .map(|p| p.title.clone())
+                        .unwrap_or_default(),
+                    fingerprint: key.as_ref().map(|k| k.fingerprint.clone()).unwrap_or_default(),
+                    derivation_path: key.as_ref().map(|k| k.derivation_path.clone()).unwrap_or_default(),
+                    key,
+                }
+            })
+            .collect::<Vec<_>>();
+        let hot = layout.slots.iter().filter(|s| self.is_hot_slot(s, cx)).count();
+        let exposed = paths_spendable_by(&layout, |s| self.is_hot_slot(s, cx))
+            .into_iter()
+            .map(|p| p.title)
+            .collect();
+        let data = ReviewData {
+            name: self.name_text(cx),
+            network: self.network.to_string(),
+            summary: policy_summary(&self.policy(cx)),
+            rows,
+            hot,
+            exposed,
+            watch_only: false,
+        };
+        self.review.update(cx, |r, cx| r.configure(data, cx));
+        self.step = Step::Review;
+        cx.notify();
+    }
+
+    fn close_modal(&mut self, cx: &mut Context<Self>) {
+        self.key_picker = None;
+        self.unlock = None;
+        self._modal_sub = None;
+        cx.notify();
+    }
+
+    fn assign(&mut self, slot_id: String, key_id: String, cx: &mut Context<Self>) {
+        self.assigned.insert(slot_id.clone(), key_id);
+        self.close_modal(cx);
+    }
+
+    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.submitting || !self.keys_ready() || !self.review.read(cx).ready(cx) {
+            return;
+        }
+        let Some(layout) = self.layout.clone() else { return };
+        let hot: Vec<(String, String)> = layout
+            .slots
+            .iter()
+            .filter(|s| self.is_hot_slot(s, cx))
+            .map(|s| (s.id.clone(), self.assigned[&s.id].clone()))
+            .collect();
+
+        if !hot.is_empty() && !keychain(cx).read(cx).is_unlocked() {
+            let unlock = cx.new(|cx| KeychainUnlock::new("to copy the private keys into this wallet", window, cx));
+            self._modal_sub = Some(cx.subscribe_in(&unlock, window, |this, _, ev: &UnlockEvent, window, cx| {
+                this.close_modal(cx);
+                if matches!(ev, UnlockEvent::Unlocked) {
+                    this.submit(window, cx);
+                }
+            }));
+            self.unlock = Some(unlock);
             cx.notify();
             return;
-        };
-        let Some(slot) = layout.slot(&id).cloned() else {
-            return;
-        };
-        let slots = layout.slots.clone();
-        let network = self.network.to_string();
-        let wallet_name = self.name.read(cx).text().to_string();
-        let editor = cx.new(|cx| SlotEditor::new(Mode::Create, slot, slots, network, wallet_name, window, cx));
-        self._editor_sub = Some(cx.subscribe_in(&editor, window, move |this, _, ev: &SlotEditorEvent, window, cx| {
-            match ev {
-                SlotEditorEvent::Fill(filled) => {
-                    let mut next_empty = None;
-                    if let Some(layout) = this.layout.as_mut() {
-                        if let Some(s) = layout.slot_mut(&id) {
-                            s.derivation_path = filled.key.derivation_path.clone();
-                            s.filled = Some(filled.clone());
-                        }
-                        // Move straight on to the next empty slot.
-                        next_empty = layout
-                            .slots
-                            .iter()
-                            .find(|s| s.id != id && s.filled.is_none())
-                            .map(|s| s.id.clone());
-                    }
-                    this.open_editor(next_empty, window, cx);
-                }
-                SlotEditorEvent::Close => this.open_editor(None, window, cx),
-            }
-        }));
-        self.editor = Some(editor);
-        cx.notify();
-    }
+        }
 
-    fn submit(&mut self, cx: &mut Context<Self>) {
-        let Some(layout) = self.layout.clone() else {
-            return;
-        };
-        let slots = match to_wire_slots(&layout.slots) {
-            Ok(s) => s,
-            Err(e) => {
-                self.error = Some(e.into());
+        // Public halves straight from the library; secrets fetched below.
+        let kc = keychain(cx).read(cx);
+        let mut slots = Vec::with_capacity(layout.slots.len());
+        for s in &layout.slots {
+            let Some(k) = self.assigned.get(&s.id).and_then(|id| kc.get(id)) else {
+                self.error = Some(format!("{} has no key", s.label).into());
                 cx.notify();
                 return;
-            }
-        };
+            };
+            slots.push(WireSlot {
+                label: k.label.clone(),
+                source: SlotSource::from_key_source(&k.source).unwrap_or(SlotSource::Xpub),
+                key: SlotKey {
+                    fingerprint: k.fingerprint.clone(),
+                    derivation_path: k.derivation_path.clone(),
+                    xpub: k.xpub.clone(),
+                },
+                secret: None,
+            });
+        }
+        let index: HashMap<String, usize> =
+            layout.slots.iter().enumerate().map(|(i, s)| (s.id.clone(), i)).collect();
+
         self.submitting = true;
         self.error = None;
-        self.secure.update(cx, |s, cx| s.set_submitting(true, cx));
+        self.review.update(cx, |r, cx| r.set_submitting(true, cx));
         cx.notify();
 
-        let hot = layout.slots.iter().any(|s| s.filled.as_ref().is_some_and(|f| f.secret.is_some()));
-        let passphrase = self.secure.read(cx).passphrase(cx);
+        let has_hot = !hot.is_empty();
+        let secrets = fetch_secrets(cx, hot);
+        let passphrase = self.review.read(cx).passphrase(cx);
         let name = self.name_text(cx);
+        let network = self.network.to_string();
         let policy = to_wire_policy(&self.policy(cx), &layout);
-        let create = api::create_from_slots(
-            cx,
-            CreateFromSlots {
-                name: name.clone(),
-                network: self.network.to_string(),
-                policy,
-                slots,
-                encrypt_passphrase: hot.then(|| passphrase.clone()),
-            },
-        );
         let multi_key = layout.slots.len() > 1;
         cx.spawn(async move |this, cx| {
             let res: Result<String, String> = async {
+                for (slot, secret) in secrets.await? {
+                    if let Some(i) = index.get(&slot) {
+                        slots[*i].secret = Some(secret);
+                    }
+                }
+                let create = cx
+                    .update(|cx| {
+                        api::create_from_slots(
+                            cx,
+                            CreateFromSlots {
+                                name: name.clone(),
+                                network,
+                                policy,
+                                slots,
+                                encrypt_passphrase: has_hot.then(|| passphrase.clone()),
+                            },
+                        )
+                    })
+                    .map_err(|e| e.to_string())?;
                 let id = create.await?;
                 let unlock = cx
-                    .update(|cx| api::unlock_wallet(cx, id.clone(), if hot { passphrase } else { String::new() }))
+                    .update(|cx| api::unlock_wallet(cx, id.clone(), if has_hot { passphrase } else { String::new() }))
                     .map_err(|e| e.to_string())?;
                 unlock.await?;
                 Ok(id)
@@ -237,14 +325,12 @@ impl CreateWalletWizardPage {
             .await;
             this.update(cx, |this, cx| {
                 this.submitting = false;
-                this.secure.update(cx, |s, cx| s.set_submitting(false, cx));
+                this.review.update(cx, |r, cx| r.set_submitting(false, cx));
                 match res {
                     Ok(id) => {
-                        let done = cx.new(|_| DoneStep::new("Wallet created.", id.clone(), name, multi_key));
-                        this._subs.push(cx.subscribe(&done, move |_, _, ev: &DoneEvent, cx| match ev {
-                            DoneEvent::Open => navigate(Page::LocalWallet(id.clone()), cx),
-                        }));
-                        this.done = Some(done);
+                        crate::state::local_changed(cx);
+                        let done = cx.new(|_| DoneStep::new("Wallet created", id.clone(), name, multi_key));
+                        this.done = Some((id, done));
                         this.step = Step::Done;
                     }
                     Err(e) => this.error = Some(e.into()),
@@ -256,243 +342,281 @@ impl CreateWalletWizardPage {
         .detach();
     }
 
-    fn cancel(&mut self, cx: &mut Context<Self>) {
-        if self.has_keys() && self.step != Step::Done {
-            self.confirm_discard = true;
-            cx.notify();
-            return;
-        }
-        navigate(Page::LocalWallets, cx);
-    }
+    // ── rendering ──
 
-    fn render_policy_step(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_policy_step(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = theme();
-        let ready = self.policy_ready(cx);
-        let keys_will_reset =
-            self.has_keys() && self.layout_for.as_ref() != Some(&self.policy_key(cx));
+        let keys_will_reset = !self.assigned.is_empty()
+            && self.layout_for.as_ref().is_some_and(|k| k != &self.policy_key(cx));
         let this = cx.entity().downgrade();
-
         div()
-            .flex()
-            .flex_col()
-            .gap(px(28.))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(field_label("Wallet name", None))
-                    .child(self.name.clone()),
-            )
-            .child(network_picker(self.network, move |id, _, cx| {
-                this.update(cx, |this, cx| {
-                    this.network = id;
-                    cx.notify();
-                })
-                .ok();
-            }))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(field_label(
-                        "Spending policy",
-                        Some("Who has to sign, and when. You'll add the keys next.".into()),
-                    ))
-                    .child(div().mt_3().child(self.picker.clone())),
-            )
-            .when(keys_will_reset, |d| {
-                d.child(alert_text(
-                    AlertTone::Warning,
-                    "Changing the policy or network resets the key slots. Keys you already added (that don't fit the new layout) are dropped; make sure generated keys are backed up.",
-                ))
-            })
-            .child(
-                primary_button("continue-keys", "Continue to keys")
-                    .full_width()
-                    .icon_right("arrow-right")
-                    .disabled(!ready)
-                    .on_click(cx.listener(|this, _, w, cx| {
-                        if this.policy_ready(cx) {
-                            this.go_to_keys(w, cx);
-                        }
-                    })),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .justify_center()
-                    .gap_1()
-                    .text_size(px(12.))
-                    .text_color(t.muted_foreground)
-                    .child("Restoring a wallet you already have?")
-                    .child(
-                        div()
-                            .id("recover-instead")
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .cursor_pointer()
-                            .hover(|s| s.underline())
-                            .on_click(|_, _, cx| navigate(Page::LocalWalletRecover, cx))
-                            .child("Recover it instead"),
-                    ),
-            )
-    }
-
-    fn render_keys_step(&self, layout: &SlotLayout, cx: &mut Context<Self>) -> impl IntoElement {
-        let filled = self.filled_count();
-        let total = layout.slots.len();
-        let all_filled = filled == total;
-        let left = total - filled;
-        div()
+            .max_w(FORM_WIDTH)
             .flex()
             .flex_col()
             .gap_6()
-            .child(slot_board(layout, self.editor.as_ref(), cx))
+            .child(field("Wallet name", self.name.clone(), None))
+            .child(field(
+                "Network",
+                network_options(self.network, move |id, _, cx| {
+                    this.update(cx, |this, cx| {
+                        this.network = id;
+                        cx.notify();
+                    })
+                    .ok();
+                }),
+                Some("Keys are network-specific: you'll choose from your library's keys for this network.".into()),
+            ))
+            .child(
+                section("Spending policy")
+                    .description("Who has to sign, and when. You'll choose the keys next.")
+                    .child(self.picker.clone()),
+            )
+            .when(keys_will_reset, |d| {
+                d.child(alert(
+                    Tone::Warning,
+                    "Changing the policy or network clears keys you chose for slots that no longer fit.",
+                ))
+            })
             .child(
                 div()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap_3()
-                    .child(secondary_button("keys-back", "← Back").on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.step = Step::Policy;
-                            cx.notify();
-                        },
-                    )))
+                    .gap_1()
+                    .text_size(gpui::px(12.))
+                    .text_color(t.muted_foreground)
+                    .child("Restoring a wallet you already have?")
                     .child(
-                        div().flex_1().child(
-                            primary_button(
-                                "keys-continue",
-                                if all_filled {
-                                    "Continue".to_string()
-                                } else {
-                                    format!("{left} key{} to go", if left == 1 { "" } else { "s" })
-                                },
-                            )
-                            .full_width()
-                            .when(all_filled, |b| b.icon_right("arrow-right"))
-                            .disabled(!all_filled)
-                            .on_click(cx.listener(|this, _, w, cx| {
-                                this.open_editor(None, w, cx);
-                                let Some(layout) = this.layout.clone() else {
-                                    return;
-                                };
-                                let summary = policy_summary(&this.policy(cx));
-                                let name = this.name_text(cx);
-                                let network = this.network.to_string();
-                                this.secure.update(cx, |s, cx| s.configure(layout, summary, name, network, cx));
-                                this.step = Step::Secure;
-                                cx.notify();
-                            })),
-                        ),
+                        button("restore-instead", "Restore it instead")
+                            .link()
+                            .small()
+                            .on_click(|_, _, cx| navigate(Page::LocalWalletRecover, cx)),
                     ),
             )
+            .into_any_element()
+    }
+
+    fn render_keys_step(&self, layout: &SlotLayout, cx: &mut Context<Self>) -> AnyElement {
+        let kc = keychain(cx).read(cx);
+        let library = kc.keys_for_network(self.network).count();
+        let states: HashMap<String, SlotState> = self
+            .assigned
+            .iter()
+            .filter_map(|(slot, id)| Some((slot.clone(), SlotState::Assigned(BoardKey::from_record(kc.get(id)?)))))
+            .collect();
+        let net = network_label(self.network);
+        div()
+            .flex()
+            .flex_col()
+            .gap_6()
+            .when(library == 0, |d| {
+                d.child(alert(
+                    Tone::Secondary,
+                    format!(
+                        "Your key library has no {net} keys yet. Choose a slot and pick “Add a new key…” to generate or import one, or add keys from the Key library first."
+                    ),
+                ))
+            })
+            .child(slot_board(layout, &states, BoardMode::Create, cx))
+            .into_any_element()
+    }
+
+    fn render_modal(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let dismiss = cx.listener(|this, _, _, cx| this.close_modal(cx));
+        if let Some(u) = &self.unlock {
+            return Some(modal("keychain-unlock", 420.).on_dismiss(dismiss).child(u.clone()).into_any_element());
+        }
+        let (_, picker) = self.key_picker.as_ref()?;
+        let w = picker.read(cx).modal_width();
+        Some(modal("key-picker", w).on_dismiss(dismiss).child(picker.clone()).into_any_element())
+    }
+
+    fn render_footer(&self, cx: &mut Context<Self>) -> AnyElement {
+        let back = |step: Step| {
+            button("wizard-back", "Back")
+                .outline()
+                .icon("arrow-left")
+                .disabled(self.submitting)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.step = step;
+                    this.error = None;
+                    cx.notify();
+                }))
+                .into_any_element()
+        };
+        let cancel = button("wizard-cancel", "Cancel")
+            .ghost()
+            .disabled(self.submitting)
+            .on_click(|_, _, cx| navigate(Page::LocalWallets, cx))
+            .into_any_element();
+        let (left, right) = match self.step {
+            Step::Policy => (
+                vec![],
+                vec![
+                    cancel,
+                    button("wizard-continue", "Continue")
+                        .icon_right("arrow-right")
+                        .disabled(!self.policy_ready(cx))
+                        .on_click(cx.listener(|this, _, w, cx| this.continue_from_policy(w, cx)))
+                        .into_any_element(),
+                ],
+            ),
+            Step::Keys => {
+                let left_n = self
+                    .layout
+                    .as_ref()
+                    .map(|l| l.slots.iter().filter(|s| !self.assigned.contains_key(&s.id)).count())
+                    .unwrap_or(0);
+                (
+                    vec![back(Step::Policy)],
+                    vec![
+                        cancel,
+                        button(
+                            "wizard-continue",
+                            if left_n == 0 {
+                                "Continue".to_string()
+                            } else {
+                                format!("{left_n} key{} to go", if left_n == 1 { "" } else { "s" })
+                            },
+                        )
+                        .when(left_n == 0, |b| b.icon_right("arrow-right"))
+                        .disabled(left_n > 0)
+                        .on_click(cx.listener(|this, _, _, cx| this.continue_from_keys(cx)))
+                        .into_any_element(),
+                    ],
+                )
+            }
+            Step::Review => (
+                vec![back(Step::Keys)],
+                vec![
+                    cancel,
+                    button("wizard-create", "Create wallet")
+                        .loading(self.submitting)
+                        .disabled(!self.review.read(cx).ready(cx))
+                        .on_click(cx.listener(|this, _, w, cx| this.submit(w, cx)))
+                        .into_any_element(),
+                ],
+            ),
+            Step::Done => {
+                let id = self.done.as_ref().map(|(id, _)| id.clone()).unwrap_or_default();
+                (
+                    vec![button("wizard-all-wallets", "All wallets")
+                        .ghost()
+                        .on_click(|_, _, cx| navigate(Page::LocalWallets, cx))
+                        .into_any_element()],
+                    vec![button("wizard-open", "Open wallet")
+                        .icon_right("arrow-right")
+                        .on_click(move |_, _, cx| navigate(Page::LocalWallet(id.clone()), cx))
+                        .into_any_element()],
+                )
+            }
+        };
+        footer_bar(left, right).into_any_element()
+    }
+
+    // ── dev hook (debug builds): SIGVAULT_DEV_WIZARD=keys|picker|review ──
+
+    fn apply_dev_preset(&mut self, stage: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.name.update(cx, |n, cx| n.set_text("Family vault".to_string(), cx));
+        self.continue_from_policy(window, cx);
+        let ids: Vec<String> = keychain(cx).read(cx).keys_for_network(self.network).map(|k| k.id.clone()).collect();
+        let slots: Vec<String> =
+            self.layout.as_ref().map(|l| l.slots.iter().map(|s| s.id.clone()).collect()).unwrap_or_default();
+        let fill = if stage == "review" { slots.len() } else { 1 };
+        for (slot, key) in slots.iter().zip(ids.iter()).take(fill) {
+            self.assigned.insert(slot.clone(), key.clone());
+        }
+        match stage {
+            "picker" => {
+                if let Some(s) = slots.get(1) {
+                    self.pick_key(s.clone(), window, cx);
+                }
+            }
+            "review" => self.continue_from_keys(cx),
+            _ => {}
+        }
+    }
+}
+
+fn dev_preset() -> Option<String> {
+    if cfg!(debug_assertions) {
+        std::env::var("SIGVAULT_DEV_WIZARD").ok()
+    } else {
+        None
     }
 }
 
 impl SlotBoardHost for CreateWalletWizardPage {
-    fn edit_slot(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_editor(Some(slot_id), window, cx);
+    fn pick_key(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(layout) = self.layout.as_ref() else { return };
+        let Some(slot) = layout.slot(&slot_id) else { return };
+        let kc = keychain(cx).read(cx);
+        let used = self
+            .assigned
+            .iter()
+            .filter(|(s, _)| **s != slot_id)
+            .filter_map(|(s, id)| {
+                let k = kc.get(id)?;
+                let label = layout.slot(s).map(|s| s.label.clone()).unwrap_or_default();
+                Some((key_identity(&k.fingerprint, &k.xpub), label))
+            })
+            .collect();
+        let current = self.assigned.get(&slot_id).cloned();
+        let (network, label) = (self.network.to_string(), slot.label.clone());
+        let picker = cx.new(|cx| KeyPicker::new(network, label, used, current, window, cx));
+        let sid = slot_id.clone();
+        self._modal_sub = Some(cx.subscribe(&picker, move |this, _, ev: &KeyPickerEvent, cx| match ev {
+            KeyPickerEvent::Picked(id) => this.assign(sid.clone(), id.clone(), cx),
+            KeyPickerEvent::Cancelled => this.close_modal(cx),
+        }));
+        self.key_picker = Some((slot_id, picker));
+        cx.notify();
     }
 
     fn clear_slot(&mut self, slot_id: String, _window: &mut Window, cx: &mut Context<Self>) {
-        let fresh = layout_for_policy(&self.policy(cx), self.network)
-            .slot(&slot_id)
-            .map(|s| s.derivation_path.clone())
-            .unwrap_or_default();
-        if let Some(s) = self.layout.as_mut().and_then(|l| l.slot_mut(&slot_id)) {
-            s.filled = None;
-            s.derivation_path = fresh;
-        }
+        self.assigned.remove(&slot_id);
         cx.notify();
     }
 }
 
 impl Render for CreateWalletWizardPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let name = self.name_text(cx);
-        let title = if self.step == Step::Policy || name.is_empty() {
-            "Create a wallet".to_string()
-        } else {
-            name
-        };
         let current = match self.step {
             Step::Policy => 0,
             Step::Keys => 1,
-            Step::Secure => 2,
+            Step::Review => 2,
             Step::Done => 3,
         };
-
-        let body = match self.step {
-            Step::Policy => Some(self.render_policy_step(cx).into_any_element()),
-            Step::Keys => self
-                .layout
-                .clone()
-                .map(|l| self.render_keys_step(&l, cx).into_any_element()),
-            Step::Secure => self.layout.as_ref().map(|_| self.secure.clone().into_any_element()),
-            Step::Done => self.done.clone().map(|d| d.into_any_element()),
+        let name = self.name_text(cx);
+        let title = if self.step == Step::Policy || name.is_empty() { "New wallet".to_string() } else { name };
+        let subtitle = match self.step {
+            Step::Policy => "Name the wallet and choose who has to sign.",
+            Step::Keys => "Choose a key from your library for each slot.",
+            Step::Review => "Check the setup, then create the wallet.",
+            Step::Done => "The wallet is ready.",
         };
+        let body = match self.step {
+            Step::Policy => Some(self.render_policy_step(cx)),
+            Step::Keys => self.layout.clone().map(|l| self.render_keys_step(&l, cx)),
+            Step::Review => Some(self.review.clone().into_any_element()),
+            Step::Done => self.done.as_ref().map(|(_, d)| d.clone().into_any_element()),
+        };
+        let footer = self.render_footer(cx);
 
-        div().size_full().child(
-            div().id("create-wallet-scroll").size_full().overflow_y_scroll().child(
-                div().w_full().flex().flex_col().items_center().child(
-                    div()
-                        .w_full()
-                        .max_w(px(640.))
-                        .px_6()
-                        .py_10()
-                        .flex()
-                        .flex_col()
-                        .child(step_header(
-                            "New wallet",
-                            title,
-                            &STEP_LABELS,
-                            current,
-                            cx.listener(|this, _, _, cx| this.cancel(cx)),
-                        ))
-                        .when(self.confirm_discard, |d| {
-                            d.child(
-                                setup_alert(
-                                    AlertTone::Warning,
-                                    Some("Discard this wallet setup?".into()),
-                                    Some(
-                                        div()
-                                            .flex()
-                                            .flex_col()
-                                            .child("Keys generated here are lost unless you've backed them up.")
-                                            .child(
-                                                div()
-                                                    .mt_3()
-                                                    .flex()
-                                                    .flex_row()
-                                                    .gap_2()
-                                                    .child(
-                                                        secondary_button("discard", "Discard")
-                                                            .small()
-                                                            .on_click(|_, _, cx| navigate(Page::LocalWallets, cx)),
-                                                    )
-                                                    .child(
-                                                        secondary_button("keep-editing", "Keep editing")
-                                                            .small()
-                                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                                this.confirm_discard = false;
-                                                                cx.notify();
-                                                            })),
-                                                    ),
-                                            )
-                                            .into_any_element(),
-                                    ),
-                                )
-                                .mt_6(),
-                            )
-                        })
-                        .children(self.error.clone().map(|e| alert_text(AlertTone::Error, e).mt_6()))
-                        .child(div().mt_8().children(body)),
-                ),
-            ),
-        )
+        div()
+            .size_full()
+            .relative()
+            .child(
+                page_frame("create-wallet")
+                    .crumb("Wallets", Some(Page::LocalWallets))
+                    .crumb("New wallet", None)
+                    .title(title)
+                    .subtitle(subtitle)
+                    .header_extra(stepper(&STEP_LABELS, current))
+                    .footer(footer)
+                    .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
+                    .children(body),
+            )
+            .children(self.render_modal(cx))
     }
 }

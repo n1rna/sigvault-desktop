@@ -1,66 +1,89 @@
-//! `setup/Finish.tsx` — the last two steps both wizards share: set the
-//! wallet passphrase and review, then the done screen that pushes a
-//! wallet backup file. For any wallet with more than one key, the
-//! descriptor is what makes the keys usable, so the backup gets top
+//! The last two steps both wizards share: review (with the wallet
+//! passphrase when the wallet stores private keys), then the done screen
+//! that pushes a wallet backup file. For any wallet with more than one key
+//! the descriptor is what makes the keys usable, so the backup gets top
 //! billing.
+//!
+//! Both render only their body; the host page supplies the frame and the
+//! footer buttons (Back / Create, Open wallet).
 
 use gpui::{
-    div, prelude::*, px, Context, Entity, EventEmitter, FontWeight, SharedString, Subscription,
-    Window,
+    div, prelude::*, px, AnyElement, Context, Entity, EventEmitter, FontWeight, SharedString,
+    Subscription, Window,
 };
 
 use super::api;
 use super::files::{file_safe, save_text_file};
-use super::policy::{hot_slot_count, paths_spendable_from_this_device, SlotLayout};
-use super::ui::{
-    alert_text, error_line, field_label, fingerprint, primary_button, secondary_button, AlertTone,
-};
+use super::slot_board::{custody_badge, meta_line, source_icon, BoardKey};
+use crate::keychain::source_label;
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{checkbox, icon, InputEvent, TextInput};
+use crate::ui::{
+    alert, button, card, checkbox, divider, field, icon, section, InputEvent, TextInput, Tone,
+    FORM_WIDTH,
+};
 
-pub enum SecureEvent {
-    Back,
+/// One slot on the review screen.
+#[derive(Clone, Debug)]
+pub struct ReviewRow {
+    pub slot_label: String,
+    pub path_title: String,
+    /// `None`: restore slot left watch-only (descriptor key only).
+    pub key: Option<BoardKey>,
+    /// Shown for watch-only rows.
+    pub fingerprint: String,
+    pub derivation_path: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ReviewData {
+    pub name: String,
+    pub network: String,
+    pub summary: String,
+    pub rows: Vec<ReviewRow>,
+    /// Slots whose private key gets stored in the wallet.
+    pub hot: usize,
+    /// Paths the hot keys could spend on their own.
+    pub exposed: Vec<String>,
+    /// Restore only: the wallet will be created watch-only.
+    pub watch_only: bool,
+}
+
+pub enum ReviewEvent {
+    /// Enter pressed in a passphrase field while ready.
     Submit,
 }
 
-pub struct SecureStep {
-    layout: SlotLayout,
-    summary: String,
-    name: String,
-    network: String,
+pub struct ReviewStep {
+    data: ReviewData,
     submitting: bool,
-    submit_label: &'static str,
     passphrase: Entity<TextInput>,
     confirm: Entity<TextInput>,
     accept_exposure: bool,
     _subs: Vec<Subscription>,
 }
 
-impl EventEmitter<SecureEvent> for SecureStep {}
+impl EventEmitter<ReviewEvent> for ReviewStep {}
 
-impl SecureStep {
-    pub fn new(submit_label: &'static str, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let passphrase = cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Passphrase"));
+impl ReviewStep {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let passphrase =
+            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("At least 8 characters"));
         let confirm =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Confirm passphrase"));
+            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Repeat passphrase"));
         let on_input = |this: &mut Self, _: Entity<TextInput>, ev: &InputEvent, cx: &mut Context<Self>| {
             match ev {
                 InputEvent::Changed => cx.notify(),
                 InputEvent::Submit => {
                     if this.ready(cx) && !this.submitting {
-                        cx.emit(SecureEvent::Submit);
+                        cx.emit(ReviewEvent::Submit);
                     }
                 }
             }
         };
         let subs = vec![cx.subscribe(&passphrase, on_input), cx.subscribe(&confirm, on_input)];
         Self {
-            layout: SlotLayout::default(),
-            summary: String::new(),
-            name: String::new(),
-            network: String::new(),
+            data: ReviewData::default(),
             submitting: false,
-            submit_label,
             passphrase,
             confirm,
             accept_exposure: false,
@@ -69,18 +92,11 @@ impl SecureStep {
     }
 
     /// Refresh the review data before showing the step.
-    pub fn configure(
-        &mut self,
-        layout: SlotLayout,
-        summary: String,
-        name: String,
-        network: String,
-        cx: &mut Context<Self>,
-    ) {
-        self.layout = layout;
-        self.summary = summary;
-        self.name = name;
-        self.network = network;
+    pub fn configure(&mut self, data: ReviewData, cx: &mut Context<Self>) {
+        if data.exposed != self.data.exposed {
+            self.accept_exposure = false;
+        }
+        self.data = data;
         cx.notify();
     }
 
@@ -93,151 +109,170 @@ impl SecureStep {
         self.passphrase.read(cx).text().to_string()
     }
 
-    /// `secureReady`.
     pub fn ready(&self, cx: &gpui::App) -> bool {
         let pass = self.passphrase(cx);
         let confirm = self.confirm.read(cx).text();
-        let needs_passphrase = hot_slot_count(&self.layout.slots) > 0;
-        let pass_ok = !needs_passphrase || (pass.chars().count() >= 8 && pass == confirm);
-        let exposure_ok =
-            paths_spendable_from_this_device(&self.layout).is_empty() || self.accept_exposure;
+        let pass_ok = self.data.hot == 0 || (pass.chars().count() >= 8 && pass == confirm);
+        let exposure_ok = self.data.exposed.is_empty() || self.accept_exposure;
         pass_ok && exposure_ok
     }
-}
 
-impl Render for SecureStep {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn summary_card(&self) -> impl IntoElement {
         let t = theme();
-        let hot = hot_slot_count(&self.layout.slots);
-        let exposed = paths_spendable_from_this_device(&self.layout);
-        let ready = self.ready(cx);
-        let pass = self.passphrase(cx);
-        let confirm = self.confirm.read(cx).text().to_string();
-        let submitting = self.submitting;
+        let row = |k: &'static str, v: AnyElement| {
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_4()
+                .h(px(44.))
+                .px_4()
+                .child(div().w(px(150.)).flex_none().text_size(px(13.)).text_color(t.muted_foreground).child(k))
+                .child(div().flex_1().min_w_0().text_size(px(13.)).text_color(t.foreground).child(v))
+        };
+        card()
+            .child(row("Name", self.data.name.clone().into_any_element()))
+            .child(divider())
+            .child(row("Network", network_label(&self.data.network).into_any_element()))
+            .child(divider())
+            .child(row("Policy", self.data.summary.clone().into_any_element()))
+    }
 
-        let review = div()
-            .flex()
-            .flex_col()
-            .rounded_md()
-            .border_1()
-            .border_color(t.border)
-            .bg(alpha(t.card, 0.4))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .border_b_1()
-                    .border_color(t.border)
-                    .px_4()
-                    .py_3()
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(t.foreground)
-                            .child(self.name.clone()),
-                    )
-                    .child(
-                        div()
-                            .mt(px(2.))
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .child(format!("{} · {}", self.summary, self.network)),
-                    ),
-            )
-            .children(self.layout.slots.iter().enumerate().map(|(i, s)| {
-                let fp = s
-                    .filled
-                    .as_ref()
-                    .map(|f| f.key.fingerprint.clone())
-                    .or_else(|| s.expected.as_ref().and_then(|e| e.fingerprint.clone()));
-                let is_hot = s.filled.as_ref().is_some_and(|f| f.secret.is_some());
-                let tag = if is_hot {
-                    "key on this computer"
-                } else if s.filled.as_ref().is_some_and(|f| f.source == api::SlotSource::Hardware) {
-                    "hardware"
-                } else {
-                    "signs elsewhere"
-                };
-                div()
+    fn keys_card(&self) -> impl IntoElement {
+        let t = theme();
+        let n = self.data.rows.len();
+        card().overflow_hidden().children(self.data.rows.iter().enumerate().flat_map(|(i, r)| {
+            let body = match &r.key {
+                Some(k) => div()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .justify_between()
                     .gap_3()
-                    .px_4()
-                    .py_2()
-                    .text_size(px(12.))
-                    .when(i > 0, |d| d.border_t_1().border_color(t.border))
-                    .child(div().text_color(t.foreground).child(s.label.clone()))
+                    .min_w_0()
+                    .child(icon(source_icon(&k.source)).size(px(15.)).text_color(t.foreground))
                     .child(
                         div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap_2()
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .children(fp.map(|f| fingerprint(&f)))
-                            .child(
-                                div()
-                                    .rounded(px(3.))
-                                    .px(px(6.))
-                                    .py(px(2.))
-                                    .map(|d| {
-                                        if is_hot {
-                                            d.bg(alpha(t.warning, 0.15)).text_color(t.foreground)
-                                        } else {
-                                            d.bg(t.muted).text_color(t.muted_foreground)
-                                        }
-                                    })
-                                    .child(tag),
-                            ),
+                            .truncate()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(t.foreground)
+                            .child(k.label.clone()),
                     )
-            }));
-
-        let passphrase_section = if hot > 0 {
-            div()
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(source_label(&k.source)),
+                    )
+                    .child(custody_badge(k.hot)),
+                None => div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_3()
+                    .child(icon("eye").size(px(15.)))
+                    .child(div().text_size(px(13.)).text_color(t.muted_foreground).child("Watch-only")),
+            };
+            let (fp, path) = match &r.key {
+                Some(k) => (k.fingerprint.clone(), k.derivation_path.clone()),
+                None => (r.fingerprint.clone(), r.derivation_path.clone()),
+            };
+            let row = div()
                 .flex()
-                .flex_col()
-                .gap_3()
-                .child(field_label(
-                    "Wallet passphrase",
-                    Some(format!(
-                        "Encrypts the {} stored on this computer. You'll type it to unlock the wallet and to sign. At least 8 characters. It is not part of your seed backups, and losing it only locks this copy.",
-                        if hot == 1 { "private key".to_string() } else { format!("{hot} private keys") }
-                    ).into()),
+                .flex_row()
+                .items_center()
+                .gap_4()
+                .min_h(px(52.))
+                .px_4()
+                .py_2()
+                .child(
+                    div()
+                        .w(px(150.))
+                        .flex_none()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(t.foreground).child(r.slot_label.clone()))
+                        .child(div().text_size(px(12.)).text_color(t.muted_foreground).truncate().child(r.path_title.clone())),
+                )
+                .child(div().flex_1().min_w_0().child(body))
+                .child(div().flex_none().child(meta_line(&fp, &path)));
+            let mut out = vec![row.into_any_element()];
+            if i + 1 < n {
+                out.push(divider().into_any_element());
+            }
+            out
+        }))
+    }
+}
+
+pub fn network_label(n: &str) -> String {
+    super::ui::SUPPORTED_NETWORKS
+        .iter()
+        .find(|(id, _, _)| *id == n)
+        .map(|(_, l, _)| l.to_string())
+        .unwrap_or_else(|| n.to_string())
+}
+
+impl Render for ReviewStep {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme();
+        let hot = self.data.hot;
+        let pass = self.passphrase(cx);
+        let confirm = self.confirm.read(cx).text().to_string();
+        let this = cx.entity().downgrade();
+
+        let custody: AnyElement = if hot > 0 {
+            section("Wallet passphrase")
+                .description(format!(
+                    "The wallet stores its own encrypted copy of {}, so it keeps working even if you later remove keys from the library. You'll type this passphrase to unlock the wallet and to sign.",
+                    if hot == 1 { "the private key".to_string() } else { format!("the {hot} private keys") }
                 ))
-                .child(self.passphrase.clone())
-                .child(self.confirm.clone())
-                .when(!confirm.is_empty() && pass != confirm, |d| {
-                    d.child(error_line("Passphrases do not match"))
-                })
+                .child(
+                    div()
+                        .max_w(FORM_WIDTH)
+                        .flex()
+                        .flex_col()
+                        .gap_4()
+                        .child(field("Passphrase", self.passphrase.clone(), None))
+                        .child(field(
+                            "Confirm passphrase",
+                            self.confirm.clone(),
+                            (!confirm.is_empty() && pass != confirm).then(|| SharedString::from("Passphrases don't match")),
+                        )),
+                )
                 .into_any_element()
+        } else if self.data.watch_only {
+            alert(
+                Tone::Secondary,
+                "None of this wallet's keys are in your library, so it will be watch-only: you can see balances and addresses and build transactions for other key holders to sign.",
+            )
+            .into_any_element()
         } else {
-            alert_text(
-                AlertTone::Info,
-                "No private keys will be stored on this computer, so the wallet doesn't need a passphrase. Signing happens on hardware wallets or by exporting PSBTs to the other key holders.",
+            alert(
+                Tone::Secondary,
+                "No private keys are stored with this wallet, so it needs no passphrase. Signing happens on hardware wallets or by exporting PSBTs to the other key holders.",
             )
             .into_any_element()
         };
 
-        let this = cx.entity().downgrade();
         div()
             .flex()
             .flex_col()
             .gap_6()
-            .child(review)
-            .child(passphrase_section)
-            .when(!exposed.is_empty(), |d| {
-                let titles = exposed
-                    .iter()
-                    .map(|p| p.title.to_lowercase())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+            .child(section("Summary").child(self.summary_card()))
+            .child(
+                section("Keys")
+                    .description("Each slot and the library key that fills it.")
+                    .child(self.keys_card()),
+            )
+            .child(custody)
+            .when(!self.data.exposed.is_empty(), |d| {
+                let titles = self.data.exposed.iter().map(|p| p.to_lowercase()).collect::<Vec<_>>().join(", ");
                 d.child(
                     div()
-                        .rounded_md()
+                        .rounded_lg()
                         .border_1()
                         .border_color(alpha(t.warning, 0.4))
                         .bg(alpha(t.warning, 0.06))
@@ -257,36 +292,7 @@ impl Render for SecureStep {
                         )),
                 )
             })
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        secondary_button("secure-back", "← Back")
-                            .disabled(submitting)
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SecureEvent::Back))),
-                    )
-                    .child(
-                        div().flex_1().child(
-                            primary_button("secure-submit", self.submit_label)
-                                .full_width()
-                                .loading(submitting)
-                                .disabled(!ready)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    if this.ready(cx) && !this.submitting {
-                                        cx.emit(SecureEvent::Submit);
-                                    }
-                                })),
-                        ),
-                    ),
-            )
     }
-}
-
-pub enum DoneEvent {
-    Open,
 }
 
 pub struct DoneStep {
@@ -297,8 +303,6 @@ pub struct DoneStep {
     saved: Option<String>,
     error: Option<SharedString>,
 }
-
-impl EventEmitter<DoneEvent> for DoneStep {}
 
 impl DoneStep {
     pub fn new(title: &'static str, wallet_id: String, wallet_name: String, multi_key: bool) -> Self {
@@ -341,103 +345,108 @@ impl Render for DoneStep {
         let t = theme();
         let multi = self.multi_key;
         div()
+            .max_w(FORM_WIDTH)
             .flex()
             .flex_col()
             .gap_6()
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .items_center()
-                    .pt_4()
+                    .flex_row()
+                    .items_start()
+                    .gap_4()
                     .child(
                         div()
-                            .size(px(56.))
+                            .size(px(40.))
+                            .flex_none()
                             .flex()
                             .items_center()
                             .justify_center()
                             .rounded_full()
-                            .border_1()
-                            .border_color(alpha(t.success, 0.4))
-                            .bg(alpha(t.success, 0.08))
-                            .child(icon("check").size(px(24.)).text_color(t.success)),
+                            .bg(alpha(t.success, 0.12))
+                            .child(icon("check").size(px(20.)).text_color(t.success)),
                     )
                     .child(
                         div()
-                            .mt_5()
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child(self.title),
-                    )
-                    .child(
-                        div()
-                            .mt_2()
-                            .max_w(px(384.))
-                            .text_center()
-                            .text_size(px(13.))
-                            .line_height(px(21.))
-                            .text_color(t.muted_foreground)
-                            .child("The wallet is unlocked and syncing. Balance and history fill in as the sync completes."),
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(15.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(t.foreground)
+                                    .child(self.title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .line_height(px(19.))
+                                    .text_color(t.muted_foreground)
+                                    .child(format!(
+                                        "“{}” is unlocked and syncing. Balance and history fill in as the sync completes.",
+                                        self.wallet_name
+                                    )),
+                            ),
                     ),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .rounded_md()
-                    .border_1()
-                    .px_4()
-                    .py_4()
-                    .map(|d| {
-                        if multi {
-                            d.border_color(alpha(t.warning, 0.4)).bg(alpha(t.warning, 0.06))
-                        } else {
-                            d.border_color(t.border).bg(alpha(t.card, 0.4))
-                        }
+                section(if multi { "Save the wallet backup now" } else { "Wallet backup" })
+                    .description(if multi {
+                        "Seed phrases alone can't restore a multi-key wallet. You also need the descriptor, which lists every key and the spending rules. This file holds it (no private keys), so give a copy to every key holder."
+                    } else {
+                        "The descriptor and key details, without private keys. Restoring from the seed works too; this file makes it faster and records the exact setup."
                     })
                     .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child(if multi { "Save the wallet backup now" } else { "Wallet backup" }),
+                        card()
+                            .px_4()
+                            .py_3()
+                            .flex_row()
+                            .items_center()
+                            .gap_3()
+                            .when(multi && self.saved.is_none(), |d| {
+                                d.border_color(alpha(t.warning, 0.5)).bg(alpha(t.warning, 0.05))
+                            })
+                            .child(icon("file").size(px(16.)))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(2.))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(t.foreground)
+                                            .child(format!("{}.wallet-backup.json", file_safe(&self.wallet_name))),
+                                    )
+                                    .child(match &self.saved {
+                                        Some(p) => div()
+                                            .truncate()
+                                            .font_family(FONT_MONO)
+                                            .text_size(px(12.))
+                                            .text_color(t.success)
+                                            .child(format!("Saved to {p}")),
+                                        None => div()
+                                            .text_size(px(12.))
+                                            .text_color(t.muted_foreground)
+                                            .child("Not saved yet"),
+                                    }),
+                            )
+                            .child(
+                                button(
+                                    "save-wallet-backup",
+                                    if self.saved.is_some() { "Save another copy" } else { "Save backup…" },
+                                )
+                                .outline()
+                                .small()
+                                .icon("download")
+                                .on_click(cx.listener(|this, _, _, cx| this.save_backup(cx))),
+                            ),
                     )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .line_height(px(19.))
-                            .text_color(t.muted_foreground)
-                            .child(if multi {
-                                "Seed phrases alone can't restore a multi-key wallet. You also need the descriptor, which lists every key and the spending rules. This file holds it (no private keys), so give a copy to every key holder."
-                            } else {
-                                "The descriptor and key details, without private keys. Restoring from the seed works too; this file makes it faster and records the exact setup."
-                            }),
-                    )
-                    .child(
-                        secondary_button(
-                            "save-wallet-backup",
-                            if self.saved.is_some() { "Save another copy" } else { "Save wallet backup (.json)" },
-                        )
-                        .full_width()
-                        .on_click(cx.listener(|this, _, _, cx| this.save_backup(cx))),
-                    )
-                    .children(self.saved.clone().map(|p| {
-                        div()
-                            .truncate()
-                            .font_family(FONT_MONO)
-                            .text_size(px(11.))
-                            .text_color(t.muted_foreground)
-                            .child(format!("✓ {p}"))
-                    }))
-                    .children(self.error.clone().map(|e| alert_text(AlertTone::Error, e))),
-            )
-            .child(
-                primary_button("open-wallet", "Open wallet")
-                    .full_width()
-                    .icon_right("arrow-right")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(DoneEvent::Open))),
+                    .children(self.error.clone().map(|e| alert(Tone::Destructive, e))),
             )
     }
 }

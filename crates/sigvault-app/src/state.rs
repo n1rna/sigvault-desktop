@@ -48,6 +48,7 @@ pub struct SyncProgress {
     pub wallet_id: String,
     pub phase: String,
     pub percent: u32,
+    #[allow(dead_code)] // part of the wire format; pages render phase/percent
     pub message: String,
 }
 

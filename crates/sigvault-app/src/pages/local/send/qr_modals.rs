@@ -18,6 +18,7 @@ use gpui::{
 };
 
 use super::SendPage;
+use crate::pages::local::widgets::dialog_title;
 use crate::psbt::{
     file::decode_psbt_text,
     image::decode_qr_image,
@@ -115,6 +116,7 @@ impl SendPage {
                 .on_dismiss(cx.listener(|this, _, _, cx| this.close_show_qr(cx)))
                 .child(dialog_header(
                     "Sign on another machine",
+                    "Show this animated QR to your signing device's camera.",
                     cx.listener(|this, _, _, cx| this.close_show_qr(cx)),
                 ))
                 .child(segmented(
@@ -322,7 +324,8 @@ impl SendPage {
             modal("scan-qr-modal", 520.)
                 .on_dismiss(cx.listener(|this, _, _, cx| this.close_scan_qr(cx)))
                 .child(dialog_header(
-                    "Scan signed PSBT",
+                    "Import signed PSBT",
+                    "Read the QR codes your signer displays, or paste the signed PSBT.",
                     cx.listener(|this, _, _, cx| this.close_scan_qr(cx)),
                 ))
                 .child(info_box(
@@ -387,7 +390,7 @@ impl SendPage {
                         .items_center()
                         .gap_3()
                         .child(div().flex_1().h(px(1.)).bg(alpha(t.border, 0.6)))
-                        .child(div().text_size(px(11.)).text_color(t.muted_foreground).child("or paste"))
+                        .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("or paste"))
                         .child(div().flex_1().h(px(1.)).bg(alpha(t.border, 0.6))),
                 )
                 .child(s.paste.clone())
@@ -409,21 +412,17 @@ fn decode_images(paths: Vec<PathBuf>) -> Vec<Result<Vec<String>, String>> {
 
 fn dialog_header(
     title: &'static str,
+    description: &'static str,
     on_close: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
     div()
         .flex()
         .flex_row()
-        .items_center()
+        .items_start()
         .justify_between()
-        .child(
-            div()
-                .text_size(px(14.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme().foreground)
-                .child(title),
-        )
-        .child(icon_button("dialog-close", "x").on_click(on_close))
+        .gap_3()
+        .child(dialog_title(title, Some(description.into())).flex_1())
+        .child(icon_button("dialog-close", "x").ghost().on_click(on_close))
 }
 
 fn info_box(content: impl IntoElement) -> impl IntoElement {
@@ -436,7 +435,7 @@ fn info_box(content: impl IntoElement) -> impl IntoElement {
         .px_4()
         .py_3()
         .text_size(px(12.))
-        .line_height(px(19.))
+        .line_height(px(18.))
         .text_color(t.muted_foreground)
         .child(content)
 }

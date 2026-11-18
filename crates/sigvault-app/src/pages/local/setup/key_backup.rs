@@ -68,6 +68,8 @@ pub struct KeyBackup {
     busy: bool,
     error: Option<SharedString>,
     plain_ack: bool,
+    /// Label of the final "done" button.
+    done_label: SharedString,
     _subs: Vec<Subscription>,
 }
 
@@ -127,8 +129,25 @@ impl KeyBackup {
             busy: false,
             error: None,
             plain_ack: false,
+            done_label: "Use this key".into(),
             _subs: subs,
         }
+    }
+
+    /// Backup flow for a key generated into the key library, before any
+    /// wallet exists: files are named after the fingerprint and the last
+    /// button reads "Continue".
+    pub fn for_library(
+        words: Vec<String>,
+        derived: DerivedKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let label = format!("key {}", derived.fingerprint);
+        let mut this = Self::new(words, derived, label, String::new(), window, cx);
+        this.base_name = format!("sigvault-key-{}", this.derived.fingerprint);
+        this.done_label = "Continue".into();
+        this
     }
 
     fn secret(&self) -> HotSecret {
@@ -441,7 +460,7 @@ impl KeyBackup {
                 box_()
                     .child(field_label(
                         "Encrypted key file",
-                        Some("Encrypted with a password of your choice (Argon2id + ChaCha20-Poly1305). Import it back into any slot with the same password.".into()),
+                        Some("Encrypted with a password of your choice (Argon2id + ChaCha20-Poly1305). Import it back later with the same password.".into()),
                     ))
                     .child(
                         div()
@@ -504,7 +523,7 @@ impl KeyBackup {
             })
             .children(self.error.clone().map(|e| alert_text(AlertTone::Error, e)))
             .child(
-                primary_button("use-key", "Use this key")
+                primary_button("use-key", self.done_label.clone())
                     .full_width()
                     .icon_right("arrow-right")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(KeyBackupEvent::Done))),

@@ -38,6 +38,19 @@ pub enum HotSecret {
     },
 }
 
+impl From<&sigvault_core::local_wallet::storage::HotSecret> for HotSecret {
+    fn from(s: &sigvault_core::local_wallet::storage::HotSecret) -> Self {
+        use sigvault_core::local_wallet::storage::HotSecret as Core;
+        match s {
+            Core::Mnemonic { mnemonic, bip39_passphrase } => HotSecret::Mnemonic {
+                mnemonic: mnemonic.clone(),
+                bip39_passphrase: bip39_passphrase.clone(),
+            },
+            Core::Xprv { xprv } => HotSecret::Xprv { xprv: xprv.clone() },
+        }
+    }
+}
+
 /// The public half of a slot — what ends up in the descriptor.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SlotKey {
@@ -78,16 +91,11 @@ pub enum SlotSource {
 }
 
 impl SlotSource {
-    pub fn label(self) -> &'static str {
-        match self {
-            SlotSource::Generated => "Generated",
-            SlotSource::Seed => "Seed phrase",
-            SlotSource::Xprv => "Private key",
-            SlotSource::Hardware => "Hardware",
-            SlotSource::Xpub => "Public key",
-            SlotSource::KeyFile => "Key file",
-        }
+    /// Parse a key-library `source` string (`crate::keychain::SOURCES`).
+    pub fn from_key_source(s: &str) -> Option<Self> {
+        serde_json::from_value(Value::String(s.to_string())).ok()
     }
+
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -494,6 +502,15 @@ mod tests {
             "internal_descriptor": "b", "fingerprints": [], "spendable": false,
         }))
         .unwrap();
+    }
+
+    #[test]
+    fn every_library_source_maps_to_a_slot_source() {
+        for (s, _) in crate::keychain::SOURCES {
+            assert!(SlotSource::from_key_source(s).is_some(), "{s}");
+        }
+        assert_eq!(SlotSource::from_key_source("key_file"), Some(SlotSource::KeyFile));
+        assert_eq!(SlotSource::from_key_source("nope"), None);
     }
 
     #[test]

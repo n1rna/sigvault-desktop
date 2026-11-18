@@ -333,7 +333,7 @@ impl PolicyPicker {
                     .threshold_picker("primary", "Primary signers", p.threshold, p.n, 1, Target::Primary, cx)
                     .into_any_element(),
                 None => div()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .line_height(px(17.))
                     .text_color(t.muted_foreground)
                     .child("Recovery-only vault: the primary path uses a provably unspendable key, so coins can only move once a recovery timelock has passed. Useful for cold storage and inheritance.")
@@ -370,7 +370,7 @@ impl PolicyPicker {
                                 d.child(
                                     div()
                                         .id(("remove-rec", i))
-                                        .text_size(px(11.))
+                                        .text_size(px(12.))
                                         .font_weight(FontWeight::MEDIUM)
                                         .text_color(t.muted_foreground)
                                         .cursor_pointer()
@@ -398,7 +398,7 @@ impl PolicyPicker {
                                 .border_1()
                                 .px(px(10.))
                                 .py(px(4.))
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .cursor_pointer()
                                 .map(|d| {
                                     if active {
@@ -432,7 +432,7 @@ impl PolicyPicker {
                             .children(self.timelock_inputs.get(i).map(|inp| div().w(px(112.)).child(inp.clone())))
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .text_color(t.muted_foreground)
                                     .child(format!(
                                         "blocks of inactivity · {}",
@@ -582,7 +582,7 @@ impl Render for PolicyPicker {
                     .child(
                         div()
                             .mt_1()
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .line_height(px(17.))
                             .text_color(t.muted_foreground)
                             .child(p.hint),
@@ -591,7 +591,7 @@ impl Render for PolicyPicker {
                         div()
                             .mt_2()
                             .font_family(FONT_MONO)
-                            .text_size(px(10.))
+                            .text_size(px(12.))
                             .text_color(alpha(t.muted_foreground, 0.8))
                             .child(p.shape),
                     )
@@ -639,7 +639,7 @@ impl Render for PolicyPicker {
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .text_color(t.muted_foreground)
                                     .child("Custom M-of-N, several recovery paths, recovery-only vaults, SegWit v0"),
                             ),
