@@ -137,7 +137,10 @@ pub fn resolve(route: &R, requested: &Page) -> Page {
         return requested.clone();
     }
     if let Some(ns) = namespace {
-        if path.starts_with(ns) {
+        // Signed-in cloud routes never fall back to the pre-auth pages.
+        let pre_auth = matches!(requested, Page::Login | Page::SelectEnv);
+        let signed_in_route = matches!(route, R::MainPage | R::RemoteSessions);
+        if path.starts_with(ns) && !(pre_auth && signed_in_route) {
             return requested.clone();
         }
     }
@@ -162,6 +165,8 @@ mod tests {
         assert_eq!(resolve(&R::LocalWallets, &Page::Sessions), Page::LocalWallets);
         assert_eq!(resolve(&R::Login, &Page::LocalWallets), Page::Login);
         assert_eq!(resolve(&R::MainPage, &Page::Login), Page::Sessions);
+        assert_eq!(resolve(&R::MainPage, &Page::CloudSettings), Page::CloudSettings);
+        assert_eq!(resolve(&R::Login, &Page::Sessions), Page::Login);
     }
 
     #[test]
