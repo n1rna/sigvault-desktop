@@ -80,7 +80,7 @@ fn main() {
                 items: vec![gpui::MenuItem::action("Quit SigVault", Quit)],
             }]);
 
-            let bounds = Bounds::centered(None, size(px(1120.), px(760.)), cx);
+            let bounds = Bounds::centered(None, size(px(980.), px(680.)), cx);
             let window = cx
                 .open_window(
                     WindowOptions {
@@ -90,7 +90,7 @@ fn main() {
                             appears_transparent: true,
                             traffic_light_position: Some(point(px(16.), px(17.))),
                         }),
-                        window_min_size: Some(size(px(880.), px(600.))),
+                        window_min_size: Some(size(px(820.), px(560.))),
                         app_id: Some(sigvault_core::host::APP_IDENTIFIER.into()),
                         ..Default::default()
                     },
