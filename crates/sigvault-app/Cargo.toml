@@ -38,3 +38,32 @@ uuid = { version = "1", features = ["v4"] }
 tempfile = "3"
 bitcoin = "0.32"
 bdk_wallet = "1.1.0"
+
+[lints]
+workspace = true
+
+# Installers: `cargo build --release -p sigvault-app && cargo packager -p sigvault-app --release`
+# (CI: .github/workflows/release.yaml).
+[package.metadata.packager]
+product-name = "SigVault"
+identifier = "org.sigvault.desktop"
+description = "Bitcoin wallets and multisig signing with hardware devices"
+publisher = "SigVault"
+authors = ["SigVault"]
+homepage = "https://sigvault.org"
+category = "Finance"
+icons = [
+  "../../packaging/icons/32x32.png",
+  "../../packaging/icons/128x128.png",
+  "../../packaging/icons/128x128@2x.png",
+  "../../packaging/icons/icon.icns",
+  "../../packaging/icons/icon.ico",
+]
+binaries = [{ path = "sigvault-desktop", main = true }]
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+signing-identity = "-"
+
+[package.metadata.packager.deb]
+depends = ["libxkbcommon0", "libxkbcommon-x11-0", "libvulkan1", "libudev1", "libfontconfig1"]

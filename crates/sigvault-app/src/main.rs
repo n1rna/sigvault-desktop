@@ -33,9 +33,10 @@ use crate::runtime::{backend, Backend};
 gpui::actions!(sigvault, [Quit, SwitchToDevice, SwitchToCloud]);
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
-        "info,sigvault_core=debug,sigvault_desktop=debug",
-    ))
+    env_logger::Builder::from_env(
+        env_logger::Env::default()
+            .default_filter_or("info,sigvault_core=debug,sigvault_desktop=debug"),
+    )
     .init();
     log::info!("Starting SigVault Desktop (GPUI)");
 
@@ -61,8 +62,12 @@ fn main() {
             dev_fixtures::install(cx);
             ui::input::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
-            cx.on_action(|_: &SwitchToDevice, cx| shell::switch_space(sigvault_core::app_mode::AppMode::Local, cx));
-            cx.on_action(|_: &SwitchToCloud, cx| shell::switch_space(sigvault_core::app_mode::AppMode::Cloud, cx));
+            cx.on_action(|_: &SwitchToDevice, cx| {
+                shell::switch_space(sigvault_core::app_mode::AppMode::Local, cx)
+            });
+            cx.on_action(|_: &SwitchToCloud, cx| {
+                shell::switch_space(sigvault_core::app_mode::AppMode::Cloud, cx)
+            });
             #[cfg(target_os = "macos")]
             cx.bind_keys([
                 KeyBinding::new("cmd-q", Quit, None),
@@ -87,11 +92,15 @@ fn main() {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
                         titlebar: Some(TitlebarOptions {
                             title: Some("SigVault".into()),
-                            appears_transparent: true,
+                            // macOS: our top bar sits under the traffic lights.
+                            // Windows/Linux keep the native title bar so they
+                            // get native close/minimize/maximize controls.
+                            appears_transparent: cfg!(target_os = "macos"),
                             traffic_light_position: Some(point(px(16.), px(17.))),
                         }),
                         window_min_size: Some(size(px(820.), px(560.))),
                         app_id: Some(sigvault_core::host::APP_IDENTIFIER.into()),
+                        window_decorations: Some(gpui::WindowDecorations::Server),
                         ..Default::default()
                     },
                     |window, cx| cx.new(|cx| shell::Root::new(window, cx)),
@@ -119,9 +128,8 @@ fn main() {
             .detach();
 
             // Listener is ready → initialize (routes onward).
-            let init = backend(cx).call(|app, st| async move {
-                cmd_initialize_app(app, State::new(&st)).await
-            });
+            let init = backend(cx)
+                .call(|app, st| async move { cmd_initialize_app(app, State::new(&st)).await });
             cx.spawn(async move |_| {
                 if let Err(e) = init.await {
                     log::error!("initialize failed: {e}");
