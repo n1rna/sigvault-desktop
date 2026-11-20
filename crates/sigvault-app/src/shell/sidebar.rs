@@ -335,7 +335,7 @@ impl AppSidebar {
                         .text_size(px(12.))
                         .line_height(px(17.))
                         .text_color(t.ink_2)
-                        .child("Your keys never leave your devices in either workspace.")
+                        .child("Keys on your own devices never leave them, in either workspace.")
                         .into_any_element(),
                 ),
                 cx,

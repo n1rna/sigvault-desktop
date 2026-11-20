@@ -25,8 +25,8 @@ const VALUE_POINTS: [(&str, &str, &str); 3] = [
     ),
     (
         "shield",
-        "Non-custodial",
-        "SigVault coordinates, it never holds your keys. Keys stay on your devices; signing happens on-device.",
+        "Keys stay on your devices",
+        "Keys on your own devices never leave them, and signing happens on the device. If a vault uses a SigVault co-signer key, SigVault holds that one key.",
     ),
 ];
 

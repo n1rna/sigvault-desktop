@@ -79,12 +79,13 @@ pub fn source_icon(source: &str) -> &'static str {
     }
 }
 
-/// "Private key here" / "Watch-only" pill.
+/// "Private key on this computer" / "Watch-only" pill. One neutral tone
+/// everywhere: amber is kept for "can spend alone" warnings.
 pub fn custody_badge(hot: bool) -> Div {
     if hot {
-        badge("Private key", Tone::Warning)
+        badge("Private key on this computer", Tone::Secondary)
     } else {
-        badge("Public only", Tone::Secondary)
+        badge("Watch-only", Tone::Outline)
     }
 }
 
@@ -137,10 +138,15 @@ pub fn slot_board<H: SlotBoardHost>(
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .children(
-                    path.timelock_blocks
-                        .map(|b| badge(format!("{} blocks", format_thousands(b)), Tone::Secondary)),
-                )
+                // The subtitle already says "after ~6 months"; the block
+                // count is the exact figure, kept secondary.
+                .children(path.timelock_blocks.map(|b| {
+                    div()
+                        .font_family(FONT_MONO)
+                        .text_size(px(12.))
+                        .text_color(t.ink_3)
+                        .child(format!("{} blocks ·", format_thousands(b)))
+                }))
                 .child(
                     div()
                         .font_family(FONT_MONO)

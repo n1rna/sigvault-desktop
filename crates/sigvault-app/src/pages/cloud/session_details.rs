@@ -78,8 +78,16 @@ impl SessionDetailsPage {
             Some(DEVICE_REGISTRATION) => {
                 self.signing = None;
                 let network = requirement(&session, "network").unwrap_or_else(|| "testnet".into());
-                let path = requirement(&session, "derivation_path")
-                    .unwrap_or_else(|| "m/84'/0'/0'".into());
+                // No path from the coordinator: the BIP84 account for the
+                // session's network (coin 0' only on mainnet).
+                let path = requirement(&session, "derivation_path").unwrap_or_else(|| {
+                    let coin = if matches!(network.as_str(), "bitcoin" | "mainnet") {
+                        "0'"
+                    } else {
+                        "1'"
+                    };
+                    format!("m/84'/{coin}/0'")
+                });
                 match &self.device_session {
                     Some(e) => e.update(cx, |c, cx| c.set_props(network, path, session_id, cx)),
                     None => {

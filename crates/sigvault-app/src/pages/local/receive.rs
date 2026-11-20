@@ -48,10 +48,10 @@ impl ReceivePage {
                         this.wallet = wallet;
                         match addr {
                             Ok(a) => this.address = Some(a),
-                            Err(e) => this.error = Some(e.into()),
+                            Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                         }
                     }
-                    Err(e) => this.error = Some(e.into()),
+                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                 }
                 this.loading = false;
                 cx.notify();
@@ -107,7 +107,11 @@ impl ReceivePage {
                                     .child("Bitcoin address"),
                             )
                             .child(badge(
-                                format!("{} · index {}", addr.keychain, addr.index),
+                                if addr.keychain.eq_ignore_ascii_case("internal") {
+                                    format!("Change address #{}", addr.index + 1)
+                                } else {
+                                    format!("Address #{}", addr.index + 1)
+                                },
                                 Tone::Outline,
                             )),
                     )

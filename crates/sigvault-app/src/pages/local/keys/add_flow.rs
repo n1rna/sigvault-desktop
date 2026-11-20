@@ -41,6 +41,7 @@ use crate::pages::local::setup::keys::{
     classify_pasted_key, extended_key_depth, is_test_network_key, normalize_path, PastedKey,
 };
 use crate::pages::local::setup::mnemonic::{MnemonicEvent, MnemonicInput};
+use crate::pages::local::setup::slot_board::custody_badge;
 use crate::pages::local::setup::ui::{seg, segmented};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme, FONT_MONO};
@@ -655,6 +656,8 @@ impl AddKeyFlow {
                 KeyBackupEvent::Done => this.go_details(Material::Derivable(secret.clone()), cx),
             }),
         );
+        // Its buttons live in our footer: re-render when it changes.
+        self._subs.push(cx.observe(&backup, |_, _, cx| cx.notify()));
         self.backup = Some(backup);
     }
 
@@ -868,7 +871,12 @@ impl AddKeyFlow {
                         .into_any_element()
                 };
                 match self.source {
-                    Some(KeySource::Generate) if self.backup.is_none() => right.push(
+                    Some(KeySource::Generate) if self.backup.is_some() => {
+                        if let Some(b) = self.backup.clone() {
+                            right.extend(b.update(cx, |b, cx| b.footer_actions(cx)));
+                        }
+                    }
+                    Some(KeySource::Generate) => right.push(
                         button("akf-generate", "Generate key")
                             .icon("sparkles")
                             .loading(self.busy)
@@ -932,17 +940,32 @@ impl AddKeyFlow {
 
     // ── render ──
 
-    fn render_source_step(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_source_step(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let t = theme();
+        // Columns follow the room there is: the page sits beside the
+        // sidebar; the picker modal is ~640px wide.
+        let vw = f32::from(window.viewport_size().width);
+        let cols: u16 = if !self.hosted {
+            if vw < 760. {
+                1
+            } else {
+                2
+            }
+        } else if vw >= 1320. {
+            3
+        } else if vw >= 860. {
+            2
+        } else {
+            1
+        };
         let source_card = |s: KeySource, cx: &mut Context<Self>| {
             div()
-                .flex_1()
-                .flex_basis(px(0.))
                 .min_w_0()
                 .flex()
                 .child(
                     choice_card(SharedString::from(format!("src-{}", s.id())), false)
                         .w_full()
+                        .h_full()
                         .clickable(
                             Probe::new("choice", s.title()),
                             cx.listener(move |this, _, window, cx| this.choose(s, window, cx)),
@@ -998,41 +1021,32 @@ impl AddKeyFlow {
                 )
                 .into_any_element()
         };
-        let group =
-            |title: &'static str, desc: &'static str, cards: Vec<AnyElement>, cols: usize| {
-                let filler = cols.saturating_sub(cards.len());
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(t.foreground)
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(t.muted_foreground)
-                                    .child(desc),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap_3()
-                            .children(cards)
-                            .children((0..filler).map(|_| div().flex_1().flex_basis(px(0.)))),
-                    )
-            };
+        let group = |title: &'static str, desc: &'static str, cards: Vec<AnyElement>| {
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(t.foreground)
+                                .child(title),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(t.muted_foreground)
+                                .child(desc),
+                        ),
+                )
+                .child(div().grid().grid_cols(cols).gap_3().children(cards))
+        };
         let create: Vec<_> = KeySource::CREATE
             .iter()
             .map(|s| source_card(*s, cx))
@@ -1053,19 +1067,16 @@ impl AddKeyFlow {
                 "Create new",
                 "Start a key from scratch on this computer.",
                 create,
-                3,
             ))
             .child(group(
                 "Import a private key",
                 "Bring in a key you already have. It's stored encrypted under your keychain password.",
                 private,
-                3,
             ))
             .child(group(
                 "Add a public key (watch-only)",
                 "Only the public key is stored here. The private key never leaves the device or its owner, and signing happens there.",
                 public,
-                3,
             ))
             .into_any_element()
     }
@@ -1464,11 +1475,7 @@ impl AddKeyFlow {
                             }),
                     ),
             )
-            .child(if is_secret {
-                badge("Private key", Tone::Success)
-            } else {
-                badge("Watch-only", Tone::Secondary)
-            });
+            .child(custody_badge(is_secret));
 
         let network_control = if self.network_locked {
             div()
@@ -1676,7 +1683,7 @@ impl Render for AddKeyFlow {
         }
         let t = theme();
         let body = match self.step {
-            AddKeyStep::Source => self.render_source_step(cx),
+            AddKeyStep::Source => self.render_source_step(window, cx),
             AddKeyStep::Key => self.render_key_step(cx),
             AddKeyStep::Details => self.render_details_step(cx),
         };
