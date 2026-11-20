@@ -1,0 +1,72 @@
+[package]
+name = "sigvault-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SigVault Desktop — GPUI front end"
+
+[[bin]]
+name = "sigvault-desktop"
+path = "src/main.rs"
+
+[dependencies]
+sigvault-core = { path = "../sigvault-core" }
+gpui = "0.2.2"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+# debug-embed: debug builds carry their icons too (the nightly debug binary
+# runs on other machines, e.g. the sigvault repo's e2e job).
+rust-embed = { version = "8", features = ["debug-embed"] }
+unicode-segmentation = "1"
+qrcode = { version = "0.14", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls", "json"] }
+semver = "1"
+base64 = "0.22"
+bip39 = "2"
+ur = "0.5"
+bbqr = { version = "0.6", default-features = false }
+rqrr = { version = "0.11", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
+zeroize = "1.8"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+bitcoin = "0.32"
+bdk_wallet = "1.1.0"
+
+[lints]
+workspace = true
+
+# Installers: `cargo build --release -p sigvault-app && cargo packager -p sigvault-app --release`
+# (CI: .github/workflows/release.yaml).
+[package.metadata.packager]
+product-name = "SigVault"
+identifier = "org.sigvault.desktop"
+description = "Bitcoin wallets and multisig signing with hardware devices"
+publisher = "SigVault"
+authors = ["SigVault"]
+homepage = "https://sigvault.org"
+category = "Finance"
+icons = [
+  "../../packaging/icons/32x32.png",
+  "../../packaging/icons/128x128.png",
+  "../../packaging/icons/128x128@2x.png",
+  "../../packaging/icons/icon.icns",
+  "../../packaging/icons/icon.ico",
+]
+binaries = [{ path = "sigvault-desktop", main = true }]
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+signing-identity = "-"
+
+[package.metadata.packager.deb]
+depends = ["libxkbcommon0", "libxkbcommon-x11-0", "libvulkan1", "libudev1", "libfontconfig1"]
