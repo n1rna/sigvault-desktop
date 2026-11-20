@@ -121,6 +121,39 @@ Debug builds only:
   steps with prefilled input.
 - `SIGVAULT_E2E_SIGNER_MNEMONIC`, `SIGVAULT_E2E_AUTH_URL_FILE` — software signer
   and OAuth redirect capture for end-to-end tests.
+- `SIGVAULT_E2E_DRIVER=127.0.0.1:<port>` — the e2e driver (below).
+
+## End-to-end tests
+
+GPUI has no DOM or accessibility tree, so tests drive the app through a small
+driver built into debug builds (`src/e2e.rs`). With `SIGVAULT_E2E_DRIVER` set,
+the app takes newline-delimited JSON on that address:
+
+- `{"cmd":"snapshot"}` → the page path plus every reported widget:
+  `{role, label, enabled, visible, value?, selected?, focused?, bounds}`.
+- `{"cmd":"click","role":"button","label":"Continue","exact":true}` — runs
+  the widget's click handler; refused when it is disabled or covered by a
+  modal or menu.
+- `{"cmd":"type","text":"…"}` / `{"cmd":"key","keys":"enter"}` — keystrokes
+  through `Window::dispatch_keystroke`, as real typing.
+- `{"cmd":"quit"}`.
+
+Widgets report themselves while the frame is laid out: the kit's `button`,
+`checkbox`, `tabs`, `alert`, `badge`, `Select`, `TextInput`, modals, page
+titles and crumbs already do, as do the sidebar, welcome cards, network rows
+and hardware-device rows. When you add a custom clickable element a test
+needs, use `.clickable(Probe::new("role", "Label"), handler)` (from
+`crate::e2e::E2eClick`) instead of `.on_click(handler)`, or `.e2e(Probe…)` for
+something that is only read. Normal runs skip all of it (no env var → no
+probes, no socket).
+
+- `crates/sigvault-app/tests/ui_e2e.rs` — offline UI flows, run in CI under
+  Xvfb: `cargo test -p sigvault-app --test ui_e2e -- --ignored --test-threads=1`
+  (`xvfb-run -a` in front on a headless Linux box).
+- The sigvault repo's `e2e/specs/desktop` runs the cloud flows (OIDC sign-in,
+  device registration and signing on an emulated BitBox02) against regtest,
+  using the `nightly-debug.yaml` artifact and the same driver
+  (`e2e/fixtures/desktop.ts`).
 
 ## Checks
 
@@ -128,6 +161,7 @@ Debug builds only:
 cargo fmt --all
 cargo clippy --workspace --all-targets --no-deps   # warnings are errors
 cargo test --workspace
+cargo test -p sigvault-app --test ui_e2e -- --ignored --test-threads=1   # opens windows
 ```
 
 Look at every page you change in the running app before calling it done.

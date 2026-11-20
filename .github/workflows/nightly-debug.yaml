@@ -1,0 +1,101 @@
+name: Nightly Debug Build (for e2e)
+
+# Builds an unsigned debug binary per desktop platform and publishes it as a
+# GitHub Actions artifact. The sigvault repo's e2e-desktop workflow downloads
+# the Linux one and drives it through the app's e2e driver
+# (crates/sigvault-app/src/e2e.rs). It has to be a debug build: the driver
+# (SIGVAULT_E2E_DRIVER), the OIDC hook (SIGVAULT_E2E_AUTH_URL_FILE) and the
+# software signer (SIGVAULT_E2E_SIGNER_MNEMONIC) are compiled out of release
+# builds. Assets are embedded (rust-embed `debug-embed`), so the binary runs
+# on its own.
+
+on:
+  schedule:
+    # 03:00 UTC — before the sigvault e2e-desktop cron at 04:30.
+    - cron: "0 3 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            label: linux-x86_64
+            bin: sigvault-desktop
+          - platform: macos-latest
+            label: darwin-aarch64
+            bin: sigvault-desktop
+          - platform: windows-latest
+            label: windows-x86_64
+            bin: sigvault-desktop.exe
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # No secrets: OAuth clients are per-environment constants in the
+      # binary (`BUILTIN_OAUTH_CLIENTS` in crates/sigvault-core/src/env_config)
+      # and nothing here is signed.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libssl-dev \
+            libudev-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libvulkan1 \
+            mesa-vulkan-drivers \
+            xvfb
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          shared-key: nightly-debug-${{ matrix.label }}
+
+      - name: Build (debug)
+        run: cargo build -p sigvault-app
+
+      # Don't publish a binary the e2e suite can't drive.
+      - name: UI smoke (Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a cargo test -p sigvault-app --test ui_e2e -- --ignored --test-threads=1
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp "target/debug/${{ matrix.bin }}" artifacts/
+          ls -lh artifacts/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigvault-desktop-debug-${{ matrix.label }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7

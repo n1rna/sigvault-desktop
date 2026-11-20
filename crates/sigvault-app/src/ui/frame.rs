@@ -25,6 +25,7 @@
 use gpui::{div, prelude::*, px, AnyElement, App, ElementId, Pixels, SharedString, Window};
 
 use super::common::{icon, section_head};
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::router::Page;
 use crate::shell::navigate;
 use crate::theme::{alpha, theme};
@@ -222,6 +223,7 @@ impl RenderOnce for PageFrame {
                         .enumerate()
                         .map(move |(i, (label, page))| {
                             let last = i + 1 == n_crumbs;
+                            let label_text = label.to_string();
                             let mut el = div()
                                 .id(SharedString::from(format!("crumb-{i}")))
                                 .flex()
@@ -243,7 +245,10 @@ impl RenderOnce for PageFrame {
                                 el = el
                                     .cursor_pointer()
                                     .hover(move |s| s.text_color(t.ink))
-                                    .on_click(move |_, _, cx| navigate(page.clone(), cx));
+                                    .clickable(
+                                        Probe::new("link", label_text.clone()),
+                                        move |_, _, cx| navigate(page.clone(), cx),
+                                    );
                             }
                             el
                         }),
@@ -279,6 +284,7 @@ impl RenderOnce for PageFrame {
                                     .gap_3()
                                     .children(self.title.map(|title| {
                                         div()
+                                            .e2e(Probe::new("heading", title.to_string()))
                                             .truncate()
                                             .text_size(px(34.))
                                             .line_height(px(40.))

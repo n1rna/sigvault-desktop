@@ -1,6 +1,7 @@
 use gpui::{div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, SharedString, Window};
 
 use super::common::{icon, spinner_with};
+use crate::e2e::{E2e, Probe};
 use crate::theme::{alpha, theme, RADIUS_CHIP, RADIUS_CONTROL};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -38,6 +39,8 @@ pub struct Button {
     loading: bool,
     full_width: bool,
     on_click: Option<ClickHandler>,
+    /// Name the e2e driver reports for an icon-only button.
+    e2e_label: Option<SharedString>,
 }
 
 pub fn button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
@@ -52,6 +55,7 @@ pub fn button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Butto
         loading: false,
         full_width: false,
         on_click: None,
+        e2e_label: None,
     }
 }
 
@@ -67,6 +71,7 @@ pub fn icon_button(id: impl Into<ElementId>, icon_name: &'static str) -> Button 
         loading: false,
         full_width: false,
         on_click: None,
+        e2e_label: None,
     }
 }
 
@@ -121,6 +126,11 @@ impl Button {
         self.full_width = true;
         self
     }
+    /// Accessible name for the e2e driver (icon buttons default to the icon).
+    pub fn e2e_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.e2e_label = Some(label.into());
+        self
+    }
     pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Box::new(f));
         self
@@ -162,8 +172,28 @@ impl RenderOnce for Button {
             ButtonSize::Icon => (px(36.), px(0.), px(14.), px(16.), RADIUS_CONTROL),
         };
 
+        let probe = Probe::new(
+            "button",
+            self.e2e_label
+                .clone()
+                .or_else(|| self.label.clone())
+                .map(|l| l.to_string())
+                .or_else(|| self.icon.map(str::to_string))
+                .unwrap_or_default(),
+        )
+        .disabled(inert);
+        let handler: Option<crate::e2e::ClickHandler> = if inert {
+            None
+        } else {
+            self.on_click.map(std::rc::Rc::from)
+        };
+        let probe = match &handler {
+            Some(h) => probe.on_click(h.clone()),
+            None => probe,
+        };
         let mut el = div()
             .id(self.id)
+            .e2e(probe)
             .flex()
             .flex_row()
             .items_center()
@@ -205,8 +235,8 @@ impl RenderOnce for Button {
             } else {
                 el = el.hover(|s| s.underline());
             }
-            if let Some(handler) = self.on_click {
-                el = el.on_click(handler);
+            if let Some(handler) = handler {
+                el = el.on_click(move |e, w, cx| handler(e, w, cx));
             }
         }
 

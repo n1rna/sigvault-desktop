@@ -3,6 +3,7 @@ use gpui::{
 };
 
 use super::common::icon;
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::theme::{alpha, theme, RADIUS_CARD, RADIUS_CONTROL};
 
 #[derive(Clone)]
@@ -122,12 +123,17 @@ impl Render for Select {
                     .line_height(px(20.))
                     .when(disabled, |d| d.opacity(0.55))
                     .when(!disabled, |d| d.cursor_pointer())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if !disabled {
-                            this.open = !this.open;
-                            cx.notify();
-                        }
-                    }))
+                    .clickable(
+                        Probe::new("select", current.to_string())
+                            .value(current.to_string())
+                            .disabled(disabled),
+                        cx.listener(move |this, _, _, cx| {
+                            if !disabled {
+                                this.open = !this.open;
+                                cx.notify();
+                            }
+                        }),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -136,7 +142,7 @@ impl Render for Select {
                             } else {
                                 t.muted_foreground
                             })
-                            .child(current),
+                            .child(current.clone()),
                     )
                     .child(icon("chevron-down").size(px(14.))),
             )
@@ -146,6 +152,7 @@ impl Render for Select {
                         anchored().anchor(Corner::TopLeft).snap_to_window().child(
                             div()
                                 .id("select-menu")
+                                .e2e(Probe::new("overlay", "select menu"))
                                 .occlude()
                                 .mt_1()
                                 .min_w(px(220.))
@@ -178,15 +185,20 @@ impl Render for Select {
                                         })
                                         .when(disabled, |d| d.opacity(0.45))
                                         .when(selected, |d| d.bg(alpha(t.primary, 0.08)))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            if disabled {
-                                                return;
-                                            }
-                                            this.selected = Some(i);
-                                            this.open = false;
-                                            cx.emit(SelectEvent::Changed(value.clone()));
-                                            cx.notify();
-                                        }))
+                                        .clickable(
+                                            Probe::new("option", o.label.to_string())
+                                                .selected(selected)
+                                                .disabled(disabled),
+                                            cx.listener(move |this, _, _, cx| {
+                                                if disabled {
+                                                    return;
+                                                }
+                                                this.selected = Some(i);
+                                                this.open = false;
+                                                cx.emit(SelectEvent::Changed(value.clone()));
+                                                cx.notify();
+                                            }),
+                                        )
                                         .child(
                                             div()
                                                 .flex_1()

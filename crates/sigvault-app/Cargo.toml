@@ -20,7 +20,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 env_logger = "0.11"
-rust-embed = "8"
+# debug-embed: debug builds carry their icons too (the nightly debug binary
+# runs on other machines, e.g. the sigvault repo's e2e job).
+rust-embed = { version = "8", features = ["debug-embed"] }
 unicode-segmentation = "1"
 qrcode = { version = "0.14", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

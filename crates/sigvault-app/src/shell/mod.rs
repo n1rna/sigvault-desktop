@@ -13,6 +13,7 @@ use gpui::{
     WeakEntity, Window,
 };
 
+use crate::e2e::{E2e, Probe};
 use crate::pages;
 use crate::router::{resolve, Page};
 use crate::state::{store, StoreEvent};
@@ -119,6 +120,14 @@ pub fn navigate(page: Page, cx: &mut App) {
     root.update(cx, |root, cx| root.go(page, cx));
 }
 
+/// Path of the page on screen (for the e2e driver).
+pub fn current_path(cx: &App) -> String {
+    cx.try_global::<RootHandle>()
+        .and_then(|h| h.0.upgrade())
+        .map(|root| root.read(cx).current.path())
+        .unwrap_or_default()
+}
+
 /// Show a short-lived toast at the bottom of the window.
 pub fn toast(cx: &mut App, msg: impl Into<SharedString>) {
     let msg = msg.into();
@@ -130,6 +139,7 @@ pub fn toast(cx: &mut App, msg: impl Into<SharedString>) {
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::e2e::begin_frame();
         if let Some(page) = self.pending.take() {
             self.view = Some(pages::build(&page, window, cx));
             self.sidebar
@@ -205,6 +215,7 @@ impl Render for Root {
                             .shadow_lg()
                             .text_size(px(13.))
                             .child(icon("check").size(px(14.)).text_color(t.success))
+                            .e2e(Probe::new("toast", msg.to_string()))
                             .child(msg),
                     )
             }))

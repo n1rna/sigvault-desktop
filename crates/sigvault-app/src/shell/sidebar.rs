@@ -22,6 +22,7 @@ use sigvault_core::local_wallet::commands::{cmd_local_get_settings, cmd_local_li
 use sigvault_core::local_wallet::manager::WalletSummary;
 use sigvault_core::State;
 
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::keychain::{keychain, KeychainEvent};
 use crate::router::Page;
 use crate::runtime::backend;
@@ -355,10 +356,13 @@ impl AppSidebar {
                 .text_color(t.ink_2)
                 .cursor_pointer()
                 .hover(|s| s.bg(t.hover_strong).text_color(t.ink))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.menu = None;
-                    navigate(Page::LocalWalletNew, cx);
-                }))
+                .clickable(
+                    Probe::new("menuitem", "New wallet"),
+                    cx.listener(|this, _, _, cx| {
+                        this.menu = None;
+                        navigate(Page::LocalWalletNew, cx);
+                    }),
+                )
                 .child(icon("plus").size(px(14.)))
                 .child("New wallet")
                 .into_any_element();
@@ -752,6 +756,7 @@ impl AppSidebar {
                     .child(
                         div()
                             .id("account-menu")
+                            .e2e(Probe::new("overlay", "account menu"))
                             .occlude()
                             .mb(px(56.))
                             .w(px(SIDEBAR_WIDTH - 16.))
@@ -789,7 +794,10 @@ impl AppSidebar {
                     .cursor_pointer()
                     .hover(|s| s.bg(t.hover_strong))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(Menu::Account, cx)))
+                    .clickable(
+                        Probe::new("button", "Account"),
+                        cx.listener(|this, _, _, cx| this.toggle_menu(Menu::Account, cx)),
+                    )
                     .child(
                         div()
                             .size(px(30.))
@@ -912,7 +920,9 @@ impl Render for AppSidebar {
                                 None,
                                 c,
                             ))
-                            .on_click(|_, _, cx| cx.open_url(DOCS_URL)),
+                            .clickable(Probe::new("nav", "Documentation"), |_, _, cx| {
+                                cx.open_url(DOCS_URL)
+                            }),
                     )
                     .child(div().mx_2().my(px(10.)).h(px(1.)).bg(t.line))
                     .child(identity),
@@ -1001,7 +1011,7 @@ fn switcher_segment(
                 .cursor_pointer()
                 .hover(move |s| s.text_color(t.brand_ink))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_click(on_label)
+                .clickable(Probe::new("button", label.to_string()), on_label)
                 .child(label),
         )
         .children(pill_el)
@@ -1017,7 +1027,17 @@ fn switcher_segment(
                 .when(open, |d| d.bg(t.hover_strong))
                 .hover(|s| s.bg(t.hover_strong))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_click(on_toggle)
+                .clickable(
+                    Probe::new(
+                        "button",
+                        if id == "ws" {
+                            "Workspace menu"
+                        } else {
+                            "Wallet menu"
+                        },
+                    ),
+                    on_toggle,
+                )
                 .child(icon("chevrons-up-down").size(px(14.)).text_color(t.ink_3)),
         )
         .children(menu)
@@ -1036,6 +1056,7 @@ fn dropdown(
         anchored().anchor(Corner::TopLeft).snap_to_window().child(
             div()
                 .id(id)
+                .e2e(Probe::new("overlay", id))
                 .occlude()
                 .mt(px(30.))
                 .w(px(272.))
@@ -1095,7 +1116,10 @@ fn menu_entry(
         .rounded(RADIUS_CHIP)
         .cursor_pointer()
         .hover(|s| s.bg(t.hover_strong))
-        .on_click(on_click)
+        .clickable(
+            Probe::new("menuitem", label.to_string()).selected(active),
+            on_click,
+        )
         .child(
             div()
                 .flex_1()
@@ -1162,7 +1186,7 @@ fn menu_action(
             s.bg(t.hover_strong)
                 .text_color(if danger { t.destructive } else { t.ink })
         })
-        .on_click(on_click)
+        .clickable(Probe::new("menuitem", label), on_click)
         .child(icon(icon_name).size(px(15.)))
         .child(label)
         .into_any_element()
@@ -1208,6 +1232,7 @@ fn nav_row(
 ) -> gpui::Stateful<gpui::Div> {
     let t = theme();
     let id: SharedString = id.into();
+    let label: SharedString = label.into();
     div()
         .id(id)
         .mx_2()
@@ -1238,7 +1263,7 @@ fn nav_row(
                 .child(leading),
         )
         .when(!collapsed, |d| {
-            d.child(div().flex_1().min_w_0().truncate().child(label.into()))
+            d.child(div().flex_1().min_w_0().truncate().child(label))
                 .children(trailing)
         })
 }
@@ -1268,7 +1293,10 @@ fn nav(
         }),
         collapsed,
     )
-    .on_click(move |_, _, cx| navigate(page.clone(), cx))
+    .clickable(
+        Probe::new("nav", label).selected(active),
+        move |_, _, cx| navigate(page.clone(), cx),
+    )
     .into_any_element()
 }
 

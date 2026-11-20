@@ -1,5 +1,6 @@
 use gpui::{deferred, div, hsla, prelude::*, px, AnyElement, App, ClickEvent, ElementId, Window};
 
+use crate::e2e::{E2e, Probe};
 use crate::theme::{theme, RADIUS_CARD};
 
 type DismissHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
@@ -49,6 +50,7 @@ impl RenderOnce for Modal {
         let t = theme();
         let mut backdrop = div()
             .id(self.id)
+            .e2e(Probe::new("overlay", "modal"))
             .absolute()
             .top_0()
             .left_0()

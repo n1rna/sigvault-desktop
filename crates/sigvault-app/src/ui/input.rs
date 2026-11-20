@@ -22,6 +22,7 @@ use gpui::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::e2e::{E2e, Probe};
 use crate::theme::{alpha, theme, FONT_MONO, RADIUS_CONTROL};
 
 actions!(
@@ -1117,7 +1118,20 @@ impl Render for TextInput {
         if self.disabled {
             root = root.opacity(0.55).cursor(CursorStyle::Arrow);
         }
-        root.child(TextElement { input: cx.entity() })
+        let shown = if self.masked {
+            "•".repeat(self.content.chars().count())
+        } else {
+            self.content.to_string()
+        };
+        let focus = self.focus_handle.clone();
+        root.e2e(
+            Probe::new("input", self.placeholder.to_string())
+                .value(shown)
+                .focused(focused)
+                .disabled(self.disabled)
+                .on_click(std::rc::Rc::new(move |_, window, _| window.focus(&focus))),
+        )
+        .child(TextElement { input: cx.entity() })
     }
 }
 

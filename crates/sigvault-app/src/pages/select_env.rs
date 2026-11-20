@@ -7,6 +7,7 @@ use sigvault_core::env_config::EnvConfig;
 use sigvault_core::State;
 
 use super::cloud::common::{icon_tile, list_row, network_badge_unless_named, skeleton_list};
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::runtime::backend;
 use crate::state::store;
 use crate::theme::{alpha, theme, FONT_MONO};
@@ -148,13 +149,18 @@ impl SelectEnvPage {
                     .h(px(60.))
                     .gap_4()
                     .when(selected, |d| d.bg(alpha(t.primary, 0.06)))
-                    .when(disabled, |d| d.opacity(0.55))
+                    .when(disabled, |d| {
+                        d.opacity(0.55)
+                            .e2e(Probe::new("option", env.name.clone()).disabled(true))
+                    })
                     .when(!disabled, |d| {
-                        d.cursor_pointer()
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                        d.cursor_pointer().clickable(
+                            Probe::new("option", env.name.clone()).selected(selected),
+                            cx.listener(move |this, _, _, cx| {
                                 this.selected_id = Some(id.clone());
                                 cx.notify();
-                            }))
+                            }),
+                        )
                     })
                     .child(radio)
                     .child(icon_tile(

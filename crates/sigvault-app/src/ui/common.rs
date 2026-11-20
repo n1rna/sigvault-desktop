@@ -9,6 +9,7 @@ use gpui::{
     Window,
 };
 
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::theme::{alpha, theme, FONT_MONO, RADIUS_CARD, RADIUS_CHIP, RADIUS_CONTROL};
 
 /// A stroked icon from `assets/icons/<name>.svg`. Color follows
@@ -114,7 +115,8 @@ pub fn badge(label: impl Into<SharedString>, tone: Tone) -> Div {
         Tone::Outline => el.border_color(t.line).text_color(t.ink_2),
         _ => el.border_color(alpha(color, 0.25)).bg(alpha(color, 0.10)),
     };
-    el.child(label.into())
+    let label: SharedString = label.into();
+    el.e2e(Probe::new("badge", label.to_string())).child(label)
 }
 
 /// Neon-style mono chip (web `SwitcherPill`): `PERSONAL`, `REGTEST`, roles.
@@ -161,6 +163,7 @@ pub fn card() -> Div {
 /// Inline alert banner: destructive / warning / success / info.
 pub fn alert(tone: Tone, message: impl Into<SharedString>) -> Div {
     let color = tone.color();
+    let message: SharedString = message.into();
     let icon_name = match tone {
         Tone::Destructive => "alert-circle",
         Tone::Warning => "alert-triangle",
@@ -182,7 +185,8 @@ pub fn alert(tone: Tone, message: impl Into<SharedString>) -> Div {
         .line_height(px(17.))
         .text_color(color)
         .child(icon(icon_name).size(px(14.)).mt(px(1.5)).text_color(color))
-        .child(div().flex_1().min_w_0().child(message.into()))
+        .e2e(Probe::new("alert", message.to_string()))
+        .child(div().flex_1().min_w_0().child(message))
 }
 
 /// Mono uppercase eyebrow (web `SectionHead` label / stat labels).
@@ -362,6 +366,7 @@ pub fn checkbox(
     on_toggle: impl Fn(bool, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let t = theme();
+    let text: SharedString = text.into();
     div()
         .id(id)
         .flex()
@@ -369,7 +374,10 @@ pub fn checkbox(
         .items_start()
         .gap(px(10.))
         .cursor_pointer()
-        .on_click(move |_: &ClickEvent, w, cx| on_toggle(!checked, w, cx))
+        .clickable(
+            Probe::new("checkbox", text.to_string()).selected(checked),
+            move |_: &ClickEvent, w, cx| on_toggle(!checked, w, cx),
+        )
         .child(
             div()
                 .mt(px(2.))
@@ -392,7 +400,7 @@ pub fn checkbox(
                 .text_size(px(13.))
                 .line_height(px(19.))
                 .text_color(t.foreground)
-                .child(text.into()),
+                .child(text),
         )
 }
 
@@ -459,7 +467,10 @@ pub fn tabs(
                     t.muted_foreground
                 })
                 .when(selected, |d| d.bg(t.card).border_1().border_color(t.border))
-                .on_click(move |_, w, cx| handler(key, w, cx))
+                .clickable(
+                    Probe::new("tab", text.to_string()).selected(selected),
+                    move |_, w, cx| handler(key, w, cx),
+                )
                 .child(text.clone())
         }))
 }

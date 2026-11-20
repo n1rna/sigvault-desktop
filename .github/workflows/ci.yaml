@@ -30,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Linux system deps (GPUI + hardware wallets)
+      - name: Install Linux system deps (GPUI + hardware wallets + headless UI)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -44,7 +44,9 @@ jobs:
             libxcb1-dev \
             libfontconfig1-dev \
             libfreetype6-dev \
-            libvulkan1
+            libvulkan1 \
+            mesa-vulkan-drivers \
+            xvfb
 
       - name: Setup Rust (stable, with rustfmt + clippy)
         uses: dtolnay/rust-toolchain@stable
@@ -70,6 +72,12 @@ jobs:
         # tests, the app's router / key-library / wallet-pipeline tests and
         # the non-network cases in `crates/sigvault-core/tests/regtest_e2e.rs`.
         run: cargo test --workspace
+
+      - name: UI e2e (Xvfb)
+        # Launches the debug app and drives it through its e2e driver
+        # (crates/sigvault-app/src/e2e.rs). GPUI renders through Mesa's
+        # software Vulkan (lavapipe) — no GPU on the runner.
+        run: xvfb-run -a cargo test -p sigvault-app --test ui_e2e -- --ignored --test-threads=1
 
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit

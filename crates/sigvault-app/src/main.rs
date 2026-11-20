@@ -8,6 +8,7 @@
 mod assets;
 #[cfg(debug_assertions)]
 mod dev_fixtures;
+mod e2e;
 mod keychain;
 mod pages;
 mod psbt;
@@ -109,6 +110,7 @@ fn main() {
             window
                 .update(cx, |_, window, _| window.activate_window())
                 .ok();
+            e2e::start(window.into(), cx);
             cx.activate(true);
             cx.on_window_closed(|cx| {
                 if cx.windows().is_empty() {

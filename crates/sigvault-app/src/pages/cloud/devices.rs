@@ -10,6 +10,7 @@ use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, FontWeight};
 use sigvault_core::hwi::{DeviceState, DiscoveredDevice, UnsupportedReason};
 
 use super::common::{icon_tile, sep_dot};
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{alert, badge, button, card, divider, dot, spinner, Tone};
 
@@ -264,10 +265,18 @@ fn device_row<V: DeviceListHost>(
         .gap_4()
         .h(px(60.))
         .px_4()
-        .when(selectable, |d| {
-            d.cursor_pointer()
-                .hover(move |s| s.bg(alpha(t.muted, 0.5)))
-                .on_click(select)
+        .map(|d| {
+            let probe = Probe::new("device", device.model.clone())
+                .value(status_label)
+                .selected(p.is_selected)
+                .disabled(!selectable);
+            if selectable {
+                d.cursor_pointer()
+                    .hover(move |s| s.bg(alpha(t.muted, 0.5)))
+                    .clickable(probe, select)
+            } else {
+                d.e2e(probe)
+            }
         })
         .child(radio)
         .child(icon_tile(

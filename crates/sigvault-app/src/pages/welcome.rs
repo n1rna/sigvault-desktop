@@ -5,6 +5,7 @@ use sigvault_core::app_mode::AppMode;
 use sigvault_core::commands::cmd_set_app_mode;
 use sigvault_core::State;
 
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme};
 use crate::ui::{alert, badge, icon, logo, spinner_with, Tone};
@@ -73,11 +74,16 @@ impl WelcomePage {
             .border_color(t.border)
             .bg(t.card)
             .p_5()
-            .when(disabled, |d| d.opacity(0.5))
+            .when(disabled, |d| {
+                d.opacity(0.5).e2e(Probe::new("card", title).disabled(true))
+            })
             .when(!disabled, |d| {
                 d.cursor_pointer()
                     .hover(move |s| s.border_color(alpha(accent, 0.5)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.choose(mode, cx)))
+                    .clickable(
+                        Probe::new("card", title),
+                        cx.listener(move |this, _, _, cx| this.choose(mode, cx)),
+                    )
             })
             .child(
                 div()
