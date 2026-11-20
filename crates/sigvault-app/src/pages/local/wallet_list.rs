@@ -138,7 +138,7 @@ impl LocalWalletListPage {
                         this.balances = balances;
                         this.error = None;
                     }
-                    Err(e) => this.error = Some(e.into()),
+                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                 }
                 this.loading = false;
                 cx.notify();
@@ -189,7 +189,7 @@ impl LocalWalletListPage {
                     navigate(Page::LocalWallet(id), cx);
                 }
                 Err(e) => {
-                    this.error = Some(e.into());
+                    this.error = Some(super::widgets::plain_error(&e).into());
                     cx.notify();
                 }
             })
@@ -208,7 +208,7 @@ impl LocalWalletListPage {
                 // `local_changed` reloads this page through the store subscription.
                 Ok(_) => local_changed(cx),
                 Err(e) => {
-                    this.error = Some(e.into());
+                    this.error = Some(super::widgets::plain_error(&e).into());
                     cx.notify();
                 }
             })
@@ -274,7 +274,7 @@ impl LocalWalletListPage {
                     }
                     Err(e) => {
                         if let Some(m) = this.modal.as_mut() {
-                            m.error = Some(e.into());
+                            m.error = Some(super::widgets::plain_error(&e).into());
                             m.submitting = false;
                         }
                     }
@@ -326,7 +326,7 @@ impl LocalWalletListPage {
                     }
                     Err(e) => {
                         if let Some(m) = this.modal.as_mut() {
-                            m.error = Some(e.into());
+                            m.error = Some(super::widgets::plain_error(&e).into());
                             m.submitting = false;
                         }
                     }
@@ -671,7 +671,9 @@ impl Render for LocalWalletListPage {
             .child(
                 page_frame("local-wallets")
                     .title("Wallets")
-                    .subtitle("Wallets stored on this computer. Keys and seeds never leave it.")
+                    .subtitle(
+                        "Wallets stored on this computer. Nothing leaves it unless you export it.",
+                    )
                     .action(
                         button("restore", "Restore")
                             .outline()

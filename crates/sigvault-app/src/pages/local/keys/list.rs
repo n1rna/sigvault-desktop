@@ -482,6 +482,8 @@ impl Render for KeyListPage {
             .action(
                 button("add-key", "Add key")
                     .icon("plus")
+                    // The empty state has its own primary action.
+                    .when(all.is_empty(), |b| b.outline())
                     .on_click(|_, _, cx| open_add_key(None, cx)),
             )
             .when(!all.is_empty(), |f| f.header_extra(filters))

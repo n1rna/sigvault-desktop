@@ -16,6 +16,8 @@ use super::api;
 use super::files::{file_safe, save_text_file};
 use super::slot_board::{custody_badge, meta_line, source_icon, BoardKey};
 use crate::keychain::source_label;
+use crate::router::Page;
+use crate::shell::navigate;
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
     alert, button, card, checkbox, divider, field, icon, section, InputEvent, TextInput, Tone,
@@ -311,13 +313,7 @@ impl Render for ReviewStep {
             .flex()
             .flex_col()
             .gap_6()
-            .child(section("Summary").child(self.summary_card()))
-            .child(
-                section("Keys")
-                    .description("Each slot and the library key that fills it.")
-                    .child(self.keys_card()),
-            )
-            .child(custody)
+            // Above the fold: the one thing that blocks "Create wallet".
             .when(!self.data.exposed.is_empty(), |d| {
                 let titles = self.data.exposed.iter().map(|p| p.to_lowercase()).collect::<Vec<_>>().join(", ");
                 d.child(
@@ -342,6 +338,13 @@ impl Render for ReviewStep {
                         )),
                 )
             })
+            .child(section("Summary").child(self.summary_card()))
+            .child(
+                section("Keys")
+                    .description("Each slot and the library key that fills it.")
+                    .child(self.keys_card()),
+            )
+            .child(custody)
     }
 }
 
@@ -392,6 +395,31 @@ impl DoneStep {
             .ok();
         })
         .detach();
+    }
+}
+
+impl DoneStep {
+    /// Footer buttons: saving the backup is the primary action until a copy
+    /// exists, then opening the wallet is.
+    pub fn footer_actions(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let id = self.wallet_id.clone();
+        let saved = self.saved.is_some();
+        let open = button("wizard-open", "Open wallet")
+            .icon_right("arrow-right")
+            .when(!saved, |b| b.outline())
+            .on_click(move |_, _, cx| navigate(Page::LocalWallet(id.clone()), cx))
+            .into_any_element();
+        if saved {
+            vec![open]
+        } else {
+            vec![
+                open,
+                button("save-wallet-backup", "Save backup…")
+                    .icon("download")
+                    .on_click(cx.listener(|this, _, _, cx| this.save_backup(cx)))
+                    .into_any_element(),
+            ]
+        }
     }
 }
 
@@ -482,7 +510,7 @@ impl Render for DoneStep {
                                             .truncate()
                                             .font_family(FONT_MONO)
                                             .text_size(px(12.))
-                                            .text_color(t.success)
+                                            .text_color(Tone::Success.ink())
                                             .child(format!("Saved to {p}")),
                                         None => div()
                                             .text_size(px(12.))
@@ -490,16 +518,16 @@ impl Render for DoneStep {
                                             .child("Not saved yet"),
                                     }),
                             )
-                            .child(
-                                button(
-                                    "save-wallet-backup",
-                                    if self.saved.is_some() { "Save another copy" } else { "Save backup…" },
+                            // Before the first save the footer carries the button.
+                            .when(self.saved.is_some(), |d| {
+                                d.child(
+                                    button("save-wallet-backup-again", "Save another copy")
+                                        .outline()
+                                        .small()
+                                        .icon("download")
+                                        .on_click(cx.listener(|this, _, _, cx| this.save_backup(cx))),
                                 )
-                                .outline()
-                                .small()
-                                .icon("download")
-                                .on_click(cx.listener(|this, _, _, cx| this.save_backup(cx))),
-                            ),
+                            }),
                     )
                     .children(self.error.clone().map(|e| alert(Tone::Destructive, e))),
             )

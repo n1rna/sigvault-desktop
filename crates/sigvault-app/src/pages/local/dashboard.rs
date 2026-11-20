@@ -140,7 +140,7 @@ impl WalletDashboardPage {
                         this.balance = bal;
                         this.history = hist;
                     }
-                    Err(e) => this.error = Some(e.into()),
+                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                 }
                 this.loading = false;
                 cx.notify();
@@ -164,7 +164,7 @@ impl WalletDashboardPage {
             let res = task.await;
             this.update(cx, |this, cx| {
                 if let Err(e) = res {
-                    this.error = Some(e.into());
+                    this.error = Some(super::widgets::plain_error(&e).into());
                 }
                 this.syncing = false;
                 cx.notify();
@@ -188,7 +188,7 @@ impl WalletDashboardPage {
                         this.synced = false;
                         this.load_all(cx);
                     }
-                    Err(e) => this.error = Some(e.into()),
+                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                 }
                 cx.notify();
             })
@@ -230,7 +230,7 @@ impl WalletDashboardPage {
                         local_changed(cx);
                         this.load_all(cx);
                     }
-                    Err(e) => this.unlock_error = Some(e.into()),
+                    Err(e) => this.unlock_error = Some(super::widgets::plain_error(&e).into()),
                 }
                 cx.notify();
             })
@@ -313,7 +313,7 @@ impl WalletDashboardPage {
         let active = self.sync_active();
         let sync_label: SharedString = if active {
             if self.sync.percent > 0 {
-                format!("Syncing {}%", self.sync.percent).into()
+                format!("Syncing… {}%", self.sync.percent.min(100)).into()
             } else {
                 "Syncing…".into()
             }
@@ -479,17 +479,14 @@ impl WalletDashboardPage {
                 .gap_2()
                 .child(
                     div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
+                        .w_full()
                         .text_size(px(12.))
                         .text_color(t.muted_foreground)
                         .child(format!(
-                            "Syncing · {}",
+                            "Syncing… {}% · {}",
+                            self.sync.percent.min(100),
                             phase_label(self.sync.phase.as_deref())
-                        ))
-                        .child(format!("{}%", self.sync.percent)),
+                        )),
                 )
                 .child(
                     div()
@@ -946,7 +943,7 @@ fn phase_label(phase: Option<&str>) -> &'static str {
     match phase {
         Some("connecting") => "Connecting to Electrum",
         Some("fetching_history") => "Fetching history",
-        Some("persisting") => "Saving",
+        Some("persisting") => "Saving wallet data",
         Some("complete") => "Done",
         _ => "Working",
     }

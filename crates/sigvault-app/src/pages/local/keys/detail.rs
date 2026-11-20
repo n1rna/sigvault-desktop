@@ -13,12 +13,13 @@ use super::unlock::{KeychainUnlock, UnlockEvent};
 use crate::keychain::{keychain, source_label, KeyRecord, KeychainEvent};
 use crate::pages::local::setup::api::{self, SlotKey};
 use crate::pages::local::setup::files::{file_safe, save_text_file};
+use crate::pages::local::setup::slot_board::custody_badge;
 use crate::router::Page;
 use crate::shell::{navigate, toast};
 use crate::state::{store, StoreEvent};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, badge, button, card, divider, field, format_timestamp, icon, modal, page_frame, section,
+    alert, button, card, divider, field, format_timestamp, icon, modal, page_frame, section,
     InputEvent, QrCode, TextInput, Tone,
 };
 
@@ -677,11 +678,7 @@ impl Render for KeyDetailPage {
             .flex_row()
             .items_center()
             .gap_2()
-            .child(if k.is_hot() {
-                badge("Private key on this computer", Tone::Success)
-            } else {
-                badge("Watch-only", Tone::Secondary)
-            })
+            .child(custody_badge(k.is_hot()))
             .child(network_badge(&k.network));
         let subtitle = custody_text(&k);
         let dialog = self.render_dialog(&k, cx);

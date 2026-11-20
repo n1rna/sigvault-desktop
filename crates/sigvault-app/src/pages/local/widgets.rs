@@ -331,3 +331,49 @@ pub fn default_save_dir() -> std::path::PathBuf {
         home
     }
 }
+
+/// A wallet-backend error as a plain sentence. Internal prefixes
+/// (`persist: …`, `build_tx: …`, `seed store: …`) become a message that
+/// names what failed; the raw text follows as "Details" when it adds
+/// something.
+pub fn plain_error(raw: &str) -> String {
+    let raw = raw.trim();
+    let lower = raw.to_lowercase();
+    let plain = if lower.contains("decryption failed") || lower.contains("wrong passphrase") {
+        // The message is the whole story here.
+        return "That passphrase didn't unlock the wallet. Check it and try again.".into();
+    } else if lower.contains("electrum") || lower.contains("connection refused") {
+        "Couldn't reach your Electrum server. Check the server address in Settings."
+    } else if lower.starts_with("build_tx") || lower.contains("insufficient") {
+        "Couldn't build the transaction."
+    } else if lower.starts_with("persist") || lower.starts_with("initialize") {
+        "Couldn't save the wallet to disk."
+    } else if lower.starts_with("io") || lower.starts_with("serde") {
+        "Couldn't read the wallet files on this computer."
+    } else if lower.starts_with("wallet not found") {
+        "This wallet isn't on this computer any more."
+    } else if lower.contains("is not unlocked") {
+        "Unlock the wallet first."
+    } else {
+        return raw.to_string();
+    };
+    format!("{plain} Details: {raw}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_error;
+
+    #[test]
+    fn plain_error_names_the_failure() {
+        assert_eq!(
+            plain_error("seed store: decryption failed (wrong passphrase or tampered file)"),
+            "That passphrase didn't unlock the wallet. Check it and try again."
+        );
+        assert_eq!(
+            plain_error("persist: disk full"),
+            "Couldn't save the wallet to disk. Details: persist: disk full"
+        );
+        assert_eq!(plain_error("Something specific"), "Something specific");
+    }
+}

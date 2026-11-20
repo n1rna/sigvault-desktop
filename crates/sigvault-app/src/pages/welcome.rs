@@ -173,7 +173,7 @@ impl Render for WelcomePage {
             Tone::Default,
             "Recommended",
             "SigVault Cloud",
-            "Team multisig. SigVault coordinates signing sessions between co-signers — it never holds your keys.",
+            "Team multisig. SigVault coordinates signing between co-signers; keys on your own devices never leave them.",
             ["Multisig wallets shared with your team", "Signing sessions across hardware wallets", "Requires a SigVault account"],
             "cloud",
             "Continue to sign in",
@@ -250,8 +250,9 @@ impl Render for WelcomePage {
                                 .mt_10()
                                 .text_center()
                                 .text_size(px(12.))
-                                .text_color(t.ink_3)
-                                .child("Your keys never leave your devices · non-custodial by design"),
+                                .line_height(px(18.))
+                                .text_color(t.ink_2)
+                                .child("Keys on your own devices never leave them. If a vault uses a SigVault co-signer key, SigVault holds that one key."),
                         ),
                 ),
         )

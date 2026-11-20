@@ -606,12 +606,11 @@ impl Render for PolicyPicker {
             .flex()
             .flex_col()
             .gap_3()
-            .child(div().flex().flex_row().gap_2().children(common_presets().into_iter().map(|p| {
+            // A grid gives each card a definite width, so text wraps inside it.
+            .child(div().grid().grid_cols(3).gap_2().children(common_presets().into_iter().map(|p| {
                 let active = !advanced && preset == Some(p.id);
                 let draft = p.draft.clone();
                 option_card(SharedString::from(format!("preset-{}", p.id)), active)
-                    .flex_1()
-                    .flex_basis(px(0.))
                     .min_w_0()
                     .p_3()
                     .on_click(cx.listener(move |this, _, w, cx| {
@@ -636,10 +635,14 @@ impl Render for PolicyPicker {
                     .child(
                         div()
                             .mt_2()
-                            .font_family(FONT_MONO)
+                            .flex()
+                            .flex_row()
+                            .flex_wrap()
+                            .items_baseline()
+                            .gap_x_2()
                             .text_size(px(12.))
-                            .text_color(t.ink_3)
-                            .child(p.shape),
+                            .child(div().text_color(t.ink_2).child(p.shape))
+                            .child(div().font_family(FONT_MONO).text_color(t.ink_3).child(p.script)),
                     )
             })))
             .child(

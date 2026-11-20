@@ -336,7 +336,11 @@ impl Render for KeyPicker {
                             .text_size(px(15.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(t.foreground)
-                            .child(format!("Choose a key for {}", self.slot_label)),
+                            .child(if self.slot_label.eq_ignore_ascii_case("key") {
+                                "Choose a key".to_string()
+                            } else {
+                                format!("Choose {}", self.slot_label)
+                            }),
                     )
                     .child(div().text_size(px(13.)).text_color(t.muted_foreground).child(format!(
                         "{} {net} key{} in your library. Keys already used in this wallet can't be picked twice.",

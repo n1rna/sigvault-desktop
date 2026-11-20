@@ -34,6 +34,35 @@ pub fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
         .ok_or_else(|| "no window".to_string())
 }
 
+/// Join a session over the session websocket (the backend then routes to
+/// the session page). Resolves to a user-facing error on failure.
+pub fn join_session(
+    session_id: String,
+    cx: &mut gpui::App,
+) -> impl std::future::Future<Output = Result<(), SharedString>> + 'static {
+    use sigvault_core::commands::cmd_start_session_websocket_connection;
+    // Start the new session from a clean workflow state.
+    crate::state::store(cx).update(cx, |s, cx| s.reset_session_state(cx));
+    let task = crate::runtime::backend(cx).call(move |app, st| async move {
+        let window = main_window(&app)?;
+        cmd_start_session_websocket_connection(window, sigvault_core::State::new(&st), session_id)
+            .await
+    });
+    async move {
+        match task.await {
+            Ok(r) if !r.success => Err(if r.message.is_empty() {
+                "Couldn't connect to the session.".into()
+            } else {
+                r.message.into()
+            }),
+            Ok(_) => Ok(()),
+            Err(_) => {
+                Err("Couldn't connect to the session. Check your connection and try again.".into())
+            }
+        }
+    }
+}
+
 /// Human title for a backend session type (`TRANSACTION_SIGNING` →
 /// "Transaction signing").
 pub fn session_title(session_type: &str) -> String {
