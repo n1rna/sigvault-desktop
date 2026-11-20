@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/sigvault-core", "crates/sigvault-app"]
+
+[workspace.package]
+version = "0.0.0-dev"
+edition = "2021"
+license = "BSD-3-Clause"
+repository = "https://github.com/n1rna/sigvault-desktop"
+
+[profile.dev.package."*"]
+opt-level = 2
