@@ -33,3 +33,8 @@ collapsible_if = "allow"
 enum_variant_names = "allow"
 # GPUI view constructors and element builders take Window/Context by design.
 type_complexity = "allow"
+
+# Cargo.lock pins libc at 0.2.189: gpui 0.2.2 pulls in xattr 0.2.3 (via
+# zed-async-tar), which uses `libc::ENOATTR`, removed on Linux in libc 0.2.190.
+# Keep it there until gpui moves to a newer xattr:
+#   cargo update -p libc --precise 0.2.189

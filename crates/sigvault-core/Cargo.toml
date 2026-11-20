@@ -3,6 +3,7 @@ name = "sigvault-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "SigVault Desktop core: local wallets, hardware signers, cloud sessions"
 
 [dependencies]
