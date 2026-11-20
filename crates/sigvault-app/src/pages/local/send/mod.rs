@@ -38,6 +38,7 @@ use sigvault_core::State;
 
 use self::devices::{DevicePicker, DeviceSelected};
 use self::qr_modals::{segmented, AnimatedQr, QrImport};
+use crate::e2e::{E2eClick, Probe};
 use crate::pages::cloud::psbt_summary::{hrp_for, summarize, PsbtSummary};
 use crate::psbt::file::{read_psbt_file, write_psbt_file};
 use crate::router::Page;
@@ -45,8 +46,8 @@ use crate::runtime::backend;
 use crate::shell::{navigate, toast};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, button, card, copy_field, divider, field, footer_bar, format_btc, format_sat, icon,
-    page_frame, section, stepper, tx_summary, InputEvent, TextInput, Tone, TxSummary, FORM_WIDTH,
+    alert, button, card, divider, field, footer_bar, format_btc, format_sat, icon, page_frame,
+    section, stepper, tx_summary, InputEvent, TextInput, Tone, TxSummary, FORM_WIDTH,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -718,6 +719,7 @@ impl SendPage {
             device_id,
         };
         let task = backend(cx).call(move |app, st| async move {
+            st.ensure_hw_manager_for_local().await;
             let signed = cmd_local_sign_psbt_hardware(app, State::new(&st), request).await?;
             finalize(&st, signed.psbt_base64).await
         });
@@ -1041,6 +1043,8 @@ impl SendPage {
             Step::Done => 3,
         };
         let ix = match (self.step, show_path) {
+            // Past the last step: every step shows a check.
+            (Step::Done, _) => labels.len(),
             (Step::Path, true) => 1,
             (Step::Compose | Step::Path, _) => 0,
             (_, true) => base + 1,
@@ -1117,11 +1121,14 @@ impl SendPage {
                     .cursor_pointer()
                     .when(active, |d| d.bg(alpha(t.primary, 0.06)))
                     .when(!active, |d| d.hover(move |s| s.bg(alpha(t.muted, 0.5))))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.selected_path_id = Some(id.clone());
-                        this.error = None;
-                        cx.notify();
-                    }))
+                    .clickable(
+                        Probe::new("option", p.label.clone()).selected(active),
+                        cx.listener(move |this, _, _, cx| {
+                            this.selected_path_id = Some(id.clone());
+                            this.error = None;
+                            cx.notify();
+                        }),
+                    )
                     .child(radio(active))
                     .child(
                         div()
@@ -1202,10 +1209,24 @@ impl SendPage {
 
     /// The built transaction: the shared summary with every output, the
     /// absolute fee and the total, plus the spending path when chosen.
-    fn render_review(&self, cx: &Context<Self>) -> impl IntoElement {
+    fn render_review(&self) -> impl IntoElement {
         let t = theme();
-        let fee_rate =
-            parse_fee_rate(self.fee_rate.read(cx).text()).map(|r| r.ceil().max(1.) as f64);
+        // The rate the built PSBT pays (its fee over the estimated signed
+        // size), not the typed one, so Review matches Broadcast.
+        let vsize = self
+            .psbt_base64
+            .as_deref()
+            .zip(self.details.as_ref())
+            .and_then(|(psbt, d)| {
+                sigvault_core::local_wallet::commands::estimate_signed_vsize(
+                    psbt,
+                    &d.external_descriptor,
+                )
+            });
+        let fee_rate = match (self.review.as_ref().and_then(|r| r.fee), vsize) {
+            (Some(fee), Some(vs)) if vs > 0 => Some(fee as f64 / vs as f64),
+            _ => None,
+        };
         let path_label = self
             .show_path_step()
             .then(|| {
@@ -1265,7 +1286,7 @@ impl SendPage {
             .flex()
             .flex_col()
             .gap_5()
-            .child(self.render_review(cx))
+            .child(self.render_review())
             .child(sign_section(self.sign_mode_switch(cx)))
             .when(mode == SignMode::ThisComputer, |d| {
                 d.child(field(
@@ -1283,7 +1304,7 @@ impl SendPage {
             .flex()
             .flex_col()
             .gap_5()
-            .child(self.render_review(cx))
+            .child(self.render_review())
             .child(sign_section(self.sign_mode_switch(cx)))
             .when(mode == SignMode::Connected, |d| {
                 d.child(info_panel(emphasised(
@@ -1441,7 +1462,13 @@ impl SendPage {
                     .flex_col()
                     .gap(px(6.))
                     .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Transaction ID"))
-                    .child(copy_field("copy-txid", txid)),
+                    // Grouped like the Broadcast step, so the two can be compared.
+                    .child(crate::ui::tx_summary::data_with_copy(
+                        "copy-txid",
+                        "Copy transaction ID",
+                        txid,
+                        t.ink,
+                    )),
             )
             .children(self.final_view().map(|v| {
                 div()
@@ -1594,7 +1621,7 @@ fn radio(selected: bool) -> impl IntoElement {
         .justify_center()
         .rounded_full()
         .border_1()
-        .border_color(if selected { t.primary } else { t.border })
+        .border_color(if selected { t.primary } else { t.line_control })
         .when(selected, |d| {
             d.child(div().size(px(6.)).rounded_full().bg(t.primary))
         })

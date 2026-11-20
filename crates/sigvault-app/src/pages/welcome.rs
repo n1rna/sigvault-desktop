@@ -75,7 +75,9 @@ impl WelcomePage {
             .bg(t.card)
             .p_5()
             .when(disabled, |d| {
-                d.opacity(0.5).e2e(Probe::new("card", title).disabled(true))
+                // Another workspace is opening: inert, text kept readable.
+                d.bg(alpha(t.muted, 0.5))
+                    .e2e(Probe::new("card", title).disabled(true))
             })
             .when(!disabled, |d| {
                 d.cursor_pointer()

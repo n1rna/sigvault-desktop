@@ -1149,7 +1149,7 @@ impl Render for TextInput {
         } else if focused {
             t.ring
         } else {
-            t.line
+            t.line_control
         };
         let mut root = div()
             .flex()
@@ -1181,6 +1181,10 @@ impl Render for TextInput {
             .rounded(RADIUS_CONTROL)
             .border_1()
             .border_color(border)
+            // Focus: a 2px ring outside the border (no layout shift).
+            .when(focused && !self.invalid, |d| {
+                d.shadow(vec![focus_ring(t.ring)])
+            })
             .bg(t.inset)
             .px_3()
             .text_size(px(14.))
@@ -1223,5 +1227,15 @@ impl Render for TextInput {
 impl Focusable for TextInput {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
+    }
+}
+
+/// A solid ring drawn just outside an element's border.
+pub fn focus_ring(color: gpui::Hsla) -> gpui::BoxShadow {
+    gpui::BoxShadow {
+        color: crate::theme::alpha(color, 0.45),
+        offset: gpui::point(px(0.), px(0.)),
+        blur_radius: px(0.),
+        spread_radius: px(2.),
     }
 }

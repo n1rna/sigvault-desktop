@@ -230,8 +230,13 @@ fn device_row<V: DeviceListHost>(
         .justify_center()
         .rounded_full()
         .border_1()
-        .border_color(if p.is_selected { t.primary } else { t.border })
-        .when(!selectable, |d| d.opacity(0.4))
+        .border_color(if p.is_selected {
+            t.primary
+        } else if selectable {
+            t.line_control
+        } else {
+            t.line_strong
+        })
         .when(p.is_selected, |d| {
             d.child(div().size(px(8.)).rounded_full().bg(t.primary))
         });

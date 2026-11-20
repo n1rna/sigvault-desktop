@@ -60,6 +60,9 @@ pub struct Theme {
     pub line: Hsla,
     pub line_strong: Hsla,
     pub line_tertiary: Hsla,
+    /// Boundary of form controls (text inputs, selects, unselected radios):
+    /// ≥3:1 against every surface they sit on (WCAG 1.4.11).
+    pub line_control: Hsla,
     /// Brand for rings, dots, strokes and large marks.
     pub brand: Hsla,
     /// Dark text on a `brand` fill.
@@ -126,6 +129,7 @@ struct Palette {
     line: u32,
     line_strong: u32,
     line_tertiary: u32,
+    line_control: u32,
     brand: u32,
     brand_ink: u32,
     brand_fill: u32,
@@ -158,6 +162,8 @@ const LIGHT: Palette = Palette {
     line: 0xd3e0ea,
     line_strong: 0xc1cfdb,
     line_tertiary: 0xafbfcb,
+    // 3.35:1 on white, 3.30:1 on surface, 3.18:1 on page.
+    line_control: 0x838e96,
     brand: 0x0092c6,
     brand_ink: 0x0073a4,
     brand_fill: 0x0074a6,
@@ -190,6 +196,8 @@ const DARK: Palette = Palette {
     line: 0x202a32,
     line_strong: 0x2e3942,
     line_tertiary: 0x3c4851,
+    // 3.34:1 on card, 3.44:1 on surface, 3.58:1 on page.
+    line_control: 0x5e6972,
     brand: 0x2ccceb,
     brand_ink: 0x4bcdee,
     brand_fill: 0x007ba5,
@@ -259,6 +267,7 @@ impl Theme {
             line,
             line_strong: c(p.line_strong),
             line_tertiary: c(p.line_tertiary),
+            line_control: c(p.line_control),
             brand,
             brand_contrast,
             brand_ink,

@@ -16,9 +16,10 @@ use sigvault_core::local_wallet::manager::WalletSummary;
 use sigvault_core::State;
 
 use super::widgets::{
-    btc_amount, dialog_actions, dialog_title, format_date, hover_action, list_card, list_header,
-    list_row, loading_card, network_badge, policy_label, row_icon, sep_dot, tooltip,
+    btc_amount, dialog_actions, dialog_title, format_date, hover_action, hover_actions, list_card,
+    list_header, list_row, loading_card, network_badge, policy_label, row_icon, sep_dot, tooltip,
 };
+use crate::e2e::{E2eClick, Probe};
 use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::navigate;
@@ -376,7 +377,7 @@ impl LocalWalletListPage {
         )
     }
 
-    fn render_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_list(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let col = |w: f32, text: &'static str, right: bool| {
             div()
@@ -398,7 +399,7 @@ impl LocalWalletListPage {
             if ix > 0 {
                 list = list.child(divider());
             }
-            list = list.child(self.render_row(ix, w, cx));
+            list = list.child(self.render_row(ix, w, window, cx));
         }
         let unlocked = self.wallets.iter().filter(|w| !w.locked).count();
         div().flex().flex_col().gap_2().child(list).child(
@@ -414,7 +415,13 @@ impl LocalWalletListPage {
         )
     }
 
-    fn render_row(&self, ix: usize, w: &WalletSummary, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_row(
+        &self,
+        ix: usize,
+        w: &WalletSummary,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let t = theme();
         let group: SharedString = format!("wallet-row-{ix}").into();
         let id = w.id.as_str().to_string();
@@ -492,17 +499,16 @@ impl LocalWalletListPage {
             }
         };
 
-        let mut actions = div()
+        let mut actions = hover_actions(group.clone(), ("wallet-actions", ix), window, cx)
             .flex()
             .flex_row()
             .items_center()
-            .gap_1()
-            .opacity(0.)
-            .group_hover(group.clone(), |s| s.opacity(1.));
+            .gap_1();
         if !w.locked {
             let lock_id = id.clone();
             actions = actions.child(
-                hover_action(("wallet-lock", ix), "lock", "Lock wallet", false).on_click(
+                hover_action(("wallet-lock", ix), "lock", "Lock wallet", false).clickable(
+                    Probe::new("button", format!("Lock {}", w.name)),
                     cx.listener(move |this, _: &ClickEvent, _, cx| {
                         cx.stop_propagation();
                         this.lock_wallet(lock_id.clone(), cx);
@@ -512,7 +518,8 @@ impl LocalWalletListPage {
         }
         let del_wallet = w.clone();
         actions = actions.child(
-            hover_action(("wallet-delete", ix), "trash", "Delete wallet…", true).on_click(
+            hover_action(("wallet-delete", ix), "trash", "Delete wallet…", true).clickable(
+                Probe::new("button", format!("Delete {}…", w.name)),
                 cx.listener(move |this, _: &ClickEvent, window, cx| {
                     cx.stop_propagation();
                     this.open_delete(del_wallet.clone(), window, cx);
@@ -524,9 +531,12 @@ impl LocalWalletListPage {
         list_row(("wallet-row", ix))
             .group(group)
             .cursor_pointer()
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                this.open_wallet(open_wallet.clone(), window, cx)
-            }))
+            .clickable(
+                Probe::new("row", w.name.clone()),
+                cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    this.open_wallet(open_wallet.clone(), window, cx)
+                }),
+            )
             .child(lead)
             .child(
                 div()
@@ -656,13 +666,13 @@ fn icon_chevron() -> impl IntoElement {
 }
 
 impl Render for LocalWalletListPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body = if self.loading {
             loading_card("Loading wallets…").into_any_element()
         } else if self.wallets.is_empty() {
             self.render_empty().into_any_element()
         } else {
-            self.render_list(cx).into_any_element()
+            self.render_list(window, cx).into_any_element()
         };
 
         div()

@@ -27,8 +27,8 @@ use sigvault_core::local_wallet::commands::cmd_local_get_settings;
 use sigvault_core::State;
 
 use super::sources::{
-    default_path, icon_tile, key_expr, network_badge, to_core_secret, with_origin, KeySource,
-    PathPreset, NETWORKS,
+    copy_box, default_path, icon_tile, key_expr, network_badge, to_core_secret, with_origin,
+    KeySource, PathPreset, NETWORKS,
 };
 use super::unlock::{KeychainUnlock, UnlockEvent};
 use crate::e2e::{E2eClick, Probe};
@@ -1224,7 +1224,7 @@ impl AddKeyFlow {
                     .text_color(t.muted_foreground)
                     .cursor_pointer()
                     .hover(move |s| s.text_color(t.foreground))
-                    .on_click(cx.listener(|this, _, window, cx| {
+                    .clickable(Probe::new("button", "This phrase uses a BIP39 passphrase"), cx.listener(|this, _, window, cx| {
                         this.show_passphrase = true;
                         this.bip39_passphrase.read(cx).focus(window);
                         cx.notify();
@@ -1325,10 +1325,20 @@ impl AddKeyFlow {
                             .text_color(t.brand_ink)
                             .cursor_pointer()
                             .hover(|s| s.underline())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.show_advanced = !this.show_advanced;
-                                cx.notify();
-                            }))
+                            .clickable(
+                                Probe::new(
+                                    "button",
+                                    if self.show_advanced {
+                                        "Hide derivation path"
+                                    } else {
+                                        "Change derivation path"
+                                    },
+                                ),
+                                cx.listener(|this, _, _, cx| {
+                                    this.show_advanced = !this.show_advanced;
+                                    cx.notify();
+                                }),
+                            )
                             .child(if self.show_advanced { "Hide" } else { "Change" }),
                     ),
             )
@@ -1545,9 +1555,17 @@ impl AddKeyFlow {
                 .child(divider())
                 .child(row("Derivation path", mono_(k.derivation_path.clone())))
                 .child(divider())
-                .child(row("Extended public key", mono_(k.xpub.clone())))
+                // Same 4-character grouping as the key's detail page, so
+                // long keys wrap and can be compared against a device.
+                .child(row(
+                    "Extended public key",
+                    copy_box("akf-copy-xpub", k.xpub.clone()).into_any_element(),
+                ))
                 .child(divider())
-                .child(row("Key expression", mono_(key_expr(&k))))
+                .child(row(
+                    "Key expression",
+                    copy_box("akf-copy-expr", key_expr(&k)).into_any_element(),
+                ))
                 .into_any_element()
         } else {
             card()
@@ -1581,10 +1599,14 @@ impl AddKeyFlow {
                     .text_color(t.muted_foreground)
                     .cursor_pointer()
                     .hover(move |s| s.text_color(t.foreground))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.show_advanced = !this.show_advanced;
-                        cx.notify();
-                    }))
+                    .clickable(
+                        Probe::new("button", "Advanced: derivation path")
+                            .selected(self.show_advanced),
+                        cx.listener(|this, _, _, cx| {
+                            this.show_advanced = !this.show_advanced;
+                            cx.notify();
+                        }),
+                    )
                     .child(
                         icon(if self.show_advanced {
                             "chevron-down"

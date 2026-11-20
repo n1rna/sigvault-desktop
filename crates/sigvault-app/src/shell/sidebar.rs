@@ -409,7 +409,7 @@ impl AppSidebar {
                             .text_size(px(14.))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(t.ink)
-                            .child("sigvault"),
+                            .child("SigVault"),
                     ),
             )
             .child(separator())

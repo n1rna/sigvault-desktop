@@ -7,6 +7,7 @@ use sigvault_core::env_config::EnvConfig;
 use sigvault_core::State;
 
 use super::cloud::common::{icon_tile, network_badge_unless_named};
+use crate::e2e::{E2eClick, Probe};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{alert, button, card, divider, page_frame, Tone};
@@ -266,7 +267,10 @@ impl Render for LoginPage {
                     .cursor_pointer()
                     .text_color(t.brand_ink)
                     .hover(|s| s.underline())
-                    .on_click(|_, _, cx| crate::shell::switch_space(AppMode::Local, cx))
+                    .clickable(
+                        Probe::new("link", "Use wallets on this device"),
+                        |_, _, cx| crate::shell::switch_space(AppMode::Local, cx),
+                    )
                     .child("Use wallets on this device")
                     .child(
                         div()

@@ -1285,6 +1285,24 @@ pub fn inspect_signed_psbt(psbt_base64: &str) -> Result<FinalizePsbtResponse, St
     })
 }
 
+/// Upper bound on the virtual size the transaction in an unsigned PSBT
+/// will have once `descriptor` (the spending wallet's) satisfies every
+/// input: the same estimate the wallet used when it picked the fee. Lets
+/// the send review show the fee rate the built PSBT actually pays rather
+/// than the rate that was typed in. `None` if either can't be parsed.
+pub fn estimate_signed_vsize(psbt_base64: &str, descriptor: &str) -> Option<u64> {
+    use bdk_wallet::bitcoin::Weight;
+    use bdk_wallet::miniscript::{Descriptor, DescriptorPublicKey};
+    let psbt = Psbt::from_str(psbt_base64.trim()).ok()?;
+    let desc = Descriptor::<DescriptorPublicKey>::from_str(descriptor.trim()).ok()?;
+    let single = desc.into_single_descriptors().ok()?.into_iter().next()?;
+    let per_input = single.max_weight_to_satisfy().ok()?;
+    let tx = &psbt.unsigned_tx;
+    // Unsigned weight + segwit marker/flag + each input's witness.
+    let weight = tx.weight() + Weight::from_wu(2) + per_input * tx.input.len() as u64;
+    Some(weight.to_vbytes_ceil())
+}
+
 /// Check that a signed PSBT is ready to broadcast and describe the final
 /// transaction (txid, size, fee) without broadcasting it. The send flow
 /// shows this between signing and [`cmd_local_broadcast_psbt`].
@@ -1570,6 +1588,26 @@ mod tests {
         assert!(r.detail.is_some());
         // The fee is known before signing: inputs carry their UTXOs.
         assert!(r.fee_sat.is_some_and(|f| f > 0));
+    }
+
+    #[test]
+    fn estimated_vsize_bounds_the_signed_size() {
+        let (wallet, mut psbt) = wallet_and_psbt();
+        let desc = wallet.public_descriptor(KeychainKind::External).to_string();
+        let est = estimate_signed_vsize(&psbt.to_string(), &desc).unwrap();
+        let opts = SignOptions {
+            try_finalize: false,
+            ..Default::default()
+        };
+        wallet.sign(&mut psbt, opts).unwrap();
+        let actual = inspect_signed_psbt(&psbt.to_string())
+            .unwrap()
+            .vsize
+            .unwrap();
+        // An upper bound, off by at most a byte per signature (ECDSA
+        // signature length varies).
+        assert!(est >= actual && est - actual <= 2, "{est} vs {actual}");
+        assert_eq!(estimate_signed_vsize("nonsense", &desc), None);
     }
 
     #[test]

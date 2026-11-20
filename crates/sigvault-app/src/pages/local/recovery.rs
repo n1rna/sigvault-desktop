@@ -770,6 +770,10 @@ impl RecoveryFlowPage {
         let (_, flow) = self.adding.as_ref()?;
         Some(
             modal("add-key", 640.)
+                .title(
+                    "Add a key",
+                    Some("It's saved to your key library and used for this slot.".into()),
+                )
                 .on_dismiss(dismiss)
                 .child(flow.clone())
                 .into_any_element(),

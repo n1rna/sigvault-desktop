@@ -17,6 +17,7 @@ use super::keys::add_flow::{AddKeyEvent, AddKeyFlow};
 use super::setup::api::HotSecret;
 use super::setup::finish::network_label;
 use super::setup::slot_board::{custody_badge, meta_line, source_icon};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, source_label, KeyRecord, KeychainEvent};
 use crate::theme::{alpha, theme};
 use crate::ui::{button, card, divider, icon, InputEvent, TextInput};
@@ -124,24 +125,51 @@ impl KeyPicker {
             window,
             |this, _, ev: &AddKeyEvent, window, cx| match ev {
                 AddKeyEvent::Added(id) => cx.emit(KeyPickerEvent::Picked(id.clone())),
-                AddKeyEvent::Cancelled => {
-                    this.adding = None;
-                    this._add_sub = None;
-                    if keychain(cx)
-                        .read(cx)
-                        .keys_for_network(&this.network)
-                        .next()
-                        .is_none()
-                    {
-                        cx.emit(KeyPickerEvent::Cancelled);
-                    } else {
-                        this.search.read(cx).focus(window);
-                    }
-                    cx.notify();
-                }
+                AddKeyEvent::Cancelled => this.stop_adding(window, cx),
             },
         ));
         self.adding = Some(flow);
+        cx.notify();
+    }
+
+    /// The "Add a new key" flow is showing (the host titles its dialog
+    /// for it, see [`Self::modal_title`]).
+    pub fn is_adding(&self) -> bool {
+        self.adding.is_some()
+    }
+
+    /// Title and description for the host's dialog.
+    pub fn modal_title(&self) -> (String, String) {
+        let slot = if self.slot_label.eq_ignore_ascii_case("key") {
+            "this wallet".to_string()
+        } else {
+            self.slot_label.clone()
+        };
+        if self.adding.is_some() {
+            (
+                format!("Add a key for {slot}"),
+                "It's saved to your key library and picked for this slot.".into(),
+            )
+        } else {
+            (format!("Choose a key for {slot}"), String::new())
+        }
+    }
+
+    /// Leave the add flow: back to the list, or close the picker when the
+    /// library still has nothing to pick (Esc in the add dialog).
+    pub fn stop_adding(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.adding = None;
+        self._add_sub = None;
+        if keychain(cx)
+            .read(cx)
+            .keys_for_network(&self.network)
+            .next()
+            .is_none()
+        {
+            cx.emit(KeyPickerEvent::Cancelled);
+        } else {
+            self.search.read(cx).focus(window);
+        }
         cx.notify();
     }
 
@@ -177,11 +205,11 @@ impl KeyPicker {
             .px_4()
             .py_2()
             .when(selected, |d| d.bg(alpha(t.primary, 0.08)))
-            .when(disabled, |d| d.opacity(0.5))
             .when(!disabled, |d| {
                 d.cursor_pointer()
                     .hover(move |s| s.bg(alpha(t.muted, 0.5)))
-                    .on_click(
+                    .clickable(
+                        Probe::new("option", k.label.clone()).selected(selected),
                         cx.listener(move |_, _, _, cx| cx.emit(KeyPickerEvent::Picked(id.clone()))),
                     )
             })
@@ -219,7 +247,8 @@ impl KeyPicker {
                                     .truncate()
                                     .text_size(px(13.))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .text_color(t.foreground)
+                                    // Unavailable keys: quieter, still ≥4.5:1.
+                                    .text_color(if disabled { t.ink_3 } else { t.foreground })
                                     .child(k.label.clone()),
                             )
                             .child(custody_badge(k.is_hot())),

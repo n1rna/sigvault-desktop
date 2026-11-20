@@ -208,7 +208,7 @@ pub fn chunked(value: &str) -> String {
 
 /// A long identifier (address, txid) in mono that wraps, with a copy
 /// button beside it.
-fn data_with_copy(
+pub fn data_with_copy(
     id: impl Into<ElementId>,
     copy_label: &'static str,
     value: String,

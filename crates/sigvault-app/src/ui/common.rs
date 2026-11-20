@@ -420,7 +420,7 @@ pub fn checkbox(
                 .justify_center()
                 .rounded(px(4.))
                 .border_1()
-                .border_color(if checked { t.primary } else { t.border })
+                .border_color(if checked { t.primary } else { t.line_control })
                 .when(checked, |d| d.bg(t.primary))
                 .when(checked, |d| {
                     d.child(icon("check").size(px(12.)).text_color(t.primary_foreground))
@@ -489,14 +489,20 @@ pub fn tabs(
                 .py(px(5.))
                 .rounded(px(5.))
                 .text_size(px(12.5))
-                .font_weight(gpui::FontWeight::MEDIUM)
                 .cursor_pointer()
-                .text_color(if selected {
-                    t.foreground
-                } else {
-                    t.muted_foreground
+                // Selected: brand fill (≥3:1 against the track in both
+                // themes) with white semibold text.
+                .map(|d| {
+                    if selected {
+                        d.bg(t.brand_fill)
+                            .text_color(t.brand_fill_contrast)
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                    } else {
+                        d.text_color(t.muted_foreground)
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .hover(move |s| s.text_color(t.foreground).bg(t.hover_strong))
+                    }
                 })
-                .when(selected, |d| d.bg(t.card).border_1().border_color(t.border))
                 .clickable(
                     Probe::new("tab", text.to_string()).selected(selected),
                     move |_, w, cx| handler(key, w, cx),

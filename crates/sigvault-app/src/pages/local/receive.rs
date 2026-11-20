@@ -4,14 +4,17 @@
 //! monospace text. v1 always shows the same address — next-unused / per-
 //! index pickers land in a later UX pass.
 
-use gpui::{div, prelude::*, px, ClipboardItem, Context, SharedString, Window};
+use gpui::{
+    div, prelude::*, px, ClipboardItem, Context, Entity, SharedString, Subscription, Window,
+};
 use sigvault_core::local_wallet::commands::{
     cmd_local_get_receive_address, cmd_local_list_wallets, ReceiveAddress,
 };
 use sigvault_core::local_wallet::manager::WalletSummary;
 use sigvault_core::State;
 
-use super::widgets::{loading_card, network_badge};
+use super::wallet_unlock::{WalletUnlock, WalletUnlocked};
+use super::widgets::{loading_card, network_badge, plain_error};
 use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::{navigate, toast};
@@ -24,34 +27,80 @@ pub struct ReceivePage {
     wallet: Option<WalletSummary>,
     error: Option<SharedString>,
     loading: bool,
+    unlock: Entity<WalletUnlock>,
+    _sub: Subscription,
 }
 
 impl ReceivePage {
-    pub fn new(wallet_id: String, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let id = wallet_id.clone();
+    pub fn new(wallet_id: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let unlock = cx.new(|cx| {
+            WalletUnlock::new(
+                wallet_id.clone(),
+                true,
+                "show a receive address",
+                window,
+                cx,
+            )
+        });
+        let sub = cx.subscribe(&unlock, |this, _, _: &WalletUnlocked, cx| this.load(cx));
+        let mut this = Self {
+            wallet_id,
+            address: None,
+            wallet: None,
+            error: None,
+            loading: true,
+            unlock,
+            _sub: sub,
+        };
+        this.load(cx);
+        this
+    }
+
+    /// The wallet is locked: show the unlock card instead of an address.
+    fn locked(&self) -> bool {
+        self.address.is_none() && self.wallet.as_ref().is_some_and(|w| w.locked)
+    }
+
+    fn load(&mut self, cx: &mut Context<Self>) {
+        self.loading = true;
+        self.error = None;
+        cx.notify();
+        let id = self.wallet_id.clone();
         let task = backend(cx).call(move |app, st| async move {
             let state = State::new(&st);
-            let (addr, wallets) = futures::join!(
-                cmd_local_get_receive_address(app.clone(), state, id.clone()),
-                cmd_local_list_wallets(app, state),
-            );
+            let wallets = cmd_local_list_wallets(app.clone(), state).await;
             let wallet = wallets
                 .ok()
                 .and_then(|ws| ws.into_iter().find(|w| w.id.as_str() == id));
-            Ok((addr, wallet))
+            // A locked wallet can't derive addresses; the page offers the
+            // unlock card instead of the core's "not unlocked" error.
+            if wallet.as_ref().is_some_and(|w| w.locked) {
+                return Ok((None, wallet));
+            }
+            let addr = cmd_local_get_receive_address(app, state, id.clone()).await;
+            Ok((Some(addr), wallet))
         });
         cx.spawn(async move |this, cx| {
             let res: Result<_, String> = task.await;
             this.update(cx, |this, cx| {
                 match res {
                     Ok((addr, wallet)) => {
+                        let hot = wallet.as_ref().is_none_or(|w| w.has_hot_keys);
+                        this.unlock.update(cx, |u, cx| u.set_hot(hot, cx));
                         this.wallet = wallet;
                         match addr {
-                            Ok(a) => this.address = Some(a),
-                            Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
+                            Some(Ok(a)) => this.address = Some(a),
+                            Some(Err(e)) if e.contains("is not unlocked") => {
+                                // Locked between the two calls.
+                                if let Some(w) = this.wallet.as_mut() {
+                                    w.locked = true;
+                                }
+                            }
+                            Some(Err(e)) => this.error = Some(plain_error(&e).into()),
+                            None => {}
                         }
                     }
-                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
+                    Err(e) => this.error = Some(plain_error(&e).into()),
                 }
                 this.loading = false;
                 cx.notify();
@@ -59,13 +108,6 @@ impl ReceivePage {
             .ok();
         })
         .detach();
-        Self {
-            wallet_id,
-            address: None,
-            wallet: None,
-            error: None,
-            loading: true,
-        }
     }
 
     fn copy_address(&mut self, cx: &mut Context<Self>) {
@@ -203,6 +245,9 @@ impl Render for ReceivePage {
             )
             .when(self.loading, |f| f.child(loading_card("Loading address…")))
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
+            .when(!self.loading && self.locked(), |f| {
+                f.child(self.unlock.clone())
+            })
             .children(self.address.as_ref().map(|a| self.render_address(a, cx)))
     }
 }

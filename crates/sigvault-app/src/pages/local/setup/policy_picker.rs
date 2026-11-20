@@ -13,6 +13,7 @@ use super::policy::{
     RecoveryDraft, Threshold, BLOCKS_PER_DAY, MAX_TIMELOCK_BLOCKS, TIMELOCK_PRESETS,
 };
 use super::ui::{alert_text, field_label, option_card, seg, segmented, AlertTone, SegOption};
+use crate::e2e::{E2eClick, Probe};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{InputEvent, TextInput};
 
@@ -206,6 +207,7 @@ impl PolicyPicker {
             .child(div().w(px(112.)).flex_none().child(label))
             .child(self.stepper(
                 SharedString::from(format!("{id}-t")),
+                format!("{label}: signatures required"),
                 threshold,
                 1,
                 n,
@@ -215,6 +217,7 @@ impl PolicyPicker {
             .child("of")
             .child(self.stepper(
                 SharedString::from(format!("{id}-n")),
+                format!("{label}: keys in total"),
                 n,
                 min_n,
                 15,
@@ -230,6 +233,7 @@ impl PolicyPicker {
     fn stepper(
         &self,
         id: SharedString,
+        name: String,
         value: u32,
         min: u32,
         max: u32,
@@ -244,12 +248,12 @@ impl PolicyPicker {
                 .flex()
                 .items_center()
                 .justify_center()
+                .rounded(px(5.))
                 .text_size(px(13.))
-                .text_color(t.muted_foreground)
-                .when(!enabled, |d| d.opacity(0.3))
+                // At the limit: the quieter ink (still ≥4.5:1), no pointer.
+                .text_color(if enabled { t.foreground } else { t.ink_3 })
                 .when(enabled, |d| {
-                    d.cursor_pointer()
-                        .hover(move |s| s.text_color(t.foreground))
+                    d.cursor_pointer().hover(move |s| s.bg(t.hover))
                 })
                 .child(label)
         };
@@ -263,9 +267,18 @@ impl PolicyPicker {
             .border_1()
             .border_color(t.border)
             .bg(t.background)
-            .child(btn("dec", "−", value > min).when(value > min, |d| {
-                d.on_click(cx.listener(move |this, _, w, cx| dec(this, value - 1, w, cx)))
-            }))
+            .child(
+                btn("dec", "−", value > min).clickable(
+                    Probe::new("button", format!("Decrease {name}"))
+                        .value(value.to_string())
+                        .disabled(value <= min),
+                    cx.listener(move |this, _, w, cx| {
+                        if value > min {
+                            dec(this, value - 1, w, cx)
+                        }
+                    }),
+                ),
+            )
             .child(
                 div()
                     .w(px(24.))
@@ -275,9 +288,18 @@ impl PolicyPicker {
                     .text_color(t.foreground)
                     .child(value.to_string()),
             )
-            .child(btn("inc", "+", value < max).when(value < max, |d| {
-                d.on_click(cx.listener(move |this, _, w, cx| inc(this, value + 1, w, cx)))
-            }))
+            .child(
+                btn("inc", "+", value < max).clickable(
+                    Probe::new("button", format!("Increase {name}"))
+                        .value(value.to_string())
+                        .disabled(value >= max),
+                    cx.listener(move |this, _, w, cx| {
+                        if value < max {
+                            inc(this, value + 1, w, cx)
+                        }
+                    }),
+                ),
+            )
     }
 
     fn timelocked_builder(
@@ -408,18 +430,25 @@ impl PolicyPicker {
                                         .text_color(t.muted_foreground)
                                         .cursor_pointer()
                                         .hover(move |s| s.text_color(t.destructive))
-                                        .on_click(cx.listener(move |this, _, w, cx| {
-                                            this.edit(w, cx, |p| {
-                                                if let PolicyDraft::Timelocked {
-                                                    recoveries, ..
-                                                } = p
-                                                {
-                                                    if i < recoveries.len() {
-                                                        recoveries.remove(i);
+                                        .clickable(
+                                            Probe::new(
+                                                "button",
+                                                format!("Remove recovery path {}", i + 1),
+                                            ),
+                                            cx.listener(move |this, _, w, cx| {
+                                                this.edit(w, cx, |p| {
+                                                    if let PolicyDraft::Timelocked {
+                                                        recoveries,
+                                                        ..
+                                                    } = p
+                                                    {
+                                                        if i < recoveries.len() {
+                                                            recoveries.remove(i);
+                                                        }
                                                     }
-                                                }
-                                            })
-                                        }))
+                                                })
+                                            }),
+                                        )
                                         .child("Remove"),
                                 )
                             }),
@@ -447,15 +476,22 @@ impl PolicyPicker {
                                             .hover(move |s| s.text_color(t.foreground))
                                     }
                                 })
-                                .on_click(cx.listener(move |this, _, w, cx| {
-                                    this.edit(w, cx, |p| {
-                                        if let PolicyDraft::Timelocked { recoveries, .. } = p {
-                                            if let Some(r) = recoveries.get_mut(i) {
-                                                r.timelock_blocks = blocks;
+                                .clickable(
+                                    Probe::new(
+                                        "option",
+                                        format!("Recovery path {}: {label}", i + 1),
+                                    )
+                                    .selected(active),
+                                    cx.listener(move |this, _, w, cx| {
+                                        this.edit(w, cx, |p| {
+                                            if let PolicyDraft::Timelocked { recoveries, .. } = p {
+                                                if let Some(r) = recoveries.get_mut(i) {
+                                                    r.timelock_blocks = blocks;
+                                                }
                                             }
-                                        }
-                                    })
-                                }))
+                                        })
+                                    }),
+                                )
                                 .child(*label)
                         }),
                     ))
@@ -519,18 +555,21 @@ impl PolicyPicker {
                             s.border_color(alpha(t.primary, 0.6))
                                 .text_color(t.foreground)
                         })
-                        .on_click(cx.listener(|this, _, w, cx| {
-                            this.edit(w, cx, |p| {
-                                if let PolicyDraft::Timelocked { recoveries, .. } = p {
-                                    let tl = Self::next_timelock(recoveries);
-                                    recoveries.push(RecoveryDraft {
-                                        timelock_blocks: tl,
-                                        threshold: 1,
-                                        n: 1,
-                                    });
-                                }
-                            })
-                        }))
+                        .clickable(
+                            Probe::new("button", "Add a recovery path"),
+                            cx.listener(|this, _, w, cx| {
+                                this.edit(w, cx, |p| {
+                                    if let PolicyDraft::Timelocked { recoveries, .. } = p {
+                                        let tl = Self::next_timelock(recoveries);
+                                        recoveries.push(RecoveryDraft {
+                                            timelock_blocks: tl,
+                                            threshold: 1,
+                                            n: 1,
+                                        });
+                                    }
+                                })
+                            }),
+                        )
                         .child("+ Add a later recovery path"),
                 )
             })
@@ -613,7 +652,7 @@ impl Render for PolicyPicker {
                 option_card(SharedString::from(format!("preset-{}", p.id)), active)
                     .min_w_0()
                     .p_3()
-                    .on_click(cx.listener(move |this, _, w, cx| {
+                    .clickable(Probe::new("option", p.title).selected(active), cx.listener(move |this, _, w, cx| {
                         this.advanced = false;
                         this.set(draft.clone(), w, cx);
                     }))
@@ -666,7 +705,7 @@ impl Render for PolicyPicker {
                                 .hover(move |s| s.border_color(alpha(t.primary, 0.6)))
                         }
                     })
-                    .on_click(cx.listener(|this, _, w, cx| {
+                    .clickable(Probe::new("button", "Advanced").selected(advanced), cx.listener(|this, _, w, cx| {
                         if !this.advanced && this.value == PolicyDraft::Singlesig {
                             this.set(PolicyDraft::Multisig { threshold: 2, n: 3 }, w, cx);
                         }

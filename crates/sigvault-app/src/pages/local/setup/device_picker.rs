@@ -169,6 +169,7 @@ impl DevicePicker {
         };
         let id = d.id.clone();
         let id2 = d.id.clone();
+        let id3 = d.id.clone();
 
         let meta_row = |k: &'static str, v: gpui::AnyElement| {
             div()
@@ -418,7 +419,16 @@ impl DevicePicker {
                                         } else {
                                             b.icon_right("chevron-right")
                                         }
-                                    }),
+                                    })
+                                    // Its own handler so Tab + Enter selects the
+                                    // device (the card click is mouse-only).
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            cx.stop_propagation();
+                                            this.selected = Some(id3.clone());
+                                            cx.notify();
+                                        },
+                                    )),
                                 )
                             })
                             .when(locked, |c| {

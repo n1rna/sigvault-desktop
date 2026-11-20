@@ -207,7 +207,6 @@ fn key_cell(k: &BoardKey, dim: bool) -> Div {
         .items_center()
         .gap_3()
         .min_w_0()
-        .when(dim, |d| d.opacity(0.6))
         .child(
             div()
                 .size(px(30.))
@@ -220,7 +219,7 @@ fn key_cell(k: &BoardKey, dim: bool) -> Div {
                 .child(
                     icon(source_icon(&k.source))
                         .size(px(15.))
-                        .text_color(t.foreground),
+                        .text_color(if dim { t.ink_3 } else { t.foreground }),
                 ),
         )
         .child(
@@ -241,7 +240,8 @@ fn key_cell(k: &BoardKey, dim: bool) -> Div {
                                 .truncate()
                                 .text_size(px(13.))
                                 .font_weight(FontWeight::MEDIUM)
-                                .text_color(t.foreground)
+                                // Dimmed keys: quieter ink, still ≥4.5:1.
+                                .text_color(if dim { t.ink_3 } else { t.foreground })
                                 .child(k.label.clone()),
                         )
                         .child(custody_badge(k.hot)),

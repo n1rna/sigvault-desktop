@@ -10,6 +10,7 @@ use gpui::{
 use super::list::{load_usage, wallets_using, UsageMap};
 use super::sources::{copy_box, custody_text, from_core_secret, network_badge};
 use super::unlock::{KeychainUnlock, UnlockEvent};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, source_label, KeyRecord, KeychainEvent};
 use crate::pages::local::setup::api::{self, SlotKey};
 use crate::pages::local::setup::files::{file_safe, save_text_file};
@@ -416,7 +417,10 @@ impl KeyDetailPage {
                     .px_4()
                     .cursor_pointer()
                     .hover(move |s| s.bg(alpha(t.muted, 0.5)))
-                    .on_click(move |_, _, cx| navigate(page.clone(), cx))
+                    .clickable(
+                        Probe::new("link", format!("Open wallet {}", w.name)),
+                        move |_, _, cx| navigate(page.clone(), cx),
+                    )
                     .child(icon("wallet").size(px(15.)))
                     .child(
                         div()

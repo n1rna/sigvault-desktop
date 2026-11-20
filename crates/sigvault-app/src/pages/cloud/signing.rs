@@ -431,9 +431,10 @@ impl TransactionSigning {
     }
 
     /// Current step for the page's stepper (see [`STEPS`]).
+    /// Past the last step once submitted, so every step shows a check.
     pub fn step_index(&self) -> usize {
         if self.submitted {
-            2
+            STEPS.len()
         } else {
             match self.step {
                 Step::Review => 0,

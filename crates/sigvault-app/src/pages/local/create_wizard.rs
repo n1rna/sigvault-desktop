@@ -490,7 +490,23 @@ impl CreateWalletWizardPage {
             );
         }
         let (_, picker) = self.key_picker.as_ref()?;
-        let w = picker.read(cx).modal_width();
+        let p = picker.read(cx);
+        let w = p.modal_width();
+        if p.is_adding() {
+            // Its own dialog (fresh focus, Tab trapped inside, Esc goes
+            // back to the key list rather than closing everything).
+            let (title, description) = p.modal_title();
+            let back = picker.downgrade();
+            return Some(
+                modal("key-picker-add", w)
+                    .title(title, Some(description.into()))
+                    .on_dismiss(move |_, window, cx| {
+                        back.update(cx, |p, cx| p.stop_adding(window, cx)).ok();
+                    })
+                    .child(picker.clone())
+                    .into_any_element(),
+            );
+        }
         Some(
             modal("key-picker", w)
                 .on_dismiss(dismiss)

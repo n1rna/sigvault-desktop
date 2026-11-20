@@ -11,6 +11,7 @@ use sigvault_core::State;
 use super::add::open_add_key;
 use super::sources::{icon_tile, network_badge, source_icon, KeySource, NETWORKS};
 use super::unlock::{KeychainUnlock, UnlockEvent};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, source_label, KeyRecord, KeychainEvent};
 use crate::router::Page;
 use crate::runtime::backend;
@@ -252,7 +253,9 @@ impl KeyListPage {
             .px_4()
             .cursor_pointer()
             .hover(move |s| s.bg(alpha(t.muted, 0.5)))
-            .on_click(move |_, _, cx| navigate(page.clone(), cx))
+            .clickable(Probe::new("row", k.label.clone()), move |_, _, cx| {
+                navigate(page.clone(), cx)
+            })
             .child(icon_tile(
                 source_icon(&k.source),
                 32.,

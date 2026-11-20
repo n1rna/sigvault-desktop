@@ -117,7 +117,7 @@ impl Render for Select {
                     .py(px(7.))
                     .rounded(RADIUS_CONTROL)
                     .border_1()
-                    .border_color(if self.open { t.ring } else { t.line })
+                    .border_color(if self.open { t.ring } else { t.line_control })
                     .bg(t.inset)
                     .text_size(px(14.))
                     .line_height(px(20.))
