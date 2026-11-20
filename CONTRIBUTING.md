@@ -7,37 +7,33 @@ Thank you for your interest in contributing to SigVault Desktop! This guide will
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (stable toolchain)
-- [Bun](https://bun.sh/) (or Node.js 22+)
 - Linux system dependencies:
 
   ```bash
-  sudo apt-get install -y \
-    libwebkit2gtk-4.1-dev \
-    libappindicator3-dev \
-    librsvg2-dev \
-    patchelf \
-    libssl-dev \
-    libudev-dev
+  sudo apt-get install -y pkg-config libssl-dev libudev-dev \
+    libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libxcb1-dev \
+    libfontconfig1-dev libfreetype6-dev libvulkan1
   ```
 
 ### Getting Started
 
 1. Fork and clone the repository
-2. Install dependencies: `bun install`
-3. Start development: `bun run tauri dev`
+2. Run the app: `cargo run -p sigvault-app`
 
 No `.env` or secrets are needed to run the app — pick a deployment (regtest,
-signet, testnet) on the login screen. Only signed release builds need the
-Tauri updater signing key; see `.env.example`.
+signet, testnet) when signing in. Only signed release builds need the updater
+signing key; see `.env.example`.
+
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) explains how the app is put
+together, the design system, and the debug-only hooks for opening a page
+directly or using a throwaway data directory.
 
 ### Running Tests
 
 ```bash
-# Frontend tests
-bun test
-
-# Rust tests
-cd src-tauri && cargo test
+cargo test --workspace
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --no-deps   # warnings are errors
 ```
 
 ## Making Changes
@@ -63,8 +59,8 @@ docs: update hardware wallet compatibility table
 
 1. Create a feature branch from `main`
 2. Make your changes with clear, focused commits
-3. Ensure all tests pass (`bun test` and `cargo test`)
-4. Run linting: `cargo clippy` for Rust
+3. Ensure all tests pass (`cargo test --workspace`)
+4. Run `cargo fmt --all` and `cargo clippy --workspace --all-targets`
 5. Open a PR with a clear description of changes
 6. Address any review feedback
 
@@ -72,30 +68,33 @@ docs: update hardware wallet compatibility table
 
 ```
 sigvault-desktop/
-├── src/                  # React/TypeScript frontend
-│   ├── components/       # Reusable UI components
-│   ├── pages/            # Route pages
-│   ├── hooks/            # Custom React hooks
-│   ├── contexts/         # React context providers
-│   └── types/            # TypeScript type definitions
-├── src-tauri/            # Rust backend (Tauri 2)
-│   └── src/
-│       ├── api/          # HTTP API client
-│       ├── commands/     # Tauri command handlers
-│       ├── hwi/          # Hardware wallet integration
-│       ├── oauth/        # OAuth 2.0 authentication
-│       ├── state/        # Application state management
-│       ├── storage/      # Secure local storage
-│       ├── websocket/    # WebSocket session handling
-│       └── window/       # Window event management
-└── .github/workflows/    # CI/CD automation
+├── crates/
+│   ├── sigvault-core/        # UI-free core
+│   │   ├── src/
+│   │   │   ├── api/          # HTTP API client
+│   │   │   ├── commands/     # cmd_* entry points the app calls
+│   │   │   ├── hwi/          # Hardware wallet integration
+│   │   │   ├── local_wallet/ # On-device wallets (BDK)
+│   │   │   ├── oauth/        # OAuth 2.0 authentication
+│   │   │   ├── state/        # Application state
+│   │   │   ├── storage/      # Encrypted local storage
+│   │   │   ├── websocket/    # Remote session connection
+│   │   │   └── host.rs       # App handle, events and data dir
+│   │   └── tests/            # Hardware-wallet and regtest integration tests
+│   └── sigvault-app/         # GPUI app
+│       ├── src/shell/        # Top bar, sidebar, banners, toasts
+│       ├── src/pages/        # One module per route
+│       ├── src/ui/           # Component kit and theme
+│       └── assets/           # Fonts and icons
+├── packaging/icons/
+└── .github/workflows/        # CI and release
 ```
 
 ## Hardware Wallet Development
 
-SigVault integrates with hardware signing devices via [async-hwi](https://github.com/n1rna/async-hwi). If you're working on hardware wallet features, review `src-tauri/src/hwi/TREZOR_LIMITATIONS.md` for known constraints.
+SigVault integrates with hardware signing devices via [async-hwi](https://github.com/n1rna/async-hwi). If you're working on hardware wallet features, review `crates/sigvault-core/src/hwi/TREZOR_LIMITATIONS.md` for known constraints.
 
-Testing hardware wallet code requires physical devices. Integration tests in `src-tauri/tests/` are marked `#[ignore]` and must be run manually with devices connected.
+Testing hardware wallet code requires physical devices. Integration tests in `crates/sigvault-core/tests/` are marked `#[ignore]` and must be run manually with devices connected (`crates/sigvault-core/tests/run_hwi_tests.sh`).
 
 ## Code of Conduct
 
