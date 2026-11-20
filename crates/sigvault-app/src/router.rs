@@ -144,6 +144,12 @@ pub fn resolve(route: &R, requested: &Page) -> Page {
     if target_path != "/" && path.starts_with(&format!("{target_path}/")) {
         return requested.clone();
     }
+    // The session page shows the core's active session; once the core routes
+    // away (session finished or left), it must not linger under the /cloud/
+    // namespace.
+    if *requested == Page::SessionDetails {
+        return target;
+    }
     if let Some(ns) = namespace {
         // Signed-in cloud routes never fall back to the pre-auth pages.
         let pre_auth = matches!(requested, Page::Login | Page::SelectEnv);
@@ -181,6 +187,22 @@ mod tests {
             Page::CloudSettings
         );
         assert_eq!(resolve(&R::Login, &Page::Sessions), Page::Login);
+    }
+
+    #[test]
+    fn finished_session_returns_to_the_list() {
+        assert_eq!(
+            resolve(&R::RemoteSessions, &Page::SessionDetails),
+            Page::Sessions
+        );
+        assert_eq!(
+            resolve(&R::MainPage, &Page::SessionDetails),
+            Page::CloudHome
+        );
+        assert_eq!(
+            resolve(&R::SessionDetails, &Page::SessionDetails),
+            Page::SessionDetails
+        );
     }
 
     #[test]
