@@ -82,6 +82,12 @@ jobs:
             echo "${key}=${value}" >> "$GITHUB_ENV"
           done < .env
 
+      # For scripts/unlock-updater-key.py: it needs hashlib.scrypt, which
+      # Python only has when built against OpenSSL (not macOS's system one).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Check updater signing key
         shell: bash
         run: |
@@ -97,10 +103,13 @@ jobs:
             exit 1
           fi
           echo "Updater signing key present (${#TAURI_SIGNING_PRIVATE_KEY} chars)."
-          echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY<<EOF_KEY" >> "$GITHUB_ENV"
-          echo "${TAURI_SIGNING_PRIVATE_KEY}" >> "$GITHUB_ENV"
-          echo "EOF_KEY" >> "$GITHUB_ENV"
-          echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD=${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" >> "$GITHUB_ENV"
+          # Tauri encrypted the key even with an empty password; cargo-packager
+          # can't open that (see the script), so hand it the key unlocked.
+          UNLOCKED="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" \
+            | KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" python scripts/unlock-updater-key.py)"
+          echo "::add-mask::${UNLOCKED}"
+          echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY=${UNLOCKED}" >> "$GITHUB_ENV"
+          echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
 
       - name: Set version from tag
         shell: bash
@@ -210,22 +219,32 @@ jobs:
           env_file: .env
           gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Export signing key
         shell: bash
         run: |
-          while IFS='=' read -r key value; do
-            [[ -z "$key" || "$key" =~ ^# ]] && continue
+          key="" password=""
+          while IFS='=' read -r name value; do
+            [[ -z "$name" || "$name" =~ ^# ]] && continue
             value="${value%\"}"
             value="${value#\"}"
             [[ -n "$value" ]] && echo "::add-mask::${value}"
-            case "$key" in
-              TAURI_SIGNING_PRIVATE_KEY)
-                { echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY<<EOF_KEY"; echo "$value"; echo "EOF_KEY"; } >> "$GITHUB_ENV" ;;
-              TAURI_SIGNING_PRIVATE_KEY_PASSWORD)
-                echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD=${value}" >> "$GITHUB_ENV" ;;
+            case "$name" in
+              TAURI_SIGNING_PRIVATE_KEY) key="$value" ;;
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD) password="$value" ;;
             esac
           done < .env
           rm -f .env
+          # Empty: the signing step below refuses to publish unsigned sums.
+          if [[ -n "$key" ]]; then
+            UNLOCKED="$(printf '%s' "$key" | KEY_PASSWORD="$password" python scripts/unlock-updater-key.py)"
+            echo "::add-mask::${UNLOCKED}"
+            echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY=${UNLOCKED}" >> "$GITHUB_ENV"
+            echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+          fi
 
       - name: Install cargo-packager and minisign
         shell: bash
