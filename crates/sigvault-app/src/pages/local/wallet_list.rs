@@ -23,7 +23,7 @@ use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::navigate;
 use crate::state::{local_changed, store, StoreEvent};
-use crate::theme::{alpha, theme, FONT_MONO};
+use crate::theme::{theme, FONT_MONO};
 use crate::ui::{
     alert, button, card, divider, empty_state, field, modal, page_frame, InputEvent, TextInput,
     Tone,
@@ -67,7 +67,8 @@ impl LocalWalletListPage {
                 .masked()
                 .placeholder("Wallet passphrase")
         });
-        let delete_name = cx.new(|cx| TextInput::new(window, cx));
+        let delete_name =
+            cx.new(|cx| TextInput::new(window, cx).label("Type the wallet name to confirm"));
         let delete_pass = cx.new(|cx| {
             TextInput::new(window, cx)
                 .masked()
@@ -449,7 +450,7 @@ impl LocalWalletListPage {
         if w.recovery_only {
             meta = meta
                 .child(sep_dot())
-                .child(div().text_color(t.warning).child("Recovery-only"));
+                .child(div().text_color(t.warning_ink).child("Recovery-only"));
         }
 
         let balance = if w.locked {
@@ -459,7 +460,7 @@ impl LocalWalletListPage {
                 .items_center()
                 .gap_1()
                 .text_size(px(12.))
-                .text_color(alpha(t.muted_foreground, 0.7))
+                .text_color(t.ink_3)
                 .child("Locked")
                 .into_any_element()
         } else {
@@ -651,7 +652,7 @@ impl LocalWalletListPage {
 fn icon_chevron() -> impl IntoElement {
     crate::ui::icon("chevron-right")
         .size(px(14.))
-        .text_color(alpha(theme().muted_foreground, 0.7))
+        .text_color(theme().ink_3)
 }
 
 impl Render for LocalWalletListPage {

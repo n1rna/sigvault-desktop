@@ -11,6 +11,7 @@ use gpui::{
 };
 use serde::Deserialize;
 
+use crate::e2e::{E2eClick, Probe};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme, FONT_MONO, RADIUS_CARD};
 use crate::ui::icon;
@@ -231,13 +232,7 @@ impl Render for PriceChart {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(
-                        div()
-                            .font_family(FONT_MONO)
-                            .text_size(px(10.))
-                            .text_color(t.ink_2)
-                            .child("BITCOIN PRICE"),
-                    )
+                    .child(crate::ui::eyebrow("Bitcoin price"))
                     .child(
                         div()
                             .flex()
@@ -297,16 +292,19 @@ impl Render for PriceChart {
                             .px_3()
                             .py_1()
                             .rounded_full()
-                            .font_family(FONT_MONO)
                             .text_size(px(12.))
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .cursor_pointer()
                             .text_color(if active { t.ink } else { t.ink_3 })
                             .when(active, |d| d.bg(t.page).border_1().border_color(t.line))
                             .when(!active, |d| d.hover(|s| s.text_color(t.ink)))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.range = r;
-                                cx.notify();
-                            }))
+                            .clickable(
+                                Probe::new("tab", r.label()).selected(active),
+                                cx.listener(move |this, _, _, cx| {
+                                    this.range = r;
+                                    cx.notify();
+                                }),
+                            )
                             .child(r.label())
                     })),
             );
@@ -392,7 +390,7 @@ impl Render for PriceChart {
                                 .justify_between()
                                 .items_end()
                                 .font_family(FONT_MONO)
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(t.ink_2)
                                 .children(ticks.iter().map(|v| div().child(fmt_usd(*v)))),
                         )
@@ -417,7 +415,7 @@ impl Render for PriceChart {
                         .flex_row()
                         .justify_between()
                         .font_family(FONT_MONO)
-                        .text_size(px(11.))
+                        .text_size(px(12.))
                         .text_color(t.ink_2)
                         .children(x_labels.into_iter().map(|l| div().child(l))),
                 )

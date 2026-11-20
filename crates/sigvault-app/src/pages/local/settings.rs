@@ -24,8 +24,8 @@ use crate::runtime::backend;
 use crate::shell::{navigate, toast};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, button, card, divider, footer_bar, page_frame, section, InputEvent, TextInput, Tone,
-    FORM_WIDTH,
+    alert, appearance_section, button, card, divider, footer_bar, page_frame, section, InputEvent,
+    TextInput, Tone, FORM_WIDTH,
 };
 
 /// `constants/networks.ts` — `SUPPORTED_NETWORKS`.
@@ -609,6 +609,7 @@ impl Render for LocalSettingsPage {
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
             .child(
                 column
+                    .child(appearance_section(cx))
                     .child(self.render_keychain(cx))
                     .child(self.render_about()),
             )

@@ -43,8 +43,8 @@ actions!(
         Cut,
         Copy,
         Enter,
-        FocusNext,
-        FocusPrev,
+        Undo,
+        Redo,
     ]
 );
 
@@ -65,8 +65,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("home", Home, ctx),
         KeyBinding::new("end", End, ctx),
         KeyBinding::new("enter", Enter, ctx),
-        KeyBinding::new("tab", FocusNext, ctx),
-        KeyBinding::new("shift-tab", FocusPrev, ctx),
+        // Tab / Shift-Tab / Esc are global (`ui::focus`).
     ]);
     #[cfg(target_os = "macos")]
     cx.bind_keys([
@@ -74,6 +73,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-v", Paste, ctx),
         KeyBinding::new("cmd-c", Copy, ctx),
         KeyBinding::new("cmd-x", Cut, ctx),
+        KeyBinding::new("cmd-z", Undo, ctx),
+        KeyBinding::new("cmd-shift-z", Redo, ctx),
         KeyBinding::new("cmd-left", Home, ctx),
         KeyBinding::new("cmd-right", End, ctx),
     ]);
@@ -83,6 +84,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-v", Paste, ctx),
         KeyBinding::new("ctrl-c", Copy, ctx),
         KeyBinding::new("ctrl-x", Cut, ctx),
+        KeyBinding::new("ctrl-z", Undo, ctx),
+        KeyBinding::new("ctrl-y", Redo, ctx),
+        KeyBinding::new("ctrl-shift-z", Redo, ctx),
     ]);
 }
 
@@ -122,7 +126,17 @@ pub struct TextInput {
     /// from `rows` lines.
     multiline: Option<usize>,
     max_len: Option<usize>,
+    /// Accessible name for the e2e driver (defaults to the placeholder).
+    label: Option<SharedString>,
+    /// Undo / redo snapshots: (content, selection). Not kept for masked
+    /// inputs, so passphrases aren't copied around.
+    undo: Vec<(SharedString, Range<usize>)>,
+    redo: Vec<(SharedString, Range<usize>)>,
+    /// Last edit typed one character: consecutive ones undo as a group.
+    typing: bool,
 }
+
+const UNDO_LIMIT: usize = 200;
 
 impl EventEmitter<InputEvent> for TextInput {}
 
@@ -146,6 +160,10 @@ impl TextInput {
             invalid: false,
             multiline: None,
             max_len: None,
+            label: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            typing: false,
         }
     }
 
@@ -153,6 +171,13 @@ impl TextInput {
 
     pub fn placeholder(mut self, text: impl Into<SharedString>) -> Self {
         self.placeholder = text.into();
+        self
+    }
+
+    /// Accessible name the e2e driver reports (e.g. "Word 1"), for inputs
+    /// whose placeholder doesn't name them. Defaults to the placeholder.
+    pub fn label(mut self, text: impl Into<SharedString>) -> Self {
+        self.label = Some(text.into());
         self
     }
 
@@ -192,6 +217,9 @@ impl TextInput {
     }
 
     pub fn set_text(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.undo.clear();
+        self.redo.clear();
+        self.typing = false;
         self.content = text.into();
         let len = self.content.len();
         self.selected_range = len..len;
@@ -205,6 +233,12 @@ impl TextInput {
 
     pub fn set_placeholder(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.placeholder = text.into();
+        cx.notify();
+    }
+
+    /// Change the accessible name (see [`TextInput::label`]).
+    pub fn set_label(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.label = Some(text.into());
         cx.notify();
     }
 
@@ -357,12 +391,55 @@ impl TextInput {
         }
     }
 
-    fn focus_next(&mut self, _: &FocusNext, window: &mut Window, _: &mut Context<Self>) {
-        window.focus_next();
+    fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
+        if self.disabled {
+            return;
+        }
+        if let Some((content, sel)) = self.undo.pop() {
+            self.redo
+                .push((self.content.clone(), self.selected_range.clone()));
+            self.restore(content, sel, cx);
+        }
     }
 
-    fn focus_prev(&mut self, _: &FocusPrev, window: &mut Window, _: &mut Context<Self>) {
-        window.focus_prev();
+    fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
+        if self.disabled {
+            return;
+        }
+        if let Some((content, sel)) = self.redo.pop() {
+            self.undo
+                .push((self.content.clone(), self.selected_range.clone()));
+            self.restore(content, sel, cx);
+        }
+    }
+
+    fn restore(&mut self, content: SharedString, sel: Range<usize>, cx: &mut Context<Self>) {
+        self.content = content;
+        let len = self.content.len();
+        self.selected_range = sel.start.min(len)..sel.end.min(len);
+        self.marked_range = None;
+        self.typing = false;
+        cx.emit(InputEvent::Changed);
+        cx.notify();
+    }
+
+    /// Snapshot before an edit (grouping runs of typed characters).
+    fn record_undo(&mut self, range: &Range<usize>, new_text: &str) {
+        if self.masked {
+            return;
+        }
+        let typing = range.is_empty()
+            && new_text.chars().count() == 1
+            && !new_text.chars().all(char::is_whitespace);
+        if !(typing && self.typing) {
+            self.undo
+                .push((self.content.clone(), self.selected_range.clone()));
+            if self.undo.len() > UNDO_LIMIT {
+                self.undo.remove(0);
+            }
+        }
+        self.typing = typing;
+        self.redo.clear();
     }
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
@@ -433,6 +510,7 @@ impl TextInput {
     // ── helpers ──
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+        self.typing = false;
         self.selected_range = offset..offset;
         cx.notify()
     }
@@ -663,6 +741,7 @@ impl EntityInputHandler for TextInput {
             );
             new_text = new_text.chars().take(remaining).collect();
         }
+        self.record_undo(&range, &new_text);
 
         self.content =
             (self.content[0..range.start].to_owned() + &new_text + &self.content[range.end..])
@@ -1092,8 +1171,8 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::cut))
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::enter))
-            .on_action(cx.listener(Self::focus_next))
-            .on_action(cx.listener(Self::focus_prev))
+            .on_action(cx.listener(Self::undo))
+            .on_action(cx.listener(Self::redo))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -1125,11 +1204,17 @@ impl Render for TextInput {
         };
         let focus = self.focus_handle.clone();
         root.e2e(
-            Probe::new("input", self.placeholder.to_string())
-                .value(shown)
-                .focused(focused)
-                .disabled(self.disabled)
-                .on_click(std::rc::Rc::new(move |_, window, _| window.focus(&focus))),
+            Probe::new(
+                "input",
+                self.label
+                    .clone()
+                    .unwrap_or_else(|| self.placeholder.clone())
+                    .to_string(),
+            )
+            .value(shown)
+            .focused(focused)
+            .disabled(self.disabled)
+            .on_click(std::rc::Rc::new(move |_, window, _| window.focus(&focus))),
         )
         .child(TextElement { input: cx.entity() })
     }

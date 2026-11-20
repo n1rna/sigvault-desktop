@@ -764,7 +764,7 @@ impl TransactionSigning {
                         .px_4()
                         .py_3()
                         .font_family(FONT_MONO)
-                        .text_size(px(11.))
+                        .text_size(px(12.))
                         .line_height(px(17.))
                         .text_color(t.muted_foreground)
                         .child(psbt),

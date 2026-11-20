@@ -77,6 +77,7 @@ pub enum Tone {
 }
 
 impl Tone {
+    /// Fill / border / icon colour.
     pub fn color(self) -> Hsla {
         let t = theme();
         match self {
@@ -88,13 +89,27 @@ impl Tone {
             Tone::Accent => t.accent,
         }
     }
+
+    /// Text colour for this tone (AA on page, surface, card and inset in
+    /// both themes): the `*_ink` variant where fill and text differ.
+    pub fn ink(self) -> Hsla {
+        let t = theme();
+        match self {
+            Tone::Default | Tone::Accent => t.brand_ink,
+            Tone::Secondary | Tone::Outline => t.ink_2,
+            Tone::Success => t.success,
+            Tone::Warning => t.warning_ink,
+            Tone::Destructive => t.destructive,
+        }
+    }
 }
 
 /// Pill badge (`components/ui/badge.tsx`).
 pub fn badge(label: impl Into<SharedString>, tone: Tone) -> Div {
     let t = theme();
     let color = tone.color();
-    // Web `badge.tsx` "-light" variants: pill, tinted border + 10% fill.
+    // Web `badge.tsx` "-light" variants: pill, tinted border + 10% fill,
+    // Manrope 12px medium, text in the tone's ink.
     let mut el = div()
         .flex()
         .flex_row()
@@ -109,17 +124,20 @@ pub fn badge(label: impl Into<SharedString>, tone: Tone) -> Div {
         .line_height(px(18.))
         .font_weight(gpui::FontWeight::MEDIUM)
         .whitespace_nowrap()
-        .text_color(color);
+        .text_color(tone.ink());
     el = match tone {
-        Tone::Secondary => el.border_color(t.line).bg(t.inset).text_color(t.ink_2),
-        Tone::Outline => el.border_color(t.line).text_color(t.ink_2),
-        _ => el.border_color(alpha(color, 0.25)).bg(alpha(color, 0.10)),
+        Tone::Secondary => el.border_color(t.line).bg(t.inset),
+        Tone::Outline => el.border_color(t.line),
+        _ => el
+            .border_color(alpha(color, 0.35))
+            .bg(alpha(color, if t.is_dark { 0.10 } else { 0.08 })),
     };
     let label: SharedString = label.into();
     el.e2e(Probe::new("badge", label.to_string())).child(label)
 }
 
-/// Neon-style mono chip (web `SwitcherPill`): `PERSONAL`, `REGTEST`, roles.
+/// Small status chip (web `SwitcherPill`): `local`, `signed in`, `locked`.
+/// Manrope 12px medium, ink_2, shown as given.
 pub fn pill(label: impl Into<SharedString>) -> Div {
     let t = theme();
     let label: SharedString = label.into();
@@ -135,11 +153,11 @@ pub fn pill(label: impl Into<SharedString>) -> Div {
         .bg(t.inset)
         .px(px(6.))
         .py(px(1.))
-        .font_family(FONT_MONO)
-        .text_size(px(10.))
-        .line_height(px(15.))
+        .text_size(px(12.))
+        .line_height(px(16.))
+        .font_weight(gpui::FontWeight::MEDIUM)
         .text_color(t.ink_2)
-        .child(label.to_uppercase())
+        .child(label)
 }
 
 /// Small coloured status dot.
@@ -177,42 +195,61 @@ pub fn alert(tone: Tone, message: impl Into<SharedString>) -> Div {
         .gap(px(10.))
         .rounded(RADIUS_CONTROL)
         .border_1()
-        .border_color(alpha(color, 0.3))
-        .bg(alpha(color, 0.06))
+        .border_color(alpha(color, 0.35))
+        .bg(alpha(color, if theme().is_dark { 0.06 } else { 0.08 }))
         .px(px(14.))
         .py(px(12.))
-        .text_size(px(12.))
-        .line_height(px(17.))
-        .text_color(color)
-        .child(icon(icon_name).size(px(14.)).mt(px(1.5)).text_color(color))
+        .text_size(px(13.))
+        .line_height(px(19.))
+        .text_color(tone.ink())
+        .child(
+            icon(icon_name)
+                .size(px(14.))
+                .mt(px(2.5))
+                .text_color(tone.ink()),
+        )
         .e2e(Probe::new("alert", message.to_string()))
         .child(div().flex_1().min_w_0().child(message))
 }
 
-/// Mono uppercase eyebrow (web `SectionHead` label / stat labels).
+/// Sentence-case first letter (labels are passed as plain words).
+fn sentence(text: &str) -> String {
+    let mut c = text.chars();
+    match c.next() {
+        Some(first) => first.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
+/// Small label for groups, captions and stat names: Manrope 12px semibold,
+/// ink_2, sentence case. (GPUI 0.2 has no letter-spacing, so labels stay
+/// sentence case rather than cramped capitals.) Never put one directly
+/// above a page or section heading.
 pub fn eyebrow(text: impl Into<SharedString>) -> Div {
     let text: SharedString = text.into();
     div()
-        .font_family(FONT_MONO)
-        .text_size(px(11.))
+        .text_size(px(12.))
         .line_height(px(16.))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme().ink_2)
-        .child(text.to_uppercase())
+        .child(sentence(&text))
 }
 
-/// Web `SectionHead`: mono uppercase label, a hairline rule, optional trailing.
+/// Web `SectionHead`: label on the left, optional trailing on the right. No
+/// rule.
 pub fn section_head(text: impl Into<SharedString>, trailing: Option<AnyElement>) -> Div {
     div()
         .flex()
         .flex_row()
         .items_center()
+        .justify_between()
         .gap_4()
         .child(eyebrow(text))
-        .child(div().h(px(1.)).flex_1().bg(theme().line))
         .children(trailing)
 }
 
-/// Web `DashboardStats`: a hairline grid of mono stat cells.
+/// Web `DashboardStats`: a hairline grid of stat cells (Manrope captions,
+/// tabular figure value).
 /// Each entry is (label, value, hint).
 pub fn stat_grid(stats: Vec<(SharedString, SharedString, SharedString)>) -> Div {
     let t = theme();
@@ -239,28 +276,22 @@ pub fn stat_grid(stats: Vec<(SharedString, SharedString, SharedString)>) -> Div 
                         .p_6()
                         .bg(t.page)
                         .when(i + 1 < n, |d| d.border_r_1().border_color(t.line))
+                        .child(eyebrow(label))
                         .child(
                             div()
-                                .font_family(FONT_MONO)
-                                .text_size(px(10.))
-                                .text_color(t.ink_2)
-                                .child(label.to_uppercase()),
-                        )
-                        .child(
-                            div()
-                                .font_family(FONT_MONO)
-                                .text_size(px(34.))
-                                .line_height(px(42.))
+                                .text_size(px(32.))
+                                .line_height(px(40.))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(t.ink)
                                 .truncate()
                                 .child(value),
                         )
                         .child(
                             div()
-                                .font_family(FONT_MONO)
-                                .text_size(px(10.))
-                                .text_color(alpha(t.ink_2, 0.7))
-                                .child(hint.to_uppercase()),
+                                .text_size(px(13.))
+                                .line_height(px(18.))
+                                .text_color(t.ink_2)
+                                .child(hint),
                         )
                 }),
         )
@@ -295,7 +326,8 @@ pub fn muted(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-/// Monospace text (addresses, txids, fingerprints).
+/// Monospace text: real data only (addresses, txids, amounts, fees,
+/// fingerprints, xpubs, descriptors, derivation paths, heights, seed words).
 pub fn mono(text: impl Into<SharedString>) -> Div {
     div()
         .font_family(FONT_MONO)
@@ -328,9 +360,9 @@ pub fn field(
         .child(control)
         .children(hint.map(|h| {
             div()
-                .text_size(px(11.5))
-                .line_height(px(16.))
-                .text_color(alpha(theme().muted_foreground, 0.85))
+                .text_size(px(12.))
+                .line_height(px(17.))
+                .text_color(theme().ink_2)
                 .child(h)
         }))
 }
@@ -404,7 +436,9 @@ pub fn checkbox(
         )
 }
 
-/// Radio-style selectable card used for choosing between options.
+/// Radio-style selectable card used for choosing between options. Make it
+/// interactive with `.clickable(Probe::new("choice", label).selected(..), f)`,
+/// which also makes it a tab stop (Enter / Space choose it).
 pub fn choice_card(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
     let t = theme();
     div()
@@ -416,17 +450,13 @@ pub fn choice_card(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
         .rounded_lg()
         .border_1()
         .cursor_pointer()
-        .border_color(if selected {
-            alpha(t.primary, 0.6)
-        } else {
-            t.border
-        })
+        .border_color(if selected { t.brand } else { t.border })
         .bg(if selected {
-            alpha(t.primary, 0.06)
+            alpha(t.brand, if t.is_dark { 0.08 } else { 0.06 })
         } else {
             t.card
         })
-        .hover(move |s| s.border_color(alpha(t.primary, 0.4)))
+        .hover(move |s| s.border_color(alpha(t.brand, 0.5)))
 }
 
 /// Segmented tabs. `items` are (key, label); `on_select` gets the key.
@@ -488,7 +518,7 @@ pub fn copy_field(id: impl Into<ElementId>, value: impl Into<SharedString>) -> D
         .rounded_md()
         .border_1()
         .border_color(t.border)
-        .bg(alpha(t.background, 0.6))
+        .bg(t.inset)
         .pl_3()
         .pr_1()
         .py_1()
@@ -509,11 +539,14 @@ pub fn copy_field(id: impl Into<ElementId>, value: impl Into<SharedString>) -> D
                 .p(px(6.))
                 .rounded(px(4.))
                 .cursor_pointer()
-                .hover(|s| s.bg(t.muted))
-                .on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(v2.to_string()));
-                    crate::shell::toast(cx, "Copied to clipboard");
-                })
+                .hover(|s| s.bg(t.hover_strong))
+                .clickable(
+                    Probe::new("button", "Copy to clipboard"),
+                    move |_, _, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(v2.to_string()));
+                        crate::shell::toast(cx, "Copied to clipboard");
+                    },
+                )
                 .child(icon("copy").size(px(14.))),
         )
 }
@@ -601,19 +634,21 @@ pub fn back_link(
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let t = theme();
+    let text: SharedString = text.into();
     div()
         .id(id)
         .flex()
         .flex_row()
         .items_center()
         .gap_1()
-        .text_size(px(12.5))
+        .rounded(RADIUS_CHIP)
+        .text_size(px(13.))
         .text_color(t.muted_foreground)
         .cursor_pointer()
         .hover(move |s| s.text_color(t.foreground))
-        .on_click(on_click)
+        .clickable(Probe::new("link", text.to_string()), on_click)
         .child(icon("arrow-left").size(px(14.)))
-        .child(text.into())
+        .child(text)
 }
 
 /// Horizontal step indicator: "1 Policy — 2 Keys — 3 Finish".
@@ -628,7 +663,7 @@ pub fn stepper(steps: &[&str], current: usize) -> Div {
             let done = i < current;
             let active = i == current;
             let color = if active || done {
-                t.primary
+                t.brand_ink
             } else {
                 t.muted_foreground
             };
@@ -647,8 +682,8 @@ pub fn stepper(steps: &[&str], current: usize) -> Div {
                         .rounded_full()
                         .border_1()
                         .border_color(color)
-                        .when(active, |d| d.bg(alpha(t.primary, 0.15)))
-                        .text_size(px(11.))
+                        .when(active, |d| d.bg(alpha(t.brand, 0.15)))
+                        .text_size(px(12.))
                         .text_color(color)
                         .child(if done {
                             icon("check")

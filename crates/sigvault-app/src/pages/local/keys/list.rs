@@ -288,8 +288,8 @@ impl KeyListPage {
                                 d.child(
                                     div()
                                         .flex_none()
-                                        .text_size(px(11.))
-                                        .text_color(alpha(t.muted_foreground, 0.85))
+                                        .text_size(px(12.))
+                                        .text_color(t.ink_3)
                                         .child("Watch-only"),
                                 )
                             }),

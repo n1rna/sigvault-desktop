@@ -264,7 +264,7 @@ impl Render for LoginPage {
                     .items_center()
                     .gap_1()
                     .cursor_pointer()
-                    .text_color(t.primary)
+                    .text_color(t.brand_ink)
                     .hover(|s| s.underline())
                     .on_click(|_, _, cx| crate::shell::switch_space(AppMode::Local, cx))
                     .child("Use wallets on this device")
@@ -274,7 +274,7 @@ impl Render for LoginPage {
                             .rounded(px(4.))
                             .border_1()
                             .border_color(t.border)
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .text_color(t.muted_foreground)
                             .child("⌘1"),
                     ),

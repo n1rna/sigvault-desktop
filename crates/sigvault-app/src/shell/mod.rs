@@ -9,9 +9,10 @@ mod update;
 use std::time::Duration;
 
 use gpui::{
-    div, prelude::*, px, AnyView, App, Context, Entity, Global, SharedString, Subscription,
-    WeakEntity, Window,
+    div, prelude::*, px, AnyView, App, Context, Entity, FocusHandle, Global, PromptLevel,
+    SharedString, Subscription, WeakEntity, Window,
 };
+use sigvault_core::app_mode::AppMode;
 
 use crate::e2e::{E2e, Probe};
 use crate::pages;
@@ -34,6 +35,9 @@ pub struct Root {
     update: Entity<UpdateBanner>,
     toast: Option<SharedString>,
     toast_epoch: usize,
+    /// Fallback focus: keeps the root on the key-dispatch path so Tab, Esc
+    /// and the window actions work when nothing else has focus.
+    focus_handle: FocusHandle,
     _subs: Vec<Subscription>,
 }
 
@@ -41,7 +45,10 @@ struct RootHandle(WeakEntity<Root>);
 impl Global for RootHandle {}
 
 impl Root {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let appearance = crate::theme::observe_window(window, cx);
+        let focus_handle = cx.focus_handle();
+        window.focus(&focus_handle);
         let st = store(cx);
         let sub = cx.subscribe(&st, |this, _, ev: &StoreEvent, cx| {
             if matches!(ev, StoreEvent::RouteChanged) {
@@ -76,7 +83,8 @@ impl Root {
             update: cx.new(UpdateBanner::new),
             toast: None,
             toast_epoch: 0,
-            _subs: vec![sub],
+            focus_handle,
+            _subs: vec![sub, appearance],
         }
     }
 
@@ -120,6 +128,26 @@ pub fn navigate(page: Page, cx: &mut App) {
     root.update(cx, |root, cx| root.go(page, cx));
 }
 
+/// ⌘, : the Settings page of the workspace on screen.
+pub fn open_settings(cx: &mut App) {
+    let Some(root) = cx.try_global::<RootHandle>().and_then(|h| h.0.upgrade()) else {
+        return;
+    };
+    let current = root.read(cx).current.clone();
+    let page = if current.is_cloud() {
+        Page::CloudSettings
+    } else if current.is_local() {
+        Page::LocalSettings
+    } else {
+        match store(cx).read(cx).app_mode {
+            Some(AppMode::Cloud) => Page::CloudSettings,
+            Some(AppMode::Local) => Page::LocalSettings,
+            None => return,
+        }
+    };
+    navigate(page, cx);
+}
+
 /// Path of the page on screen (for the e2e driver).
 pub fn current_path(cx: &App) -> String {
     cx.try_global::<RootHandle>()
@@ -148,6 +176,16 @@ impl Render for Root {
         }
         let with_chrome = self.current.has_sidebar();
         let t = theme();
+        // The focused element went away (page change, closed menu): fall
+        // back to the root so keyboard shortcuts keep working.
+        if window.focused(cx).is_none() {
+            let h = self.focus_handle.clone();
+            window.defer(cx, move |window, cx| {
+                if window.focused(cx).is_none() {
+                    window.focus(&h);
+                }
+            });
+        }
 
         // Web shell: canvas floor; full-width top bar; sidebar; content as an
         // inset `surface` panel with a rounded top-left corner and hairline.
@@ -174,6 +212,30 @@ impl Render for Root {
         div()
             .size_full()
             .relative()
+            .track_focus(&self.focus_handle)
+            .on_action(|_: &crate::ui::focus::FocusNext, window, cx| {
+                crate::ui::focus::cycle(true, None, window, cx)
+            })
+            .on_action(|_: &crate::ui::focus::FocusPrev, window, cx| {
+                crate::ui::focus::cycle(false, None, window, cx)
+            })
+            .on_action(|_: &crate::Minimize, window, _| window.minimize_window())
+            .on_action(|_: &crate::Zoom, window, _| window.zoom_window())
+            .on_action(|_: &crate::CloseWindow, window, _| window.remove_window())
+            .on_action(|_: &crate::About, window, cx| {
+                let detail = format!(
+                    "Version {}\n\nOpen source; builds reproducibly from n1rna/sigvault-desktop.",
+                    env!("CARGO_PKG_VERSION")
+                );
+                // The only answer is OK; nothing to wait for.
+                drop(window.prompt(
+                    PromptLevel::Info,
+                    "SigVault Desktop",
+                    Some(&detail),
+                    &["OK"],
+                    cx,
+                ));
+            })
             .flex()
             .flex_col()
             .bg(if with_chrome { t.canvas } else { t.surface })

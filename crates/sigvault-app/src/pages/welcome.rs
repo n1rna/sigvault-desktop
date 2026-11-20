@@ -250,7 +250,7 @@ impl Render for WelcomePage {
                                 .mt_10()
                                 .text_center()
                                 .text_size(px(12.))
-                                .text_color(alpha(t.muted_foreground, 0.7))
+                                .text_color(t.ink_3)
                                 .child("Your keys never leave your devices · non-custodial by design"),
                         ),
                 ),

@@ -247,7 +247,9 @@ impl KeyPicker {
                     .text_color(t.muted_foreground)
                     .map(|d| match (&used_by, selected) {
                         (Some(slot), _) => d.child(format!("Used for {slot}")),
-                        (None, true) => d.child(icon("check").size(px(16.)).text_color(t.primary)),
+                        (None, true) => {
+                            d.child(icon("check").size(px(16.)).text_color(t.brand_ink))
+                        }
                         (None, false) => d.child(icon("chevron-right").size(px(14.))),
                     }),
             )

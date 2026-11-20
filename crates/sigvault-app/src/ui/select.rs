@@ -212,14 +212,14 @@ impl Render for Select {
                                                 )
                                                 .children(o.description.clone().map(|desc| {
                                                     div()
-                                                        .text_size(px(11.))
+                                                        .text_size(px(12.))
                                                         .text_color(t.muted_foreground)
                                                         .child(desc)
                                                 })),
                                         )
                                         .when(selected, |d| {
                                             d.child(
-                                                icon("check").size(px(14.)).text_color(t.primary),
+                                                icon("check").size(px(14.)).text_color(t.brand_ink),
                                             )
                                         })
                                 })),

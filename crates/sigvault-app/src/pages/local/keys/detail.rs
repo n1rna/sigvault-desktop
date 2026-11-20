@@ -44,7 +44,7 @@ pub struct KeyDetailPage {
 
 impl KeyDetailPage {
     pub fn new(key_id: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let rename_input = cx.new(|cx| TextInput::new(window, cx).max_len(60));
+        let rename_input = cx.new(|cx| TextInput::new(window, cx).max_len(60).label("Key name"));
         let export_pw = cx.new(|cx| {
             TextInput::new(window, cx)
                 .masked()
@@ -55,7 +55,8 @@ impl KeyDetailPage {
                 .masked()
                 .placeholder("Repeat password")
         });
-        let delete_input = cx.new(|cx| TextInput::new(window, cx));
+        let delete_input =
+            cx.new(|cx| TextInput::new(window, cx).label("Type the key name to confirm"));
         let mut subs = vec![
             cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()),
             cx.subscribe(&store(cx), |this, _, ev: &StoreEvent, cx| {
@@ -343,8 +344,8 @@ impl KeyDetailPage {
                         div()
                             .w(px(184.))
                             .text_center()
-                            .text_size(px(11.))
-                            .line_height(px(15.))
+                            .text_size(px(12.))
+                            .line_height(px(16.))
                             .text_color(t.muted_foreground)
                             .child("Scan to share this public key with a co-signer"),
                     ),

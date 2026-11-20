@@ -1,6 +1,7 @@
 use gpui::{div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, SharedString, Window};
 
 use super::common::{icon, spinner_with};
+use super::focus::focus_target;
 use crate::e2e::{E2e, Probe};
 use crate::theme::{alpha, theme, RADIUS_CHIP, RADIUS_CONTROL};
 
@@ -27,6 +28,9 @@ pub enum ButtonSize {
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
 /// shadcn-style button. `button("id", "Label").on_click(...)`.
+///
+/// Enabled buttons are keyboard tab stops: Tab reaches them, Enter / Space
+/// click them, and focus draws a 2px `ring` outline.
 #[derive(IntoElement)]
 pub struct Button {
     id: ElementId,
@@ -143,10 +147,11 @@ impl RenderOnce for Button {
         let inert = self.disabled || self.loading;
         // Web `button.tsx`: rounded-control, shadow-btn ring (= 1px line-strong).
         let (bg, fg, hover_bg, border) = match self.variant {
+            // Deeper brand fill under white text (AA in both themes).
             ButtonVariant::Primary => (
-                Some(t.brand),
-                t.brand_contrast,
-                Some(alpha(t.brand, 0.9)),
+                Some(t.brand_fill),
+                t.brand_fill_contrast,
+                Some(alpha(t.brand_fill, 0.88)),
                 None,
             ),
             ButtonVariant::Secondary => (
@@ -158,9 +163,9 @@ impl RenderOnce for Button {
             ButtonVariant::Outline => (Some(t.surface), t.ink, Some(t.inset), Some(t.line_strong)),
             ButtonVariant::Ghost => (None, t.ink_2, Some(t.hover_strong), None),
             ButtonVariant::Destructive => (
-                Some(t.destructive),
+                Some(t.destructive_fill),
                 t.destructive_foreground,
-                Some(alpha(t.destructive, 0.9)),
+                Some(alpha(t.destructive_fill, 0.88)),
                 None,
             ),
             ButtonVariant::Link => (None, t.brand_ink, None, None),
@@ -192,7 +197,7 @@ impl RenderOnce for Button {
             None => probe,
         };
         let mut el = div()
-            .id(self.id)
+            .id(self.id.clone())
             .e2e(probe)
             .flex()
             .flex_row()
@@ -236,6 +241,10 @@ impl RenderOnce for Button {
                 el = el.hover(|s| s.underline());
             }
             if let Some(handler) = handler {
+                // Keyboard: Tab stop, 2px ring, Enter / Space click.
+                el = el
+                    .relative()
+                    .child(focus_target(self.id, radius, handler.clone()));
                 el = el.on_click(move |e, w, cx| handler(e, w, cx));
             }
         }

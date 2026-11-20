@@ -8,12 +8,13 @@ use sigvault_core::app_mode::AppMode;
 use sigvault_core::local_wallet::commands::cmd_local_list_wallets;
 use sigvault_core::State;
 
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, KeychainEvent};
 use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::navigate;
 use crate::state::{store, StoreEvent};
-use crate::theme::{theme, FONT_MONO, RADIUS_CARD};
+use crate::theme::{theme, RADIUS_CARD};
 use crate::ui::price_chart::PriceChart;
 use crate::ui::{button, icon, page_frame, section_head, stat_grid};
 
@@ -64,7 +65,7 @@ impl HomePage {
 }
 
 struct Tip {
-    n: &'static str,
+    id: &'static str,
     icon: &'static str,
     title: &'static str,
     body: &'static str,
@@ -84,7 +85,7 @@ fn tiles(tips: Vec<Tip>) -> impl IntoElement {
         .children(tips.into_iter().enumerate().map(move |(i, tip)| {
             let page = tip.page.clone();
             div()
-                .id(tip.n)
+                .id(tip.id)
                 .flex_1()
                 .flex_basis(px(0.))
                 .min_w_0()
@@ -96,34 +97,17 @@ fn tiles(tips: Vec<Tip>) -> impl IntoElement {
                 .cursor_pointer()
                 .hover(|s| s.bg(t.surface_2))
                 .when(i + 1 < n, |d| d.border_r_1().border_color(t.line))
-                .on_click(move |_, _, cx| navigate(page.clone(), cx))
+                .clickable(Probe::new("card", tip.title), move |_, _, cx| {
+                    navigate(page.clone(), cx)
+                })
                 .child(
                     div()
                         .flex()
                         .flex_col()
+                        .child(icon(tip.icon).size(px(18.)).text_color(t.brand_ink))
                         .child(
                             div()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .justify_between()
-                                .font_family(FONT_MONO)
-                                .text_size(px(10.))
-                                .text_color(t.ink_2)
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_row()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(icon(tip.icon).size(px(14.)).text_color(t.brand_ink))
-                                        .child("STEP"),
-                                )
-                                .child(tip.n),
-                        )
-                        .child(
-                            div()
-                                .mt_5()
+                                .mt_4()
                                 .text_size(px(17.))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(t.ink)
@@ -148,10 +132,10 @@ fn tiles(tips: Vec<Tip>) -> impl IntoElement {
                         .flex_row()
                         .items_center()
                         .justify_between()
-                        .font_family(FONT_MONO)
-                        .text_size(px(10.))
+                        .text_size(px(13.))
+                        .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(t.ink_2)
-                        .child("OPEN")
+                        .child("Open")
                         .child(icon("arrow-up-right").size(px(14.))),
                 )
         }))
@@ -181,9 +165,9 @@ impl Render for HomePage {
                         (s("Unlocked".into()), s(dash(unlocked)), s("ready to sign".into())),
                     ],
                     vec![
-                        Tip { n: "01", icon: "key", title: "Add your keys", body: "Generate a key, import a recovery phrase, or connect a hardware wallet.", page: Page::LocalKeyAdd },
-                        Tip { n: "02", icon: "shield", title: "Create a vault", body: "Combine keys into single-key, multisig or time-locked wallets.", page: Page::LocalWalletNew },
-                        Tip { n: "03", icon: "clock", title: "Restore a wallet", body: "Bring back a wallet from its backup file or descriptor.", page: Page::LocalWalletRecover },
+                        Tip { id: "tip-1", icon: "key", title: "Add your keys", body: "Generate a key, import a recovery phrase, or connect a hardware wallet.", page: Page::LocalKeyAdd },
+                        Tip { id: "tip-2", icon: "shield", title: "Create a vault", body: "Combine keys into single-key, multisig or time-locked wallets.", page: Page::LocalWalletNew },
+                        Tip { id: "tip-3", icon: "clock", title: "Restore a wallet", body: "Bring back a wallet from its backup file or descriptor.", page: Page::LocalWalletRecover },
                     ],
                     ("New wallet", Page::LocalWalletNew),
                 )
@@ -205,9 +189,9 @@ impl Render for HomePage {
                         (s("Connected".into()), s(live.to_string()), s("live session".into())),
                     ],
                     vec![
-                        Tip { n: "01", icon: "users", title: "Join a session", body: "Pick up a signing or device-registration session your team started.", page: Page::Sessions },
-                        Tip { n: "02", icon: "fingerprint", title: "Hardware signing", body: "Ledger, BitBox02, Jade, Trezor and Coldcard sign right from this app.", page: Page::Sessions },
-                        Tip { n: "03", icon: "hard-drive", title: "Wallets on this device", body: "Keep personal wallets locally too — no account needed (⌘1).", page: Page::LocalHome },
+                        Tip { id: "tip-1", icon: "users", title: "Join a session", body: "Pick up a signing or device-registration session your team started.", page: Page::Sessions },
+                        Tip { id: "tip-2", icon: "fingerprint", title: "Hardware signing", body: "Ledger, BitBox02, Jade, Trezor and Coldcard sign right from this app.", page: Page::Sessions },
+                        Tip { id: "tip-3", icon: "hard-drive", title: "Wallets on this device", body: "Keep personal wallets locally too — no account needed (⌘1).", page: Page::LocalHome },
                     ],
                     ("View sessions", Page::Sessions),
                 )

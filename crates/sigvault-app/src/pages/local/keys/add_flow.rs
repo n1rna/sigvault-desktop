@@ -31,6 +31,7 @@ use super::sources::{
     PathPreset, NETWORKS,
 };
 use super::unlock::{KeychainUnlock, UnlockEvent};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, NewKey};
 use crate::pages::local::setup::api::{self, DeriveInput, DerivedKey, HotSecret, SlotKey};
 use crate::pages::local::setup::device_picker::{DevicePicker, DevicePickerEvent};
@@ -145,6 +146,7 @@ impl AddKeyFlow {
         let path = cx.new(|cx| {
             TextInput::new(window, cx)
                 .mono()
+                .label("Derivation path")
                 .with_text(default_path(&network))
         });
         let label = cx.new(|cx| {
@@ -153,7 +155,12 @@ impl AddKeyFlow {
                 .placeholder("e.g. Laptop key, Trezor (Alice), Backup seed")
         });
         let mnemonic = cx.new(|cx| MnemonicInput::new(24, window, cx));
-        let bip39_passphrase = cx.new(|cx| TextInput::new(window, cx).masked().mono());
+        let bip39_passphrase = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .mono()
+                .label("BIP39 passphrase")
+        });
         let xprv = cx.new(|cx| {
             TextInput::new(window, cx)
                 .mono()
@@ -936,7 +943,8 @@ impl AddKeyFlow {
                 .child(
                     choice_card(SharedString::from(format!("src-{}", s.id())), false)
                         .w_full()
-                        .on_click(
+                        .clickable(
+                            Probe::new("choice", s.title()),
                             cx.listener(move |this, _, window, cx| this.choose(s, window, cx)),
                         )
                         .child(
@@ -1133,8 +1141,8 @@ impl AddKeyFlow {
                         .rounded_full()
                         .border_1()
                         .border_color(alpha(t.primary, 0.5))
-                        .text_size(px(11.))
-                        .text_color(t.primary)
+                        .text_size(px(12.))
+                        .text_color(t.brand_ink)
                         .child(n),
                 )
                 .child(
@@ -1303,7 +1311,7 @@ impl AddKeyFlow {
                     .child(
                         div()
                             .id("hw-advanced")
-                            .text_color(t.primary)
+                            .text_color(t.brand_ink)
                             .cursor_pointer()
                             .hover(|s| s.underline())
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1399,9 +1407,9 @@ impl AddKeyFlow {
             .child(self.path.clone())
             .child(
                 div()
-                    .text_size(px(11.5))
+                    .text_size(px(12.))
                     .line_height(px(16.))
-                    .text_color(alpha(theme().muted_foreground, 0.85))
+                    .text_color(theme().ink_3)
                     .child("Multisig and timelocked wallets use BIP48 (m/48'/1'/0'/2'). Change the account number to get another independent key from the same seed."),
             )
             .into_any_element()
@@ -1609,8 +1617,8 @@ impl AddKeyFlow {
                     .when(!derivable, |d| {
                         d.child(
                             div()
-                                .text_size(px(11.5))
-                                .text_color(alpha(t.muted_foreground, 0.85))
+                                .text_size(px(12.))
+                                .text_color(t.ink_3)
                                 .child(match source {
                                     KeySource::Hardware => "The derivation path was chosen before reading the device. Go back to read a different account.",
                                     _ => "The derivation path comes from the key's origin and can't be changed.",

@@ -77,7 +77,11 @@ impl PolicyPicker {
             .collect();
         while self.timelock_inputs.len() < blocks.len() {
             let i = self.timelock_inputs.len();
-            let input = cx.new(|cx| TextInput::new(window, cx).max_len(5));
+            let input = cx.new(|cx| {
+                TextInput::new(window, cx)
+                    .max_len(5)
+                    .label(format!("Timelock {}", i + 1))
+            });
             self._subs
                 .push(cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| {
                     if matches!(ev, InputEvent::Changed) {
@@ -634,7 +638,7 @@ impl Render for PolicyPicker {
                             .mt_2()
                             .font_family(FONT_MONO)
                             .text_size(px(12.))
-                            .text_color(alpha(t.muted_foreground, 0.8))
+                            .text_color(t.ink_3)
                             .child(p.shape),
                     )
             })))

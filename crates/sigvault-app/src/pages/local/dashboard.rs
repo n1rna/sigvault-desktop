@@ -590,7 +590,7 @@ impl WalletDashboardPage {
                                 "Pending",
                                 pending,
                                 if pending > 0 {
-                                    t.warning
+                                    t.warning_ink
                                 } else {
                                     t.muted_foreground
                                 },
@@ -667,7 +667,7 @@ impl WalletDashboardPage {
                     .unwrap_or_default()
             ))
         } else {
-            meta.child(div().text_color(t.warning).child("Pending"))
+            meta.child(div().text_color(t.warning_ink).child("Pending"))
         };
         if tx.fee_sat > 0 {
             meta = meta

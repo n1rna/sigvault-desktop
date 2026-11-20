@@ -149,7 +149,7 @@ impl SendPage {
                 .placeholder("2")
                 .with_text("2")
         });
-        let passphrase = cx.new(|cx| TextInput::new(window, cx).masked());
+        let passphrase = cx.new(|cx| TextInput::new(window, cx).masked().label("Passphrase"));
 
         for input in [&recipient, &amount, &fee_rate] {
             cx.subscribe(input, |this, _, ev: &InputEvent, cx| match ev {

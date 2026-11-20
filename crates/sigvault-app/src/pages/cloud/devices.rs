@@ -344,7 +344,7 @@ fn device_row<V: DeviceListHost>(
                 .text_size(px(20.))
                 .line_height(px(28.))
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(t.primary)
+                .text_color(t.brand_ink)
                 .child(s)
         };
         div()

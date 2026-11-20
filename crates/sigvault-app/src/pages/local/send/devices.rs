@@ -305,7 +305,7 @@ impl DevicePicker {
                         .font_family(FONT_MONO)
                         .text_size(px(12.))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(t.primary)
+                        .text_color(t.brand_ink)
                         .child(fingerprint.clone())
                         .into_any_element(),
                 )
@@ -536,7 +536,7 @@ impl DevicePicker {
                                     .font_family(FONT_MONO)
                                     .text_size(px(22.))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(t.primary)
+                                    .text_color(t.brand_ink)
                                     .child(top)
                                     .when(!bottom.is_empty(), |d| d.child(bottom)),
                             )

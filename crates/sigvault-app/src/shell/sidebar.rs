@@ -4,7 +4,7 @@
 //!   <wallet> ⇕ … network | version`. The workspace switcher is the web app's
 //!   organization switcher, covering the desktop's two workspaces:
 //!   "On this device" (local) and "SigVault Cloud". `⌘1` / `⌘2` switch directly.
-//! - **Sidebar** (canvas, collapsible to an icon rail): mono section labels,
+//! - **Sidebar** (canvas, collapsible to an icon rail): group labels,
 //!   workspace nav (or vault nav inside a wallet), "create" shortcuts,
 //!   Documentation and the identity card at the bottom.
 //!
@@ -28,8 +28,8 @@ use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::navigate;
 use crate::state::{store, StoreEvent};
-use crate::theme::{alpha, theme, FONT_MONO, RADIUS_CARD, RADIUS_CHIP, RADIUS_CONTROL};
-use crate::ui::{icon, logo, pill, spinner};
+use crate::theme::{alpha, theme, RADIUS_CARD, RADIUS_CHIP, RADIUS_CONTROL};
+use crate::ui::{eyebrow, icon, logo, pill, spinner};
 
 pub const SIDEBAR_WIDTH: f32 = 248.;
 pub const SIDEBAR_WIDTH_COLLAPSED: f32 = 56.;
@@ -332,9 +332,9 @@ impl AppSidebar {
                     div()
                         .px_3()
                         .py_2()
-                        .text_size(px(11.5))
-                        .line_height(px(16.))
-                        .text_color(t.ink_3)
+                        .text_size(px(12.))
+                        .line_height(px(17.))
+                        .text_color(t.ink_2)
                         .child("Your keys never leave your devices in either workspace.")
                         .into_any_element(),
                 ),
@@ -400,7 +400,9 @@ impl AppSidebar {
                     .rounded(RADIUS_CHIP)
                     .cursor_pointer()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(move |_, _, cx| navigate(home.clone(), cx))
+                    .clickable(Probe::new("button", "SigVault home"), move |_, _, cx| {
+                        navigate(home.clone(), cx)
+                    })
                     .child(logo(px(17.)))
                     .child(
                         div()
@@ -450,9 +452,8 @@ impl AppSidebar {
                     .flex_row()
                     .items_center()
                     .gap(px(10.))
-                    .font_family(FONT_MONO)
-                    .text_size(px(11.))
-                    .text_color(t.ink_3)
+                    .text_size(px(12.))
+                    .text_color(t.ink_2)
                     .children(network.map(|n| {
                         div()
                             .flex()
@@ -809,8 +810,8 @@ impl AppSidebar {
                             .border_1()
                             .border_color(t.line_strong)
                             .bg(t.surface)
-                            .font_family(FONT_MONO)
-                            .text_size(px(11.))
+                            .text_size(px(12.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(t.brand_ink)
                             .child(initials),
                     )
@@ -832,7 +833,7 @@ impl AppSidebar {
                                 .child(
                                     div()
                                         .truncate()
-                                        .text_size(px(11.5))
+                                        .text_size(px(12.))
                                         .text_color(t.ink_2)
                                         .child(line2),
                                 ),
@@ -884,10 +885,20 @@ impl Render for AppSidebar {
                             .rounded(RADIUS_CONTROL)
                             .cursor_pointer()
                             .hover(|s| s.bg(t.hover_strong))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.collapsed = !this.collapsed;
-                                cx.notify();
-                            }))
+                            .clickable(
+                                Probe::new(
+                                    "button",
+                                    if c {
+                                        "Expand sidebar"
+                                    } else {
+                                        "Collapse sidebar"
+                                    },
+                                ),
+                                cx.listener(|this, _, _, cx| {
+                                    this.collapsed = !this.collapsed;
+                                    cx.notify();
+                                }),
+                            )
                             .child(icon("panel-left").size(px(18.)).text_color(t.ink_3)),
                     ),
             )
@@ -976,7 +987,7 @@ fn separator() -> impl IntoElement {
     div()
         .px_1()
         .text_size(px(14.))
-        .text_color(alpha(theme().ink_3, 0.6))
+        .text_color(theme().ink_3)
         .child("/")
 }
 
@@ -1070,16 +1081,7 @@ fn dropdown(
                     this.menu = None;
                     cx.notify();
                 }))
-                .child(
-                    div()
-                        .px_3()
-                        .pt(px(6.))
-                        .pb_1()
-                        .font_family(FONT_MONO)
-                        .text_size(px(10.))
-                        .text_color(t.ink_3)
-                        .child(label.to_uppercase()),
-                )
+                .child(div().px_3().pt(px(6.)).pb_1().child(eyebrow(label)))
                 .children(items)
                 .children(footer.map(|f| {
                     div()
@@ -1138,27 +1140,26 @@ fn menu_entry(
                 .children(meta.map(|m| {
                     div()
                         .truncate()
-                        .font_family(FONT_MONO)
-                        .text_size(px(10.))
-                        .text_color(t.ink_3)
-                        .child(m.to_uppercase())
+                        .text_size(px(12.))
+                        .text_color(t.ink_2)
+                        .child(m)
                 })),
         )
-        .child(if active {
-            icon("check")
-                .size(px(15.))
-                .text_color(t.brand_ink)
-                .mt(px(2.))
-                .into_any_element()
-        } else {
+        // Active mark and the shortcut both show, so ⌘1 / ⌘2 are always
+        // discoverable.
+        .child(
             div()
+                .flex_none()
                 .mt(px(2.))
-                .font_family(FONT_MONO)
-                .text_size(px(10.))
-                .text_color(t.ink_4)
-                .children(shortcut)
-                .into_any_element()
-        })
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .when(active, |d| {
+                    d.child(icon("check").size(px(15.)).text_color(t.brand_ink))
+                })
+                .children(shortcut.map(|k| div().text_size(px(12.)).text_color(t.ink_3).child(k))),
+        )
 }
 
 fn menu_action(
@@ -1203,10 +1204,7 @@ fn section_label(label: &'static str, collapsed: bool) -> AnyElement {
         .flex()
         .items_center()
         .px_2()
-        .font_family(FONT_MONO)
-        .text_size(px(9.5))
-        .text_color(t.ink_3)
-        .child(label.to_uppercase())
+        .child(eyebrow(label))
         .into_any_element()
 }
 
@@ -1285,8 +1283,7 @@ fn nav(
         active,
         count.map(|n| {
             div()
-                .font_family(FONT_MONO)
-                .text_size(px(11.))
+                .text_size(px(12.))
                 .text_color(t.ink_3)
                 .child(n.to_string())
                 .into_any_element()

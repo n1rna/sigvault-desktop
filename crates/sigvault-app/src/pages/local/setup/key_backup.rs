@@ -121,8 +121,13 @@ impl KeyBackup {
             file_safe(&slot_label),
             derived.fingerprint
         );
+        let positions = pick_positions(3, words.len());
+        for (a, p) in answers.iter().zip(&positions) {
+            let label = format!("Word {}", p + 1);
+            a.update(cx, |a, cx| a.set_label(label, cx));
+        }
         Self {
-            positions: pick_positions(3, words.len()),
+            positions,
             words,
             derived,
             slot_label,
@@ -168,8 +173,12 @@ impl KeyBackup {
     fn go_quiz(&mut self, cx: &mut Context<Self>) {
         // A fresh quiz each time, like the remounted TSX stage.
         self.positions = pick_positions(3, self.words.len());
-        for a in &self.answers {
-            a.update(cx, |a, cx| a.clear(cx));
+        for (a, p) in self.answers.iter().zip(&self.positions) {
+            let label = format!("Word {}", p + 1);
+            a.update(cx, |a, cx| {
+                a.clear(cx);
+                a.set_label(label, cx);
+            });
         }
         self.checked = false;
         self.stage = Stage::Quiz;
@@ -298,19 +307,15 @@ impl KeyBackup {
                             .child(
                                 div()
                                     .font_family(FONT_MONO)
-                                    .text_size(px(10.))
-                                    .text_color(alpha(t.muted_foreground, 0.7))
+                                    .text_size(px(12.))
+                                    .text_color(t.ink_3)
                                     .child(format!("{:02}", i + 1)),
                             )
                             .child(
                                 div()
                                     .font_family(FONT_MONO)
                                     .text_size(px(12.))
-                                    .text_color(if revealed {
-                                        t.foreground
-                                    } else {
-                                        alpha(t.muted_foreground, 0.35)
-                                    })
+                                    .text_color(if revealed { t.foreground } else { t.ink_3 })
                                     .child(if revealed {
                                         w.clone()
                                     } else {
@@ -421,7 +426,7 @@ impl KeyBackup {
                         .gap_1()
                         .child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(t.muted_foreground)
                                 .child(format!("Word #{}", p + 1)),
                         )
@@ -550,7 +555,7 @@ impl KeyBackup {
                 d.child(div().flex().flex_col().gap_1().children(self.saved_files.iter().map(|p| {
                     div()
                         .font_family(FONT_MONO)
-                        .text_size(px(11.))
+                        .text_size(px(12.))
                         .text_color(t.muted_foreground)
                         .truncate()
                         .child(format!("✓ {p}"))
@@ -585,7 +590,7 @@ impl Render for KeyBackup {
                     .flex_row()
                     .items_center()
                     .gap_2()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(t.muted_foreground)
                     .children(crumbs.iter().enumerate().map(|(i, (s, label))| {
@@ -594,9 +599,7 @@ impl Render for KeyBackup {
                             .flex_row()
                             .items_center()
                             .gap_2()
-                            .when(i > 0, |d| {
-                                d.child(div().text_color(alpha(t.muted_foreground, 0.5)).child("›"))
-                            })
+                            .when(i > 0, |d| d.child(div().text_color(t.ink_3).child("›")))
                             .child(
                                 div()
                                     .when(*s == stage, |d| d.text_color(t.foreground))
