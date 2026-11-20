@@ -4,9 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build (e.g. v0.1.0)"
+        description: "Tag to build (e.g. v0.7.0)"
         required: true
         type: string
+      dry_run:
+        description: "Build and package on every platform, upload the artifacts, but don't create a release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -23,15 +27,19 @@ jobs:
           - platform: ubuntu-22.04
             rust_target: x86_64-unknown-linux-gnu
             label: linux-x86_64
+            formats: deb,appimage
           - platform: macos-latest
             rust_target: aarch64-apple-darwin
             label: darwin-aarch64
+            formats: app,dmg
           - platform: macos-15
             rust_target: x86_64-apple-darwin
             label: darwin-x86_64
+            formats: app,dmg
           - platform: windows-latest
             rust_target: x86_64-pc-windows-msvc
             label: windows-x86_64
+            formats: nsis
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -43,9 +51,11 @@ jobs:
       # (projects/desktop/development.env) and pushes them here from its
       # sync-secrets workflow. `.ee.desktop` in this repo is the schema only.
       #
-      # The Tauri updater signing keys are the only build-time inputs left;
-      # everything else the app needs is per-environment and resolved at
-      # runtime (`BUILTIN_OAUTH_CLIENTS` in src-tauri/src/env_config/mod.rs).
+      # The updater signing key is the only build-time input; everything else
+      # the app needs is per-environment and resolved at runtime
+      # (`BUILTIN_OAUTH_CLIENTS` in crates/sigvault-core/src/env_config/mod.rs).
+      # The key keeps its TAURI_* name: it is the same minisign key the Tauri
+      # builds were signed with, so their built-in updater accepts this app.
       - name: Prepare build environment
         uses: n1rna/ee-action/hydrate@v1
         with:
@@ -53,37 +63,6 @@ jobs:
           config_path: .ee.desktop
           env_file: .env
           gh_secret: ${{ secrets.ENV_VARS_DESKTOP }}
-
-      - name: Set version from tag (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          VERSION="${{ inputs.tag }}"
-          VERSION="${VERSION#v}"
-          echo "Setting version to $VERSION"
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-            sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-            sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
-          else
-            sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-            sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-            sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
-          fi
-          grep '"version"' src-tauri/tauri.conf.json
-          grep '^version' src-tauri/Cargo.toml
-          head -5 package.json
-
-      - name: Set version from tag (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = "${{ inputs.tag }}".TrimStart("v")
-          Write-Host "Setting version to $version"
-          (Get-Content src-tauri/tauri.conf.json) -replace '"version": ".*?"', "`"version`": `"$version`"" | Set-Content src-tauri/tauri.conf.json
-          (Get-Content src-tauri/Cargo.toml) -replace '^version = ".*?"', "version = `"$version`"" | Set-Content src-tauri/Cargo.toml
-          (Get-Content package.json) -replace '"version": ".*?"', "`"version`": `"$version`"" | Set-Content package.json
-          Select-String '"version"' src-tauri/tauri.conf.json
-          Select-String '^version' src-tauri/Cargo.toml
 
       - name: Export env vars for build
         shell: bash
@@ -99,40 +78,54 @@ jobs:
             echo "${key}=${value}" >> "$GITHUB_ENV"
           done < .env
 
-      - name: Verify updater signing key is present
+      - name: Check updater signing key
         shell: bash
         run: |
-          # tauri.conf.json sets `plugins.updater.pubkey`, so the bundler will
-          # try to sign updater artifacts. An *unset* key aborts with a clear
-          # message, but an empty one — what `ee hydrate` writes when the sheet
-          # is missing the value, since both signing vars are optional in the
-          # schema — only fails later as "failed to decode secret key". Fail
-          # here, where the cause is obvious.
+          # An empty key is what `ee hydrate` writes when the sheet is missing
+          # the value. Without it the release has no update signatures and no
+          # installed copy (old Tauri builds included) can update to it.
           if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "::warning::TAURI_SIGNING_PRIVATE_KEY is empty; dry run continues without update signatures."
+              exit 0
+            fi
             echo "::error::TAURI_SIGNING_PRIVATE_KEY is empty. Check ENV_VARS_DESKTOP on this repo's 'development' environment; sigvault-secrets (projects/desktop/development.env) is the source of truth."
             exit 1
           fi
           echo "Updater signing key present (${#TAURI_SIGNING_PRIVATE_KEY} chars)."
+          echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY<<EOF_KEY" >> "$GITHUB_ENV"
+          echo "${TAURI_SIGNING_PRIVATE_KEY}" >> "$GITHUB_ENV"
+          echo "EOF_KEY" >> "$GITHUB_ENV"
+          echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD=${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" >> "$GITHUB_ENV"
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+          echo "Setting version to $VERSION"
+          # The only `version = ` line in the root manifest is
+          # [workspace.package]; both crates inherit it.
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml && rm Cargo.toml.bak
+          grep '^version' Cargo.toml
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
+            pkg-config \
             libssl-dev \
-            libudev-dev
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+            libudev-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libvulkan1 \
+            libfuse2
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -142,74 +135,52 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-          shared-key: ${{ matrix.label }}
+          shared-key: release-${{ matrix.label }}
 
-      - name: Install frontend dependencies
-        run: bun install
+      - name: Install cargo-packager
+        run: cargo install --locked cargo-packager --version 0.11.8
 
-      - name: Clean old bundle artifacts
+      - name: Build
+        run: cargo build --release -p sigvault-app --target ${{ matrix.rust_target }}
+
+      - name: Package
         shell: bash
-        run: rm -rf src-tauri/target/${{ matrix.rust_target }}/release/bundle
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target ${{ matrix.rust_target }}
+          # linuxdeploy ships as an AppImage; runners have no FUSE mount.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          cargo packager -p sigvault-app --release \
+            --target ${{ matrix.rust_target }} \
+            -f ${{ matrix.formats }}
 
-      - name: Collect artifacts (Linux)
-        if: runner.os == 'Linux'
+      - name: Collect artifacts
+        shell: bash
         run: |
           mkdir -p artifacts
-          BUNDLE=src-tauri/target/${{ matrix.rust_target }}/release/bundle
-          echo "=== Bundle contents ==="
-          find $BUNDLE -type f | sort
-          cp $BUNDLE/deb/*.deb artifacts/ 2>/dev/null || true
-          cp $BUNDLE/rpm/*.rpm artifacts/ 2>/dev/null || true
-          cp $BUNDLE/appimage/*.AppImage artifacts/ 2>/dev/null || true
-          cp $BUNDLE/appimage/*.AppImage.tar.gz artifacts/ 2>/dev/null || true
-          cp $BUNDLE/appimage/*.AppImage.tar.gz.sig artifacts/ 2>/dev/null || true
+          OUT=target/${{ matrix.rust_target }}/release
+          LABEL="${{ matrix.label }}"
+          echo "=== Packager output ==="
+          ls -la "$OUT" | grep -iE 'sigvault|\.sig$' || true
+          shopt -s nullglob
+          case "$RUNNER_OS" in
+            Linux)
+              cp "$OUT"/*.deb "$OUT"/*.AppImage "$OUT"/*.AppImage.sig artifacts/
+              ;;
+            macOS)
+              cp "$OUT"/*.dmg artifacts/
+              # Updater archive: arch in the name so both macOS builds can
+              # live in one release.
+              for f in "$OUT"/*.app.tar.gz "$OUT"/*.app.tar.gz.sig; do
+                name=$(basename "$f")
+                cp "$f" "artifacts/${name/.app.tar.gz/_${LABEL}.app.tar.gz}"
+              done
+              ;;
+            Windows)
+              cp "$OUT"/*-setup.exe "$OUT"/*-setup.exe.sig artifacts/
+              ;;
+          esac
           echo "=== Collected artifacts ==="
           ls -lh artifacts/
-
-      - name: Collect artifacts (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p artifacts
-          BUNDLE=src-tauri/target/${{ matrix.rust_target }}/release/bundle
-          ARCH="${{ matrix.label }}"  # darwin-aarch64 or darwin-x86_64
-          echo "=== Bundle contents ==="
-          find $BUNDLE -type f | sort
-          cp $BUNDLE/dmg/*.dmg artifacts/ 2>/dev/null || true
-          # Rename .app.tar.gz to include arch (avoid collision between aarch64/x86_64)
-          for f in $BUNDLE/macos/*.app.tar.gz; do
-            [ -f "$f" ] || continue
-            base=$(basename "$f" .app.tar.gz)
-            cp "$f" "artifacts/${base}_${ARCH}.app.tar.gz"
-          done
-          for f in $BUNDLE/macos/*.app.tar.gz.sig; do
-            [ -f "$f" ] || continue
-            base=$(basename "$f" .app.tar.gz.sig)
-            cp "$f" "artifacts/${base}_${ARCH}.app.tar.gz.sig"
-          done
-          echo "=== Collected artifacts ==="
-          ls -lh artifacts/
-
-      - name: Collect artifacts (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts
-          $bundle = "src-tauri/target/${{ matrix.rust_target }}/release/bundle"
-          Write-Host "=== Bundle contents ==="
-          Get-ChildItem -Recurse $bundle -File | ForEach-Object { $_.FullName }
-          Copy-Item "$bundle/nsis/*.exe" artifacts/ -ErrorAction SilentlyContinue
-          Copy-Item "$bundle/nsis/*.nsis.zip" artifacts/ -ErrorAction SilentlyContinue
-          Copy-Item "$bundle/nsis/*.nsis.zip.sig" artifacts/ -ErrorAction SilentlyContinue
-          Write-Host "=== Collected artifacts ==="
-          Get-ChildItem artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -220,6 +191,7 @@ jobs:
 
   release:
     needs: build
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -235,9 +207,12 @@ jobs:
         run: |
           cd all-artifacts
           sha256sum * > SHA256SUMS.txt
-          echo "--- SHA256SUMS.txt ---"
           cat SHA256SUMS.txt
 
+      # Same manifest shape as the Tauri builds published, so installed Tauri
+      # copies (tauri-plugin-updater) and this app's update banner both read
+      # it. Tauri's updater replaces the .app from the .app.tar.gz, swaps the
+      # AppImage, and runs the Windows installer.
       - name: Generate updater manifest (latest.json)
         shell: bash
         run: |
@@ -246,61 +221,42 @@ jobs:
           PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           REPO="https://github.com/n1rna/sigvault-desktop/releases/download/${VERSION}"
 
-          # Helper: read signature file content (empty string if missing)
-          read_sig() { cat "$1" 2>/dev/null || echo ""; }
-
-          # Helper: find first matching file (empty string if none)
-          find_file() { ls $1 2>/dev/null | grep -v '\.sig$' | head -1 || echo ""; }
-
-          LINUX_FILE=$(find_file "*AppImage.tar.gz")
-          LINUX_SIG=$(read_sig "${LINUX_FILE}.sig")
-          LINUX_URL="${REPO}/${LINUX_FILE}"
-
-          DARWIN_AARCH64_FILE=$(find_file "*darwin-aarch64.app.tar.gz")
-          DARWIN_AARCH64_SIG=$(read_sig "${DARWIN_AARCH64_FILE}.sig")
-          DARWIN_AARCH64_URL="${REPO}/${DARWIN_AARCH64_FILE}"
-
-          DARWIN_X86_FILE=$(find_file "*darwin-x86_64.app.tar.gz")
-          DARWIN_X86_SIG=$(read_sig "${DARWIN_X86_FILE}.sig")
-          DARWIN_X86_URL="${REPO}/${DARWIN_X86_FILE}"
-
-          WINDOWS_FILE=$(find_file "*nsis.zip")
-          WINDOWS_SIG=$(read_sig "${WINDOWS_FILE}.sig")
-          WINDOWS_URL="${REPO}/${WINDOWS_FILE}"
-
-          echo "=== Updater artifacts found ==="
-          echo "Linux:          ${LINUX_FILE:-MISSING}"
-          echo "macOS ARM:      ${DARWIN_AARCH64_FILE:-MISSING}"
-          echo "macOS Intel:    ${DARWIN_X86_FILE:-MISSING}"
-          echo "Windows:        ${WINDOWS_FILE:-MISSING}"
-
-          cat > latest.json << MANIFEST
-          {
-            "version": "${VERSION}",
-            "pub_date": "${PUB_DATE}",
-            "platforms": {
-              "linux-x86_64": {
-                "url": "${LINUX_URL}",
-                "signature": "${LINUX_SIG}"
-              },
-              "darwin-aarch64": {
-                "url": "${DARWIN_AARCH64_URL}",
-                "signature": "${DARWIN_AARCH64_SIG}"
-              },
-              "darwin-x86_64": {
-                "url": "${DARWIN_X86_URL}",
-                "signature": "${DARWIN_X86_SIG}"
-              },
-              "windows-x86_64": {
-                "url": "${WINDOWS_URL}",
-                "signature": "${WINDOWS_SIG}"
-              }
-            }
+          find_file() { ls $1 2>/dev/null | grep -v '\.sig$' | head -1 || true; }
+          platform() {
+            local file sig
+            file=$(find_file "$2")
+            if [[ -z "$file" || ! -s "${file}.sig" ]]; then
+              echo "::warning::No signed updater artifact for $1" >&2
+              return
+            fi
+            sig=$(cat "${file}.sig")
+            printf '    "%s": { "url": "%s/%s", "signature": "%s" }' "$1" "$REPO" "$file" "$sig"
           }
-          MANIFEST
+
+          entries=()
+          for spec in \
+            "linux-x86_64|*.AppImage" \
+            "darwin-aarch64|*darwin-aarch64.app.tar.gz" \
+            "darwin-x86_64|*darwin-x86_64.app.tar.gz" \
+            "windows-x86_64|*-setup.exe"; do
+            e=$(platform "${spec%%|*}" "${spec#*|}")
+            [[ -n "$e" ]] && entries+=("$e")
+          done
+
+          {
+            echo "{"
+            echo "  \"version\": \"${VERSION}\","
+            echo "  \"pub_date\": \"${PUB_DATE}\","
+            echo "  \"platforms\": {"
+            ( IFS=$'\n'; printf '%s' "${entries[*]}" | sed '$!s/$/,/' )
+            echo ""
+            echo "  }"
+            echo "}"
+          } > latest.json
 
           echo "--- latest.json ---"
           cat latest.json
+          python3 -m json.tool latest.json > /dev/null
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
