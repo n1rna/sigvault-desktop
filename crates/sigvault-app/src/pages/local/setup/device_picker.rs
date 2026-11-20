@@ -169,6 +169,7 @@ impl DevicePicker {
         };
         let id = d.id.clone();
         let id2 = d.id.clone();
+        let id3 = d.id.clone();
 
         let meta_row = |k: &'static str, v: gpui::AnyElement| {
             div()
@@ -206,7 +207,7 @@ impl DevicePicker {
                     .font_family(FONT_MONO)
                     .text_size(px(12.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(t.primary)
+                    .text_color(t.brand_ink)
                     .child(fp.to_string())
                     .into_any_element(),
             ));
@@ -223,7 +224,7 @@ impl DevicePicker {
                     "Firmware",
                     div()
                         .font_family(FONT_MONO)
-                        .text_size(px(11.))
+                        .text_size(px(12.))
                         .child(v.clone())
                         .into_any_element(),
                 ));
@@ -383,7 +384,7 @@ impl DevicePicker {
                                     .font_family(FONT_MONO)
                                     .text_size(px(22.))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(t.primary)
+                                    .text_color(t.brand_ink)
                                     .child(top)
                                     .when(!bottom.is_empty(), |d| d.child(bottom)),
                             )
@@ -391,7 +392,7 @@ impl DevicePicker {
                                 div()
                                     .mt_2()
                                     .text_center()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .text_color(t.muted_foreground)
                                     .child("Confirm on device display"),
                             )
@@ -418,7 +419,16 @@ impl DevicePicker {
                                         } else {
                                             b.icon_right("chevron-right")
                                         }
-                                    }),
+                                    })
+                                    // Its own handler so Tab + Enter selects the
+                                    // device (the card click is mouse-only).
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            cx.stop_propagation();
+                                            this.selected = Some(id3.clone());
+                                            cx.notify();
+                                        },
+                                    )),
                                 )
                             })
                             .when(locked, |c| {

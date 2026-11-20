@@ -11,6 +11,7 @@ use gpui::{
 use sigvault_core::host::WebviewWindow;
 use sigvault_core::AppHandle;
 
+use crate::e2e::{E2eClick, Probe};
 use crate::theme::{alpha, theme};
 use crate::ui::{card, divider, dot, icon};
 
@@ -32,6 +33,35 @@ pub fn short_id(id: &str) -> String {
 pub fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     app.get_webview_window("main")
         .ok_or_else(|| "no window".to_string())
+}
+
+/// Join a session over the session websocket (the backend then routes to
+/// the session page). Resolves to a user-facing error on failure.
+pub fn join_session(
+    session_id: String,
+    cx: &mut gpui::App,
+) -> impl std::future::Future<Output = Result<(), SharedString>> + 'static {
+    use sigvault_core::commands::cmd_start_session_websocket_connection;
+    // Start the new session from a clean workflow state.
+    crate::state::store(cx).update(cx, |s, cx| s.reset_session_state(cx));
+    let task = crate::runtime::backend(cx).call(move |app, st| async move {
+        let window = main_window(&app)?;
+        cmd_start_session_websocket_connection(window, sigvault_core::State::new(&st), session_id)
+            .await
+    });
+    async move {
+        match task.await {
+            Ok(r) if !r.success => Err(if r.message.is_empty() {
+                "Couldn't connect to the session.".into()
+            } else {
+                r.message.into()
+            }),
+            Ok(_) => Ok(()),
+            Err(_) => {
+                Err("Couldn't connect to the session. Check your connection and try again.".into())
+            }
+        }
+    }
 }
 
 /// Human title for a backend session type (`TRANSACTION_SIGNING` →
@@ -155,8 +185,8 @@ pub fn network_badge(network: &str) -> Div {
         .border_color(t.border)
         .px(px(8.))
         .py(px(2.))
-        .text_size(px(11.))
-        .line_height(px(14.))
+        .text_size(px(12.))
+        .line_height(px(16.))
         .font_weight(FontWeight::MEDIUM)
         .whitespace_nowrap()
         .text_color(t.muted_foreground)
@@ -180,11 +210,11 @@ pub fn status_badge(label: impl Into<SharedString>, color: Hsla) -> Div {
         .rounded_full()
         .px(px(9.))
         .py(px(3.))
-        .text_size(px(11.))
-        .line_height(px(13.))
+        .text_size(px(12.))
+        .line_height(px(16.))
         .font_weight(FontWeight::MEDIUM)
         .whitespace_nowrap()
-        .text_color(color)
+        .text_color(theme().ink_for(color))
         .bg(alpha(color, 0.14))
         .child(dot(color))
         .child(label.into())
@@ -323,16 +353,24 @@ where
                 .py(px(5.))
                 .rounded(px(5.))
                 .text_size(px(12.5))
-                .font_weight(FontWeight::MEDIUM)
                 .cursor_pointer()
-                .text_color(if selected {
-                    t.foreground
-                } else {
-                    t.muted_foreground
+                // Selected: brand fill (≥3:1 against the track in both
+                // themes) with white semibold text.
+                .map(|d| {
+                    if selected {
+                        d.bg(t.brand_fill)
+                            .text_color(t.brand_fill_contrast)
+                            .font_weight(FontWeight::SEMIBOLD)
+                    } else {
+                        d.text_color(t.muted_foreground)
+                            .font_weight(FontWeight::MEDIUM)
+                            .hover(move |s| s.text_color(t.foreground).bg(t.hover_strong))
+                    }
                 })
-                .when(selected, |d| d.bg(t.card).border_1().border_color(t.border))
-                .when(!selected, |d| d.hover(move |s| s.text_color(t.foreground)))
-                .on_click(move |_, w, cx| handler(key.clone(), w, cx))
+                .clickable(
+                    Probe::new("tab", text.clone()).selected(selected),
+                    move |_, w, cx| handler(key.clone(), w, cx),
+                )
                 .child(text)
         }))
 }

@@ -140,7 +140,7 @@ impl SelectEnvPage {
                 .justify_center()
                 .rounded_full()
                 .border_1()
-                .border_color(if selected { t.primary } else { t.border })
+                .border_color(if selected { t.primary } else { t.line_control })
                 .when(selected, |d| {
                     d.child(div().size(px(8.)).rounded_full().bg(t.primary))
                 });
@@ -150,7 +150,7 @@ impl SelectEnvPage {
                     .gap_4()
                     .when(selected, |d| d.bg(alpha(t.primary, 0.06)))
                     .when(disabled, |d| {
-                        d.opacity(0.55)
+                        d.bg(alpha(t.muted, 0.35))
                             .e2e(Probe::new("option", env.name.clone()).disabled(true))
                     })
                     .when(!disabled, |d| {

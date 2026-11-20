@@ -9,16 +9,17 @@ use gpui::{div, prelude::*, px, AnyElement, Context, Entity, SharedString, Subsc
 use sigvault_core::local_wallet::commands::{
     cmd_local_export_wallet_backup, cmd_local_get_balance, cmd_local_get_history,
     cmd_local_get_wallet_details, cmd_local_list_wallets, cmd_local_lock_wallet, cmd_local_sync,
-    cmd_local_unlock_wallet, ExportWalletBackupRequest, LocalBalance, LocalTxRecord,
-    UnlockWalletRequest, WalletDetails,
+    ExportWalletBackupRequest, LocalBalance, LocalTxRecord, WalletDetails,
 };
 use sigvault_core::local_wallet::manager::WalletSummary;
 use sigvault_core::State;
 
 use super::sync_status::{initial_sync_state, watch_sync, LocalSyncState, LocalSyncStatus};
+use super::wallet_unlock::{WalletUnlock, WalletUnlocked};
 use super::widgets::{
     btc_amount, copy_button, default_save_dir, format_date, format_relative, group_thousands,
-    list_card, list_row, loading_card, network_badge, policy_badge, row_icon, sep_dot, tooltip,
+    hover_actions, list_card, list_row, loading_card, network_badge, policy_badge, row_icon,
+    sep_dot, tooltip,
 };
 use crate::router::Page;
 use crate::runtime::backend;
@@ -26,8 +27,7 @@ use crate::shell::{navigate, toast};
 use crate::state::{local_changed, store};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, badge, button, card, divider, empty_state, field, page_frame, section, truncate_middle,
-    InputEvent, TextInput, Tone, FORM_WIDTH,
+    alert, badge, button, card, divider, empty_state, page_frame, section, truncate_middle, Tone,
 };
 
 pub struct WalletDashboardPage {
@@ -42,9 +42,7 @@ pub struct WalletDashboardPage {
     /// A sync finished since the wallet was unlocked.
     synced: bool,
     sync: LocalSyncState,
-    passphrase: Entity<TextInput>,
-    unlocking: bool,
-    unlock_error: Option<SharedString>,
+    unlock: Entity<WalletUnlock>,
     exporting: bool,
     _subs: Vec<Subscription>,
 }
@@ -69,17 +67,17 @@ impl WalletDashboardPage {
             }
             cx.notify();
         });
-        let passphrase = cx.new(|cx| {
-            TextInput::new(window, cx)
-                .masked()
-                .placeholder("Wallet passphrase")
+        let unlock = cx.new(|cx| {
+            WalletUnlock::new(
+                wallet_id.clone(),
+                true,
+                "load balances and activity",
+                window,
+                cx,
+            )
         });
-        let pass_sub = cx.subscribe(&passphrase, |this, _, ev: &InputEvent, cx| match ev {
-            InputEvent::Changed => {
-                this.unlock_error = None;
-                cx.notify();
-            }
-            InputEvent::Submit => this.unlock(cx),
+        let unlock_sub = cx.subscribe(&unlock, |this, _, _: &WalletUnlocked, cx| {
+            this.load_all(cx);
         });
         let mut this = Self {
             wallet_id,
@@ -92,11 +90,9 @@ impl WalletDashboardPage {
             syncing: false,
             synced,
             sync,
-            passphrase,
-            unlocking: false,
-            unlock_error: None,
+            unlock,
             exporting: false,
-            _subs: vec![sync_sub, pass_sub],
+            _subs: vec![sync_sub, unlock_sub],
         };
         this.load_all(cx);
         this
@@ -140,7 +136,7 @@ impl WalletDashboardPage {
                         this.balance = bal;
                         this.history = hist;
                     }
-                    Err(e) => this.error = Some(e.into()),
+                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                 }
                 this.loading = false;
                 cx.notify();
@@ -164,7 +160,7 @@ impl WalletDashboardPage {
             let res = task.await;
             this.update(cx, |this, cx| {
                 if let Err(e) = res {
-                    this.error = Some(e.into());
+                    this.error = Some(super::widgets::plain_error(&e).into());
                 }
                 this.syncing = false;
                 cx.notify();
@@ -188,49 +184,7 @@ impl WalletDashboardPage {
                         this.synced = false;
                         this.load_all(cx);
                     }
-                    Err(e) => this.error = Some(e.into()),
-                }
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    fn unlock(&mut self, cx: &mut Context<Self>) {
-        let Some(w) = self.wallet.as_ref() else {
-            return;
-        };
-        let passphrase = self.passphrase.read(cx).text().to_string();
-        if self.unlocking || (w.has_hot_keys && passphrase.is_empty()) {
-            return;
-        }
-        self.unlocking = true;
-        self.unlock_error = None;
-        cx.notify();
-        let wallet_id = self.wallet_id.clone();
-        let task = backend(cx).call(move |app, st| async move {
-            cmd_local_unlock_wallet(
-                app,
-                State::new(&st),
-                UnlockWalletRequest {
-                    wallet_id,
-                    passphrase,
-                },
-            )
-            .await
-        });
-        cx.spawn(async move |this, cx| {
-            let res = task.await;
-            this.update(cx, |this, cx| {
-                this.unlocking = false;
-                match res {
-                    Ok(()) => {
-                        this.passphrase.update(cx, |p, cx| p.clear(cx));
-                        local_changed(cx);
-                        this.load_all(cx);
-                    }
-                    Err(e) => this.unlock_error = Some(e.into()),
+                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                 }
                 cx.notify();
             })
@@ -313,7 +267,7 @@ impl WalletDashboardPage {
         let active = self.sync_active();
         let sync_label: SharedString = if active {
             if self.sync.percent > 0 {
-                format!("Syncing {}%", self.sync.percent).into()
+                format!("Syncing… {}%", self.sync.percent.min(100)).into()
             } else {
                 "Syncing…".into()
             }
@@ -363,68 +317,6 @@ impl WalletDashboardPage {
             );
         }
         out
-    }
-
-    fn render_locked(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
-        let Some(w) = self.wallet.as_ref() else {
-            return div().into_any_element();
-        };
-        let hot = w.has_hot_keys;
-        let empty = self.passphrase.read(cx).text().is_empty();
-        div()
-            .w_full()
-            .max_w(FORM_WIDTH)
-            .child(
-                card()
-                    .p_5()
-                    .gap_4()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_start()
-                            .gap_3()
-                            .child(row_icon("lock", t.muted_foreground, false))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .flex()
-                                    .flex_col()
-                                    .gap(px(2.))
-                                    .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .child("This wallet is locked"),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .line_height(px(19.))
-                                            .text_color(t.muted_foreground)
-                                            .child(if hot {
-                                                "Enter the passphrase to load balances and activity. Keys stay decrypted in memory until you lock it again."
-                                            } else {
-                                                "Open the wallet to load balances and activity. Signing happens on your hardware device."
-                                            }),
-                                    ),
-                            ),
-                    )
-                    .when(hot, |d| d.child(field("Passphrase", self.passphrase.clone(), None)))
-                    .children(self.unlock_error.clone().map(|e| alert(Tone::Destructive, e)))
-                    .child(
-                        div().flex().flex_row().justify_end().child(
-                            button("unlock", if hot { "Unlock" } else { "Open wallet" })
-                                .icon("unlock")
-                                .loading(self.unlocking)
-                                .disabled(hot && empty)
-                                .on_click(cx.listener(|this, _, _, cx| this.unlock(cx))),
-                        ),
-                    ),
-            )
-            .into_any_element()
     }
 
     fn render_balance(&self) -> impl IntoElement {
@@ -479,17 +371,14 @@ impl WalletDashboardPage {
                 .gap_2()
                 .child(
                     div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
+                        .w_full()
                         .text_size(px(12.))
                         .text_color(t.muted_foreground)
                         .child(format!(
-                            "Syncing · {}",
+                            "Syncing… {}% · {}",
+                            self.sync.percent.min(100),
                             phase_label(self.sync.phase.as_deref())
-                        ))
-                        .child(format!("{}%", self.sync.percent)),
+                        )),
                 )
                 .child(
                     div()
@@ -590,7 +479,7 @@ impl WalletDashboardPage {
                                 "Pending",
                                 pending,
                                 if pending > 0 {
-                                    t.warning
+                                    t.warning_ink
                                 } else {
                                     t.muted_foreground
                                 },
@@ -601,7 +490,7 @@ impl WalletDashboardPage {
             .child(div().px_5().py_3().child(status))
     }
 
-    fn render_activity(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_activity(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let n = self.history.len();
         let body = if self.history.is_empty() {
             let rid = self.wallet_id.clone();
@@ -629,7 +518,7 @@ impl WalletDashboardPage {
                 if ix > 0 {
                     list = list.child(divider());
                 }
-                list = list.child(self.render_tx_row(ix, tx, cx));
+                list = list.child(self.render_tx_row(ix, tx, window, cx));
             }
             list.into_any_element()
         };
@@ -646,7 +535,8 @@ impl WalletDashboardPage {
         &self,
         ix: usize,
         tx: &LocalTxRecord,
-        _cx: &mut Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let t = theme();
         let incoming = tx.net_sat >= 0;
@@ -667,7 +557,7 @@ impl WalletDashboardPage {
                     .unwrap_or_default()
             ))
         } else {
-            meta.child(div().text_color(t.warning).child("Pending"))
+            meta.child(div().text_color(t.warning_ink).child("Pending"))
         };
         if tx.fee_sat > 0 {
             meta = meta
@@ -720,14 +610,11 @@ impl WalletDashboardPage {
                             .child(truncate_middle(&tx.txid, 8)),
                     )
                     .child(
-                        div()
-                            .opacity(0.)
-                            .group_hover(group, |s| s.opacity(1.))
-                            .child(copy_button(
-                                ("copy-txid", ix),
-                                tx.txid.clone(),
-                                "Copy transaction ID",
-                            )),
+                        hover_actions(group, ("txid-actions", ix), window, cx).child(copy_button(
+                            ("copy-txid", ix),
+                            tx.txid.clone(),
+                            "Copy transaction ID",
+                        )),
                     ),
             )
             .child(
@@ -946,7 +833,7 @@ fn phase_label(phase: Option<&str>) -> &'static str {
     match phase {
         Some("connecting") => "Connecting to Electrum",
         Some("fetching_history") => "Fetching history",
-        Some("persisting") => "Saving",
+        Some("persisting") => "Saving wallet data",
         Some("complete") => "Done",
         _ => "Working",
     }
@@ -984,7 +871,7 @@ fn file_safe(name: &str) -> String {
 }
 
 impl Render for WalletDashboardPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let name = self
             .wallet
             .as_ref()
@@ -1026,7 +913,9 @@ impl Render for WalletDashboardPage {
 
         let recovery_only = self.wallet.as_ref().is_some_and(|w| w.recovery_only);
         if self.locked() {
-            frame = frame.child(self.render_locked(cx));
+            let hot = self.wallet.as_ref().is_some_and(|w| w.has_hot_keys);
+            self.unlock.update(cx, |u, cx| u.set_hot(hot, cx));
+            frame = frame.child(self.unlock.clone());
         } else {
             frame = frame
                 .child(self.render_balance())
@@ -1036,7 +925,7 @@ impl Render for WalletDashboardPage {
                         "Recovery-only wallet: the primary spending path is unspendable. Funds can only be moved with the recovery key after the timelock elapses.",
                     ))
                 })
-                .child(self.render_activity(cx));
+                .child(self.render_activity(window, cx));
         }
         if let Some(d) = self.details.as_ref() {
             if !d.slots.is_empty() {

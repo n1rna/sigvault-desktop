@@ -7,6 +7,7 @@ use sigvault_core::env_config::EnvConfig;
 use sigvault_core::State;
 
 use super::cloud::common::{icon_tile, network_badge_unless_named};
+use crate::e2e::{E2eClick, Probe};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{alert, button, card, divider, page_frame, Tone};
@@ -25,8 +26,8 @@ const VALUE_POINTS: [(&str, &str, &str); 3] = [
     ),
     (
         "shield",
-        "Non-custodial",
-        "SigVault coordinates, it never holds your keys. Keys stay on your devices; signing happens on-device.",
+        "Keys stay on your devices",
+        "Keys on your own devices never leave them, and signing happens on the device. If a vault uses a SigVault co-signer key, SigVault holds that one key.",
     ),
 ];
 
@@ -264,9 +265,12 @@ impl Render for LoginPage {
                     .items_center()
                     .gap_1()
                     .cursor_pointer()
-                    .text_color(t.primary)
+                    .text_color(t.brand_ink)
                     .hover(|s| s.underline())
-                    .on_click(|_, _, cx| crate::shell::switch_space(AppMode::Local, cx))
+                    .clickable(
+                        Probe::new("link", "Use wallets on this device"),
+                        |_, _, cx| crate::shell::switch_space(AppMode::Local, cx),
+                    )
                     .child("Use wallets on this device")
                     .child(
                         div()
@@ -274,7 +278,7 @@ impl Render for LoginPage {
                             .rounded(px(4.))
                             .border_1()
                             .border_color(t.border)
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .text_color(t.muted_foreground)
                             .child("⌘1"),
                     ),

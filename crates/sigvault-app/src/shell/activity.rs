@@ -4,8 +4,9 @@
 
 use gpui::{div, prelude::*, px, Context, Window};
 
+use crate::e2e::{E2eClick, Probe};
 use crate::state::{store, NotificationLevel};
-use crate::theme::{alpha, theme, FONT_MONO};
+use crate::theme::theme;
 use crate::ui::{icon, spinner};
 
 pub struct ActivityPanel {
@@ -60,27 +61,31 @@ impl Render for ActivityPanel {
                     .py(px(6.))
                     .cursor_pointer()
                     .hover(|s| s.bg(t.muted))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.expanded = !this.expanded;
-                        cx.notify();
-                    }))
+                    .clickable(
+                        Probe::new("button", "Activity").selected(self.expanded),
+                        cx.listener(|this, _, _, cx| {
+                            this.expanded = !this.expanded;
+                            cx.notify();
+                        }),
+                    )
                     .child(marker(in_progress))
                     .child(
                         div()
                             .flex_1()
                             .truncate()
-                            .font_family(FONT_MONO)
-                            .text_size(px(11.5))
+                            .text_size(px(12.))
                             .text_color(t.muted_foreground)
                             .child(latest.message.clone()),
                     )
                     .child(
                         div()
                             .id("activity-clear")
-                            .text_size(px(11.))
-                            .text_color(alpha(t.muted_foreground, 0.7))
+                            .px_1()
+                            .rounded(px(4.))
+                            .text_size(px(12.))
+                            .text_color(t.ink_3)
                             .hover(|s| s.text_color(t.foreground))
-                            .on_click(|_, _, cx| {
+                            .clickable(Probe::new("button", "Clear activity"), |_, _, cx| {
                                 cx.stop_propagation();
                                 store(cx).update(cx, |s, cx| s.clear_activity_log(cx));
                             })
@@ -118,8 +123,8 @@ impl Render for ActivityPanel {
                                 .child(marker(busy))
                                 .child(
                                     div()
-                                        .font_family(FONT_MONO)
-                                        .text_size(px(11.5))
+                                        .text_size(px(12.))
+                                        .line_height(px(17.))
                                         .text_color(if busy {
                                             t.foreground
                                         } else {

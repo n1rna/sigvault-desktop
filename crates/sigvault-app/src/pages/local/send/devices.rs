@@ -95,6 +95,7 @@ impl DevicePicker {
         let cfg = self.wallet_config.clone();
         let task = backend(cx).call(move |app, st| async move {
             let window = app.get_webview_window("main").ok_or("no window")?;
+            st.ensure_hw_manager_for_local().await;
             cmd_discover_hardware_wallets(app, window, State::new(&st), cfg).await
         });
         cx.spawn(async move |this, cx| {
@@ -149,6 +150,7 @@ impl DevicePicker {
         let id = device_id.clone();
         let task = backend(cx).call(move |app, st| async move {
             let window = app.get_webview_window("main").ok_or("no window")?;
+            st.ensure_hw_manager_for_local().await;
             cmd_unlock_device(app, window, State::new(&st), id, cfg).await
         });
         cx.spawn(async move |this, cx| {
@@ -201,6 +203,7 @@ impl DevicePicker {
         let path = self.derivation_path.clone();
         let task = backend(cx).call(move |app, st| async move {
             let window = app.get_webview_window("main").ok_or("no window")?;
+            st.ensure_hw_manager_for_local().await;
             cmd_get_device_xpub(window, State::new(&st), fingerprint, path).await
         });
         cx.spawn(async move |this, cx| {
@@ -305,7 +308,7 @@ impl DevicePicker {
                         .font_family(FONT_MONO)
                         .text_size(px(12.))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(t.primary)
+                        .text_color(t.brand_ink)
                         .child(fingerprint.clone())
                         .into_any_element(),
                 )
@@ -536,7 +539,7 @@ impl DevicePicker {
                                     .font_family(FONT_MONO)
                                     .text_size(px(22.))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(t.primary)
+                                    .text_color(t.brand_ink)
                                     .child(top)
                                     .when(!bottom.is_empty(), |d| d.child(bottom)),
                             )

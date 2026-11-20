@@ -18,14 +18,15 @@ use sigvault_core::local_wallet::settings::LocalSettings;
 use sigvault_core::State;
 
 use super::widgets::{loading_card, network_color, row_icon};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, KeychainEvent};
 use crate::router::Page;
 use crate::runtime::backend;
 use crate::shell::{navigate, toast};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, button, card, divider, footer_bar, page_frame, section, InputEvent, TextInput, Tone,
-    FORM_WIDTH,
+    alert, appearance_section, button, card, divider, footer_bar, page_frame, section, InputEvent,
+    TextInput, Tone, FORM_WIDTH,
 };
 
 /// `constants/networks.ts` — `SUPPORTED_NETWORKS`.
@@ -282,7 +283,10 @@ impl LocalSettingsPage {
                         .bg(t.card)
                         .hover(move |s| s.border_color(alpha(t.primary, 0.4)))
                 })
-                .on_click(cx.listener(move |this, _, _, cx| this.set_default_network(id, cx)))
+                .clickable(
+                    Probe::new("radio", n.label).selected(selected),
+                    cx.listener(move |this, _, _, cx| this.set_default_network(id, cx)),
+                )
                 .child(radio(selected))
                 .child(
                     div()
@@ -555,7 +559,7 @@ fn radio(selected: bool) -> impl IntoElement {
         .justify_center()
         .rounded_full()
         .border_1()
-        .border_color(if selected { t.primary } else { t.border })
+        .border_color(if selected { t.primary } else { t.line_control })
         .when(selected, |d| {
             d.child(div().size(px(6.)).rounded_full().bg(t.primary))
         })
@@ -609,6 +613,7 @@ impl Render for LocalSettingsPage {
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
             .child(
                 column
+                    .child(appearance_section(cx))
                     .child(self.render_keychain(cx))
                     .child(self.render_about()),
             )

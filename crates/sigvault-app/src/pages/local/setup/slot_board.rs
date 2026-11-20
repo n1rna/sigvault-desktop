@@ -79,12 +79,13 @@ pub fn source_icon(source: &str) -> &'static str {
     }
 }
 
-/// "Private key here" / "Watch-only" pill.
+/// "Private key on this computer" / "Watch-only" pill. One neutral tone
+/// everywhere: amber is kept for "can spend alone" warnings.
 pub fn custody_badge(hot: bool) -> Div {
     if hot {
-        badge("Private key", Tone::Warning)
+        badge("Private key on this computer", Tone::Secondary)
     } else {
-        badge("Public only", Tone::Secondary)
+        badge("Watch-only", Tone::Outline)
     }
 }
 
@@ -137,10 +138,15 @@ pub fn slot_board<H: SlotBoardHost>(
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .children(
-                    path.timelock_blocks
-                        .map(|b| badge(format!("{} blocks", format_thousands(b)), Tone::Secondary)),
-                )
+                // The subtitle already says "after ~6 months"; the block
+                // count is the exact figure, kept secondary.
+                .children(path.timelock_blocks.map(|b| {
+                    div()
+                        .font_family(FONT_MONO)
+                        .text_size(px(12.))
+                        .text_color(t.ink_3)
+                        .child(format!("{} blocks ·", format_thousands(b)))
+                }))
                 .child(
                     div()
                         .font_family(FONT_MONO)
@@ -201,7 +207,6 @@ fn key_cell(k: &BoardKey, dim: bool) -> Div {
         .items_center()
         .gap_3()
         .min_w_0()
-        .when(dim, |d| d.opacity(0.6))
         .child(
             div()
                 .size(px(30.))
@@ -214,7 +219,7 @@ fn key_cell(k: &BoardKey, dim: bool) -> Div {
                 .child(
                     icon(source_icon(&k.source))
                         .size(px(15.))
-                        .text_color(t.foreground),
+                        .text_color(if dim { t.ink_3 } else { t.foreground }),
                 ),
         )
         .child(
@@ -235,7 +240,8 @@ fn key_cell(k: &BoardKey, dim: bool) -> Div {
                                 .truncate()
                                 .text_size(px(13.))
                                 .font_weight(FontWeight::MEDIUM)
-                                .text_color(t.foreground)
+                                // Dimmed keys: quieter ink, still ≥4.5:1.
+                                .text_color(if dim { t.ink_3 } else { t.foreground })
                                 .child(k.label.clone()),
                         )
                         .child(custody_badge(k.hot)),

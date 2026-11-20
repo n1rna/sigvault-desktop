@@ -3,7 +3,7 @@
 pub(crate) mod common;
 pub mod device_creation;
 pub mod devices;
-mod psbt_summary;
+pub(crate) mod psbt_summary;
 pub mod register;
 pub mod session_details;
 pub mod sessions;

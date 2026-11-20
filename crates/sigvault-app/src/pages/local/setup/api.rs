@@ -427,6 +427,8 @@ fn command_data<T: DeserializeOwned>(r: CommandResult, fallback: &str) -> Result
 pub fn discover_devices(cx: &App) -> Fut<Vec<DiscoveredDevice>> {
     Box::pin(backend(cx).call(move |app, st| async move {
         let window = app.get_webview_window("main").ok_or("no window")?;
+        // Local mode has no environment; make sure the HW manager exists.
+        st.ensure_hw_manager_for_local().await;
         let r = cmd_discover_hardware_wallets(app, window, State::new(&st), None).await?;
         command_data(r, "Failed to discover devices")
     }))
@@ -435,6 +437,8 @@ pub fn discover_devices(cx: &App) -> Fut<Vec<DiscoveredDevice>> {
 pub fn unlock_device(cx: &App, device_id: String) -> Fut<DiscoveredDevice> {
     Box::pin(backend(cx).call(move |app, st| async move {
         let window = app.get_webview_window("main").ok_or("no window")?;
+        // Local mode has no environment; make sure the HW manager exists.
+        st.ensure_hw_manager_for_local().await;
         let r = cmd_unlock_device(app, window, State::new(&st), device_id, None).await?;
         command_data(r, "Failed to unlock device")
     }))
@@ -443,6 +447,8 @@ pub fn unlock_device(cx: &App, device_id: String) -> Fut<DiscoveredDevice> {
 pub fn get_device_xpub(cx: &App, fingerprint: String, derivation_path: String) -> Fut<DeviceInfo> {
     Box::pin(backend(cx).call(move |app, st| async move {
         let window = app.get_webview_window("main").ok_or("no window")?;
+        // Local mode has no environment; make sure the HW manager exists.
+        st.ensure_hw_manager_for_local().await;
         let r = cmd_get_device_xpub(window, State::new(&st), fingerprint, derivation_path).await?;
         command_data(r, "Failed to extract device information")
     }))

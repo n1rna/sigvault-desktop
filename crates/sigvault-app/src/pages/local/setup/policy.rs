@@ -45,7 +45,10 @@ pub struct PolicyPreset {
     pub id: &'static str,
     pub title: &'static str,
     pub hint: &'static str,
+    /// Plain address type ("SegWit address").
     pub shape: &'static str,
+    /// Script detail for people who want it ("wsh(sortedmulti)").
+    pub script: &'static str,
     pub draft: PolicyDraft,
 }
 
@@ -79,14 +82,16 @@ pub fn common_presets() -> Vec<PolicyPreset> {
             id: "singlesig",
             title: "Single key",
             hint: "One key controls the wallet. The simplest setup.",
-            shape: "wpkh · P2WPKH",
+            shape: "SegWit address",
+            script: "wpkh",
             draft: PolicyDraft::Singlesig,
         },
         PolicyPreset {
             id: "multisig-2of3",
             title: "2-of-3 multisig",
             hint: "Any two of three keys can spend. Losing one key is survivable.",
-            shape: "wsh(sortedmulti) · P2WSH",
+            shape: "SegWit address",
+            script: "wsh(sortedmulti)",
             draft: PolicyDraft::Multisig { threshold: 2, n: 3 },
         },
         PolicyPreset {
@@ -94,7 +99,8 @@ pub fn common_presets() -> Vec<PolicyPreset> {
             title: "Key + timelocked recovery",
             hint:
                 "Your key spends any time. A backup key can spend after 6 months without activity.",
-            shape: "Miniscript · Taproot",
+            shape: "Taproot address",
+            script: "Miniscript",
             draft: default_timelocked(),
         },
     ]

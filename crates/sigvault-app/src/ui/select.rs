@@ -117,7 +117,7 @@ impl Render for Select {
                     .py(px(7.))
                     .rounded(RADIUS_CONTROL)
                     .border_1()
-                    .border_color(if self.open { t.ring } else { t.line })
+                    .border_color(if self.open { t.ring } else { t.line_control })
                     .bg(t.inset)
                     .text_size(px(14.))
                     .line_height(px(20.))
@@ -212,14 +212,14 @@ impl Render for Select {
                                                 )
                                                 .children(o.description.clone().map(|desc| {
                                                     div()
-                                                        .text_size(px(11.))
+                                                        .text_size(px(12.))
                                                         .text_color(t.muted_foreground)
                                                         .child(desc)
                                                 })),
                                         )
                                         .when(selected, |d| {
                                             d.child(
-                                                icon("check").size(px(14.)).text_color(t.primary),
+                                                icon("check").size(px(14.)).text_color(t.brand_ink),
                                             )
                                         })
                                 })),
