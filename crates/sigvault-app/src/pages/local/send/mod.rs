@@ -82,6 +82,9 @@ struct SpendingPath {
 struct Details {
     name: String,
     external_descriptor: String,
+    /// Receive + change as one `<0;1>` descriptor: the form devices
+    /// register as a wallet policy (as cloud signing already sends).
+    multipath_descriptor: Option<String>,
 }
 
 const SAT_PER_BTC: f64 = 100_000_000.0;
@@ -233,6 +236,7 @@ impl SendPage {
             let details = Details {
                 name: dt.name,
                 external_descriptor: dt.external_descriptor,
+                multipath_descriptor: dt.multipath_descriptor,
             };
             Ok((wallet, bal.confirmed_sat, paths, details))
         });
@@ -258,7 +262,11 @@ impl SendPage {
     fn wallet_config(&self) -> Option<WalletConfigInput> {
         self.details.as_ref().map(|d| WalletConfigInput {
             name: Some(d.name.clone()),
-            descriptor: Some(d.external_descriptor.clone()),
+            descriptor: Some(
+                d.multipath_descriptor
+                    .clone()
+                    .unwrap_or_else(|| d.external_descriptor.clone()),
+            ),
             hmac: None,
             ledger_hmacs: None,
         })
