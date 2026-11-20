@@ -18,6 +18,7 @@ use gpui::{
 };
 
 use super::SendPage;
+use crate::e2e::{E2eClick, Probe};
 use crate::pages::local::widgets::dialog_title;
 use crate::psbt::{
     file::decode_psbt_text,
@@ -495,7 +496,6 @@ pub(super) fn segmented(
             .flex()
             .items_center()
             .justify_center()
-            .rounded_sm()
             .text_size(px(12.))
             .font_weight(FontWeight::MEDIUM)
             .cursor_pointer()
@@ -507,6 +507,7 @@ pub(super) fn segmented(
                         .hover(move |s| s.text_color(t.foreground))
                 }
             })
+            .rounded(px(6.))
             .child(label)
     };
     div()
@@ -518,6 +519,12 @@ pub(super) fn segmented(
         .border_color(t.border)
         .bg(alpha(t.card, 0.4))
         .p_1()
-        .child(seg(0, items[0]).on_click(on_first))
-        .child(seg(1, items[1]).on_click(on_second))
+        .child(
+            seg(0, items[0])
+                .clickable(Probe::new("tab", items[0].0).selected(items[0].1), on_first),
+        )
+        .child(seg(1, items[1]).clickable(
+            Probe::new("tab", items[1].0).selected(items[1].1),
+            on_second,
+        ))
 }

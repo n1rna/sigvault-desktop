@@ -11,6 +11,8 @@ pub mod modal;
 pub mod price_chart;
 pub mod qr;
 pub mod select;
+pub mod signer_roster;
+pub mod tx_summary;
 
 pub use button::{button, icon_button, Button, ButtonSize, ButtonVariant};
 pub use common::*;
@@ -20,3 +22,5 @@ pub use input::{InputEvent, TextInput};
 pub use modal::modal;
 pub use qr::QrCode;
 pub use select::{Select, SelectEvent, SelectOption};
+pub use signer_roster::{signer_roster, Roster, Signer};
+pub use tx_summary::{copy_button, format_fee_rate, tx_summary, TxOutputLine, TxSummary};

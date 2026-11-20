@@ -4,9 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use gpui::{
-    div, prelude::*, px, AnyElement, ClipboardItem, Context, FontWeight, SharedString, Window,
-};
+use gpui::{div, prelude::*, px, AnyElement, Context, FontWeight, SharedString, Window};
 use serde::Deserialize;
 use sigvault_core::commands::hwi::WalletConfigInput;
 use sigvault_core::commands::{
@@ -16,13 +14,14 @@ use sigvault_core::commands::{
 use sigvault_core::hwi::{DiscoveredDevice, SignedPsbt};
 use sigvault_core::State;
 
-use super::common::{card_message, dev_step, icon_tile, main_window, non_empty, review_row};
+use super::common::{card_message, dev_step, icon_tile, main_window, non_empty};
 use super::devices::{device_list, fingerprint, is_supported, DeviceListHost, DeviceListProps};
 use super::psbt_summary::{hrp_for, summarize, PsbtSummary};
 use crate::runtime::backend;
-use crate::theme::{alpha, theme, FONT_MONO};
+use crate::theme::{theme, FONT_MONO};
 use crate::ui::{
-    alert, badge, button, card, divider, format_btc, format_sat, section, spinner, Tone,
+    alert, button, card, copy_button, divider, section, signer_roster, spinner, tx_summary, Roster,
+    Signer, Tone, TxSummary,
 };
 
 /// Stepper labels for the signing flow.
@@ -58,14 +57,47 @@ pub struct TransactionSigningData {
     pub signature_slots: Vec<SignatureSlot>,
 }
 
-fn short_txid(txid: &str) -> String {
-    let n = txid.chars().count();
-    if n <= 18 {
-        return txid.to_string();
+/// Signatures needed, when the wallet descriptor makes it unambiguous: one
+/// `multi` / `sortedmulti` (`_a`) fragment and no timelocked paths, with as
+/// many keys as the session lists signers. A descriptor without any multi
+/// fragment and a single signer is a single-key wallet (1 of 1).
+fn threshold_from_descriptor(descriptor: Option<&str>, signers: usize) -> Option<usize> {
+    let d = descriptor?;
+    let multis = d.matches("multi(").count() + d.matches("multi_a(").count();
+    if d.contains("older(") || d.contains("after(") {
+        return None;
     }
-    let start: String = txid.chars().take(8).collect();
-    let end: String = txid.chars().skip(n - 8).collect();
-    format!("{start}…{end}")
+    if multis == 0 {
+        return (signers == 1).then_some(1);
+    }
+    if multis != 1 {
+        return None;
+    }
+    let start = d
+        .find("multi(")
+        .map(|i| i + "multi(".len())
+        .or_else(|| d.find("multi_a(").map(|i| i + "multi_a(".len()))?;
+    // Arguments up to the matching close paren, split on top-level commas.
+    let mut depth = 0usize;
+    let mut args = vec![String::new()];
+    for ch in d[start..].chars() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' if depth == 0 => break,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                args.push(String::new());
+                continue;
+            }
+            _ => {}
+        }
+        if let Some(last) = args.last_mut() {
+            last.push(ch);
+        }
+    }
+    let k: usize = args.first()?.trim().parse().ok()?;
+    let keys = args.len() - 1;
+    (k >= 1 && k <= keys && keys == signers).then_some(k)
 }
 
 pub struct TransactionSigning {
@@ -84,6 +116,8 @@ pub struct TransactionSigning {
     unlocking_id: Option<String>,
     error: Option<SharedString>,
     psbt_expanded: bool,
+    /// Fingerprint of the key whose signature the coordinator accepted.
+    signed_fp: Option<String>,
 }
 
 impl TransactionSigning {
@@ -104,6 +138,7 @@ impl TransactionSigning {
             unlocking_id: None,
             error: None,
             psbt_expanded: false,
+            signed_fp: None,
         }
     }
 
@@ -229,6 +264,7 @@ impl TransactionSigning {
         let session_id = self.session_id.clone();
         let device_id = selected.id.clone();
         let sign_fp = fp.clone();
+        let sign_fp_done = fp.clone();
         let sign_task = backend(cx).call(move |app, st| async move {
             let window = main_window(&app)?;
             cmd_sign_psbt(window, State::new(&st), device_id, sign_fp, psbt, Some(cfg)).await
@@ -303,7 +339,11 @@ impl TransactionSigning {
             let err = match submit_task.await {
                 // onSignatureSubmitted(): no-op in SessionDetails.
                 Ok(r) if r.success => {
-                    this.update(cx, |this, _| this.submitted = true).ok();
+                    this.update(cx, |this, _| {
+                        this.submitted = true;
+                        this.signed_fp = Some(sign_fp_done);
+                    })
+                    .ok();
                     None
                 }
                 Ok(r) => Some(non_empty(r.message, "Failed to submit signature")),
@@ -370,45 +410,6 @@ impl DeviceListHost for TransactionSigning {
     }
 }
 
-fn copy_icon(id: &'static str, value: String) -> impl IntoElement {
-    let t = theme();
-    div()
-        .id(id)
-        .flex_none()
-        .p(px(5.))
-        .rounded(px(4.))
-        .cursor_pointer()
-        .hover(move |s| s.bg(t.muted))
-        .on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(value.clone()));
-            crate::shell::toast(cx, "Copied to clipboard");
-        })
-        .child(crate::ui::icon("copy").size(px(13.)))
-}
-
-fn amount(sat: u64) -> gpui::Div {
-    let t = theme();
-    div()
-        .flex()
-        .flex_row()
-        .flex_wrap()
-        .items_baseline()
-        .gap_2()
-        .child(
-            div()
-                .font_family(FONT_MONO)
-                .text_size(px(12.))
-                .text_color(t.foreground)
-                .child(format_btc(sat as i64)),
-        )
-        .child(
-            div()
-                .text_size(px(12.))
-                .text_color(t.muted_foreground)
-                .child(format_sat(sat as i64)),
-        )
-}
-
 impl TransactionSigning {
     /// Debug screenshot hook (`SIGVAULT_DEV_CLOUD_STEP=sign|done`).
     pub fn apply_dev_step(&mut self, cx: &mut Context<Self>) {
@@ -417,7 +418,14 @@ impl TransactionSigning {
                 self.step = Step::Sign;
                 self.discover(cx);
             }
-            Some("done") => self.submitted = true,
+            Some("done") => {
+                self.submitted = true;
+                self.signed_fp = self
+                    .data
+                    .signature_slots
+                    .first()
+                    .map(|s| s.fingerprint.clone());
+            }
             _ => {}
         }
     }
@@ -446,6 +454,70 @@ impl TransactionSigning {
         self.discovering || self.signing || self.submitting
     }
 
+    /// The transaction as the shared summary shows it.
+    fn tx_view(&self) -> Option<TxSummary> {
+        let tx = &self.data.transaction;
+        self.summary.as_ref().map(|s| {
+            TxSummary::from_psbt(s)
+                .wallet(tx.wallet_name.clone())
+                .txid(Some(tx.txid.clone()))
+        })
+    }
+
+    /// Fingerprint of "your" key: the one you signed with, or the
+    /// authorized device you picked.
+    fn your_fingerprint(&self) -> Option<String> {
+        self.signed_fp.clone().or_else(|| {
+            self.selected
+                .as_ref()
+                .filter(|d| self.can_sign(d))
+                .and_then(fingerprint)
+        })
+    }
+
+    /// Who has signed and who is still needed, from what the session gives
+    /// us: the signature slots, signatures already in the PSBT, the key you
+    /// signed with and the threshold when the descriptor is unambiguous.
+    fn roster(&self) -> Roster {
+        let slots = &self.data.signature_slots;
+        let in_psbt: Vec<String> = self
+            .summary
+            .as_ref()
+            .map(|s| s.signed_fingerprints.clone())
+            .unwrap_or_default();
+        let you = self.your_fingerprint().map(|f| f.to_lowercase());
+        let signed_by_you = self.signed_fp.as_ref().map(|f| f.to_lowercase());
+        let signers = slots
+            .iter()
+            .map(|slot| {
+                let fp = slot.fingerprint.to_lowercase();
+                let device = self
+                    .devices
+                    .iter()
+                    .find(|d| fingerprint(d).map(|f| f.to_lowercase()).as_deref() == Some(&fp));
+                Signer {
+                    fingerprint: slot.fingerprint.clone(),
+                    name: device.map(|d| d.model.clone()),
+                    detail: Some(slot.derivation_path.clone()),
+                    signed: in_psbt.contains(&fp) || signed_by_you.as_deref() == Some(&fp),
+                    is_you: you.as_deref() == Some(&fp),
+                    sigvault: false,
+                }
+            })
+            .collect();
+        Roster {
+            signers,
+            threshold: threshold_from_descriptor(
+                self.data.transaction.multipath_descriptor.as_deref(),
+                slots.len(),
+            ),
+            note: Some(
+                "Signatures given in other sessions show here once SigVault adds them to the transaction."
+                    .into(),
+            ),
+        }
+    }
+
     /// Footer buttons for the page frame: (left, right).
     pub fn footer(&self, cx: &mut Context<Self>) -> (Vec<AnyElement>, Vec<AnyElement>) {
         let t = theme();
@@ -455,14 +527,18 @@ impl TransactionSigning {
         match self.step {
             Step::Review => {
                 let n = self.data.signature_slots.len();
+                let needs = match self.roster().threshold {
+                    Some(k) => format!("Needs {k} of {n} signatures"),
+                    None => format!(
+                        "{n} authorized {}",
+                        if n == 1 { "signer" } else { "signers" }
+                    ),
+                };
                 (
                     vec![div()
                         .text_size(px(12.))
                         .text_color(t.muted_foreground)
-                        .child(format!(
-                            "{n} authorized {}",
-                            if n == 1 { "signer" } else { "signers" }
-                        ))
+                        .child(needs)
                         .into_any_element()],
                     vec![button("to-sign", "Continue to signing")
                         .icon_right("arrow-right")
@@ -507,197 +583,27 @@ impl TransactionSigning {
         }
     }
 
-    fn render_summary(&self) -> AnyElement {
-        let t = theme();
-        let tx = &self.data.transaction;
-        let mut c = card();
-        if let Some(name) = tx.wallet_name.clone().filter(|n| !n.is_empty()) {
-            c = c
-                .child(review_row(
-                    "Wallet",
-                    div().font_weight(FontWeight::MEDIUM).child(name),
-                ))
-                .child(divider());
-        }
-        if let Some(s) = &self.summary {
-            c = c
-                .child(review_row("Sending", amount(s.sending())))
-                .child(divider())
-                .child(review_row(
-                    "Network fee",
-                    match s.fee {
-                        Some(fee) => amount(fee).into_any_element(),
-                        None => div()
-                            .text_color(t.muted_foreground)
-                            .child("Unknown — inputs don't include their amounts")
-                            .into_any_element(),
-                    },
-                ))
-                .child(divider())
-                .child(review_row(
-                    "Inputs",
-                    div().child(format!(
-                        "{} {}",
-                        s.input_count,
-                        if s.input_count == 1 { "coin" } else { "coins" }
-                    )),
-                ))
-                .child(divider());
-        }
-        c.child(review_row(
-            "Transaction ID",
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_2()
+    fn render_tx(&self, id: &'static str, title: &'static str) -> AnyElement {
+        match self.tx_view() {
+            Some(s) => section(title).child(tx_summary(id, &s)).into_any_element(),
+            None => section(title)
                 .child(
-                    div()
-                        .font_family(FONT_MONO)
-                        .text_size(px(12.))
-                        .child(short_txid(&tx.txid)),
-                )
-                .child(copy_icon("copy-txid", tx.txid.clone())),
-        ))
-        .into_any_element()
-    }
-
-    fn render_outputs(&self) -> Option<AnyElement> {
-        let t = theme();
-        let s = self.summary.as_ref()?;
-        let mut list = card().overflow_hidden();
-        for (i, o) in s.outputs.iter().enumerate() {
-            if i > 0 {
-                list = list.child(divider());
-            }
-            list = list.child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_4()
-                    .min_h(px(52.))
-                    .px_4()
-                    .py_2()
-                    .child(icon_tile(
-                        if o.is_change {
-                            "arrow-down-left"
-                        } else {
-                            "arrow-up-right"
-                        },
-                        32.,
-                        Some(if o.is_change {
-                            t.muted_foreground
-                        } else {
-                            t.primary
-                        }),
-                    ))
-                    .child(
+                    card().px_4().py_3().child(
                         div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .font_family(FONT_MONO)
-                                    .text_size(px(12.))
-                                    .line_height(px(17.))
-                                    .text_color(t.foreground)
-                                    .child(o.address.clone()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(t.muted_foreground)
-                                    .child(if o.is_change {
-                                        "Back to the wallet"
-                                    } else {
-                                        "Recipient"
-                                    }),
-                            ),
-                    )
-                    .when(o.is_change, |d| d.child(badge("Change", Tone::Secondary)))
-                    .child(
-                        div()
-                            .w(px(150.))
-                            .flex_none()
-                            .flex()
-                            .justify_end()
-                            .font_family(FONT_MONO)
-                            .text_size(px(12.))
-                            .text_color(if o.is_change {
-                                t.muted_foreground
-                            } else {
-                                t.foreground
-                            })
-                            .child(format_btc(o.value as i64)),
+                            .text_size(px(13.))
+                            .line_height(px(19.))
+                            .text_color(theme().ink_2)
+                            .child("This transaction couldn't be decoded here. Check the outputs and fee on the device screen before you approve."),
                     ),
-            );
-        }
-        Some(
-            section("Outputs")
-                .description("Where the bitcoin goes. Change returns to the team wallet.")
-                .child(list)
+                )
                 .into_any_element(),
-        )
+        }
     }
 
-    fn render_signers(&self) -> AnyElement {
-        let t = theme();
-        let slots = &self.data.signature_slots;
-        let mut list = card().overflow_hidden();
-        for (i, slot) in slots.iter().enumerate() {
-            if i > 0 {
-                list = list.child(divider());
-            }
-            let present = self
-                .devices
-                .iter()
-                .any(|d| fingerprint(d).as_deref() == Some(slot.fingerprint.as_str()));
-            list = list.child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_4()
-                    .h(px(48.))
-                    .px_4()
-                    .child(icon_tile(
-                        "key",
-                        28.,
-                        Some(if present {
-                            t.success
-                        } else {
-                            t.muted_foreground
-                        }),
-                    ))
-                    .child(
-                        div()
-                            .w(px(96.))
-                            .flex_none()
-                            .font_family(FONT_MONO)
-                            .text_size(px(12.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(slot.fingerprint.clone()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .font_family(FONT_MONO)
-                            .text_size(px(12.))
-                            .text_color(t.muted_foreground)
-                            .child(slot.derivation_path.clone()),
-                    )
-                    .when(present, |d| d.child(badge("Connected", Tone::Success))),
-            );
-        }
-        section("Your signing keys")
-            .description("Any one of these keys on a connected device can provide your signature.")
-            .child(list)
+    fn render_roster(&self) -> AnyElement {
+        section("Signers")
+            .description("Who has signed this transaction and who is still needed.")
+            .child(signer_roster(&self.roster()))
             .into_any_element()
     }
 
@@ -735,7 +641,7 @@ impl TransactionSigning {
                                     .child(format!("Base64 · {chars} characters")),
                             ),
                     )
-                    .child(copy_icon("copy-psbt", psbt.clone()))
+                    .child(copy_button("copy-psbt", "Copy PSBT", psbt.clone()))
                     .child(
                         button(
                             "psbt-toggle",
@@ -760,13 +666,13 @@ impl TransactionSigning {
                         .id("psbt-payload")
                         .max_h(px(200.))
                         .overflow_y_scroll()
-                        .bg(alpha(t.background, 0.6))
+                        .bg(t.inset)
                         .px_4()
                         .py_3()
                         .font_family(FONT_MONO)
                         .text_size(px(12.))
                         .line_height(px(17.))
-                        .text_color(t.muted_foreground)
+                        .text_color(t.ink_2)
                         .child(psbt),
                 )
             })
@@ -774,23 +680,49 @@ impl TransactionSigning {
     }
 
     fn render_review(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let mut v = vec![section("Summary")
-            .child(self.render_summary())
-            .into_any_element()];
+        let mut v = Vec::new();
         if self.summary.is_none() {
             v.push(
                 alert(Tone::Warning, "This PSBT couldn't be decoded for review. Check it in another tool before signing.")
                     .into_any_element(),
             );
         }
-        v.extend(self.render_outputs());
-        v.push(self.render_signers());
+        v.push(self.render_tx("review-tx", "What you're signing"));
+        v.push(self.render_roster());
         v.push(
             section("Details")
                 .child(self.render_psbt(cx))
                 .into_any_element(),
         );
         v
+    }
+
+    /// "No authorized signers found" with the connected devices named and
+    /// a next step.
+    fn no_signer_message(&self) -> String {
+        let connected: Vec<String> = self
+            .devices
+            .iter()
+            .map(|d| match fingerprint(d) {
+                Some(fp) => format!("{} ({fp})", d.model),
+                None => d.model.clone(),
+            })
+            .collect();
+        let expected: Vec<String> = self
+            .roster()
+            .signers
+            .iter()
+            .map(|s| s.fingerprint.clone())
+            .collect();
+        let expected = match expected.as_slice() {
+            [] => String::new(),
+            [one] => one.clone(),
+            [init @ .., last] => format!("{} or {last}", init.join(", ")),
+        };
+        format!(
+            "None of the connected devices holds a key for this transaction. Connected: {}. Needed: a device with key {expected}. Plug in that device, unlock it and open the Bitcoin app, then scan again.",
+            connected.join(", ")
+        )
     }
 
     fn render_sign(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
@@ -840,7 +772,7 @@ impl TransactionSigning {
                                 .text_size(px(12.))
                                 .line_height(px(17.))
                                 .text_color(t.muted_foreground)
-                                .child("Plug in a hardware wallet holding one of your signing keys, unlock it and open the Bitcoin app."),
+                                .child("Plug in a hardware wallet holding one of the signing keys below, unlock it and open the Bitcoin app."),
                         ),
                 )
                 .when(self.discovering, |c| c.child(spinner(px(16.))))
@@ -867,17 +799,7 @@ impl TransactionSigning {
             .description("Devices holding an authorized key are marked Signer.")
             .action(scan)
             .when(!self.devices.is_empty() && !has_matching, |s| {
-                let expected = self
-                    .data
-                    .signature_slots
-                    .iter()
-                    .map(|s| s.fingerprint.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                s.child(alert(
-                    Tone::Destructive,
-                    format!("No authorized signers found. Expected: {expected}"),
-                ))
+                s.child(alert(Tone::Destructive, self.no_signer_message()))
             })
             .child(body)
             .into_any_element()];
@@ -890,8 +812,7 @@ impl TransactionSigning {
                     .gap_3()
                     .px_4()
                     .py_3()
-                    .border_color(alpha(t.primary, 0.4))
-                    .bg(alpha(t.primary, 0.05))
+                    .border_color(t.brand)
                     .child(spinner(px(16.)))
                     .child(
                         div()
@@ -909,49 +830,44 @@ impl TransactionSigning {
                                     .text_size(px(12.))
                                     .text_color(t.muted_foreground)
                                     .child(
-                                    "Check the outputs and fee on the device screen, then approve.",
+                                    "Check that the device shows the same recipient, amount and fee as below, then approve.",
                                 ),
                             ),
                     )
                     .into_any_element(),
             );
         }
-        if let Some(s) = &self.summary {
-            v.push(
-                section("You're approving")
-                    .child(
-                        card()
-                            .child(review_row("Sending", amount(s.sending())))
-                            .child(divider())
-                            .child(review_row(
-                                "Network fee",
-                                match s.fee {
-                                    Some(f) => amount(f).into_any_element(),
-                                    None => div()
-                                        .text_color(t.muted_foreground)
-                                        .child("Unknown")
-                                        .into_any_element(),
-                                },
-                            )),
-                    )
-                    .into_any_element(),
-            );
-        }
+        v.push(self.render_tx("sign-tx-summary", "You're approving"));
+        v.push(self.render_roster());
         v
+    }
+
+    fn render_done(&self) -> Vec<AnyElement> {
+        let t = theme();
+        let roster = self.roster();
+        let headline = roster.headline();
+        let body = match (roster.still_needed(), roster.waiting_on()) {
+            (Some(0), _) => format!(
+                "{headline}. SigVault can broadcast the transaction now. You can leave this session."
+            ),
+            (Some(_), Some(waiting)) => format!(
+                "{headline} — {waiting}. SigVault broadcasts the transaction once enough co-signers have signed. You can leave this session."
+            ),
+            _ => "Your signature is in. SigVault broadcasts the transaction once enough co-signers have signed. You can leave this session.".into(),
+        };
+        vec![
+            card_message("circle-check", Some(t.success), "Signature submitted", body)
+                .into_any_element(),
+            self.render_tx("done-tx", "What you signed"),
+            self.render_roster(),
+        ]
     }
 }
 
 impl Render for TransactionSigning {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme();
         let body = if self.submitted {
-            vec![card_message(
-                "circle-check",
-                Some(t.success),
-                "Signature submitted",
-                "SigVault will broadcast the transaction once enough co-signers have signed. You can leave this session.",
-            )
-            .into_any_element()]
+            self.render_done()
         } else {
             match self.step {
                 Step::Review => self.render_review(cx),
@@ -964,5 +880,28 @@ impl Render for TransactionSigning {
             .gap_6()
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
             .children(body)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::threshold_from_descriptor as th;
+
+    #[test]
+    fn threshold_only_when_unambiguous() {
+        let ms = "wsh(sortedmulti(2,[3f8a91c2/48'/1'/0'/2']tpubA/<0;1>/*,[b71d04e9/48'/1'/0'/2']tpubB/<0;1>/*,[5c2e88a0/48'/1'/0'/2']tpubC/<0;1>/*))#abc";
+        assert_eq!(th(Some(ms), 3), Some(2));
+        // The session lists a different number of signers: don't guess.
+        assert_eq!(th(Some(ms), 2), None);
+        assert_eq!(th(Some("tr(K,multi_a(1,[aa/1]A,[bb/2]B))"), 2), Some(1));
+        assert_eq!(
+            th(Some("wpkh([3f8a91c2/84'/1'/0']tpubA/<0;1>/*)"), 1),
+            Some(1)
+        );
+        // Timelocked recovery paths: which path is spent isn't known here.
+        let liana = "wsh(or_d(multi(2,A,B),and_v(v:pk(C),older(52560))))";
+        assert_eq!(th(Some(liana), 2), None);
+        assert_eq!(th(Some("wsh(or_i(multi(2,A,B),multi(1,C,D)))"), 2), None);
+        assert_eq!(th(None, 2), None);
     }
 }
