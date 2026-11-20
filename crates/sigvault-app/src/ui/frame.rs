@@ -377,3 +377,26 @@ impl RenderOnce for PageFrame {
             .children(footer)
     }
 }
+
+/// Settings → Appearance (System / Light / Dark), shared by both
+/// workspaces' Settings pages. Changes apply immediately and persist.
+pub fn appearance_section(cx: &App) -> Section {
+    use crate::theme::{preference, set_preference, AppearancePref};
+    let current = preference(cx);
+    let items: Vec<(&'static str, SharedString)> = AppearancePref::ALL
+        .iter()
+        .map(|p| (p.label(), SharedString::from(p.label())))
+        .collect();
+    section("Appearance")
+        .description("System follows your computer's light or dark setting.")
+        .child(div().w(px(320.)).child(super::common::tabs(
+            "appearance",
+            &items,
+            current.label(),
+            |key, _, cx| {
+                if let Some(p) = AppearancePref::ALL.into_iter().find(|p| p.label() == key) {
+                    set_preference(p, cx);
+                }
+            },
+        )))
+}

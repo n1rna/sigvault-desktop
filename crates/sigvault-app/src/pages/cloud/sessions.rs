@@ -4,14 +4,12 @@
 use std::cmp::Ordering;
 
 use gpui::{div, prelude::*, px, Context, FontWeight, SharedString, Subscription, Window};
-use sigvault_core::commands::{
-    cmd_get_remote_sessions, cmd_start_session_websocket_connection, cmd_update_remote_sessions,
-};
+use sigvault_core::commands::{cmd_get_remote_sessions, cmd_update_remote_sessions};
 use sigvault_core::State;
 
 use super::common::{
-    card_message, format_relative, icon_tile, list_row, main_window, parse_time, segmented,
-    sep_dot, session_icon, session_title, short_id, skeleton_list,
+    card_message, format_relative, icon_tile, join_session, list_row, main_window, parse_time,
+    segmented, sep_dot, session_icon, session_title, short_id, skeleton_list,
 };
 use crate::runtime::backend;
 use crate::state::{store, RemoteSession, StoreEvent};
@@ -96,30 +94,12 @@ impl RemoteSessionsPage {
     fn connect(&mut self, session_id: String, cx: &mut Context<Self>) {
         self.connecting_to = Some(session_id.clone());
         cx.notify();
-        // Start the new session from a clean workflow state (the React
-        // reducer effectively dropped `sessionState` on the next
-        // `active_session` update).
-        store(cx).update(cx, |s, cx| s.reset_session_state(cx));
-        let task = backend(cx).call(move |app, st| async move {
-            let window = main_window(&app)?;
-            cmd_start_session_websocket_connection(window, State::new(&st), session_id).await
-        });
+        let task = join_session(session_id, cx);
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
-                match res {
-                    Ok(r) if !r.success => {
-                        this.error = Some(
-                            if r.message.is_empty() {
-                                "Failed to connect".to_string()
-                            } else {
-                                r.message
-                            }
-                            .into(),
-                        )
-                    }
-                    Ok(_) => {}
-                    Err(_) => this.error = Some("Failed to connect to session".into()),
+                if let Err(e) = res {
+                    this.error = Some(e);
                 }
                 this.connecting_to = None;
                 cx.notify();
@@ -200,7 +180,6 @@ impl RemoteSessionsPage {
         .small()
         .loading(is_connecting)
         .disabled(busy && !is_connecting)
-        .when(!is_active, |b| b.outline())
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
             this.connect(id.clone(), cx)
@@ -208,7 +187,8 @@ impl RemoteSessionsPage {
         list_row(("session-row", pos))
             .h(px(60.))
             .gap_4()
-            .when(!busy, |d| {
+            // Completed / expired sessions can't be joined: no action.
+            .when(!busy && is_active, |d| {
                 d.cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| this.connect(id2.clone(), cx)))
             })
@@ -265,7 +245,7 @@ impl RemoteSessionsPage {
                     .flex_none()
                     .flex()
                     .justify_end()
-                    .child(join),
+                    .when(is_active, |d| d.child(join)),
             )
     }
 }

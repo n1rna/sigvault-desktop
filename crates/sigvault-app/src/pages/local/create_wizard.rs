@@ -378,10 +378,12 @@ impl CreateWalletWizardPage {
                         crate::state::local_changed(cx);
                         let done = cx
                             .new(|_| DoneStep::new("Wallet created", id.clone(), name, multi_key));
+                        // Its save state drives our footer.
+                        cx.observe(&done, |_, _, cx| cx.notify()).detach();
                         this.done = Some((id, done));
                         this.step = Step::Done;
                     }
-                    Err(e) => this.error = Some(e.into()),
+                    Err(e) => this.error = Some(super::widgets::plain_error(&e).into()),
                 }
                 cx.notify();
             })
@@ -488,7 +490,23 @@ impl CreateWalletWizardPage {
             );
         }
         let (_, picker) = self.key_picker.as_ref()?;
-        let w = picker.read(cx).modal_width();
+        let p = picker.read(cx);
+        let w = p.modal_width();
+        if p.is_adding() {
+            // Its own dialog (fresh focus, Tab trapped inside, Esc goes
+            // back to the key list rather than closing everything).
+            let (title, description) = p.modal_title();
+            let back = picker.downgrade();
+            return Some(
+                modal("key-picker-add", w)
+                    .title(title, Some(description.into()))
+                    .on_dismiss(move |_, window, cx| {
+                        back.update(cx, |p, cx| p.stop_adding(window, cx)).ok();
+                    })
+                    .child(picker.clone())
+                    .into_any_element(),
+            );
+        }
         Some(
             modal("key-picker", w)
                 .on_dismiss(dismiss)
@@ -568,23 +586,16 @@ impl CreateWalletWizardPage {
                         .into_any_element(),
                 ],
             ),
-            Step::Done => {
-                let id = self
-                    .done
+            Step::Done => (
+                vec![button("wizard-all-wallets", "All wallets")
+                    .ghost()
+                    .on_click(|_, _, cx| navigate(Page::LocalWallets, cx))
+                    .into_any_element()],
+                self.done
                     .as_ref()
-                    .map(|(id, _)| id.clone())
-                    .unwrap_or_default();
-                (
-                    vec![button("wizard-all-wallets", "All wallets")
-                        .ghost()
-                        .on_click(|_, _, cx| navigate(Page::LocalWallets, cx))
-                        .into_any_element()],
-                    vec![button("wizard-open", "Open wallet")
-                        .icon_right("arrow-right")
-                        .on_click(move |_, _, cx| navigate(Page::LocalWallet(id.clone()), cx))
-                        .into_any_element()],
-                )
-            }
+                    .map(|(_, d)| d.update(cx, |d, cx| d.footer_actions(cx)))
+                    .unwrap_or_default(),
+            ),
         };
         footer_bar(left, right).into_any_element()
     }
@@ -674,7 +685,8 @@ impl Render for CreateWalletWizardPage {
             Step::Policy => 0,
             Step::Keys => 1,
             Step::Review => 2,
-            Step::Done => 3,
+            // Past the last step: every step shows a check.
+            Step::Done => STEP_LABELS.len(),
         };
         let name = self.name_text(cx);
         let title = if self.step == Step::Policy || name.is_empty() {

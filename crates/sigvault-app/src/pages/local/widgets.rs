@@ -7,6 +7,7 @@ use gpui::{
     SharedString, Stateful, Window,
 };
 
+use crate::e2e::{E2eClick, Probe};
 use crate::theme::{alpha, theme};
 use crate::ui::{badge, card, icon, spinner_with, Tone};
 
@@ -157,11 +158,36 @@ pub fn copy_button(
     title: &'static str,
 ) -> Stateful<Div> {
     let value: String = value.into();
-    hover_action(id, "copy", title, false).on_click(move |_, _, cx| {
-        cx.stop_propagation();
-        cx.write_to_clipboard(ClipboardItem::new_string(value.clone()));
-        crate::shell::toast(cx, "Copied to clipboard");
-    })
+    hover_action(id, "copy", title, false).clickable(
+        Probe::new("button", title),
+        move |_, _, cx| {
+            cx.stop_propagation();
+            cx.write_to_clipboard(ClipboardItem::new_string(value.clone()));
+            crate::shell::toast(cx, "Copied to clipboard");
+        },
+    )
+}
+
+/// Container for [`hover_action`]s that appear on hover of `group`, and
+/// also while one of them has keyboard focus (so Tab never lands on an
+/// invisible button).
+pub fn hover_actions(
+    group: impl Into<SharedString>,
+    key: impl Into<ElementId>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Div {
+    let handle = window
+        .use_keyed_state(key, cx, |_, cx| cx.focus_handle())
+        .read(cx)
+        .clone();
+    // `in_focus` styles the element *inside* a focused one; here a child
+    // holds focus, which `contains_focused` answers (last frame's tree).
+    let shown = handle.contains_focused(window, cx);
+    div()
+        .track_focus(&handle)
+        .opacity(if shown { 1. } else { 0. })
+        .group_hover(group, |s| s.opacity(1.))
 }
 
 /// Dialog title + description, used at the top of every local modal.
@@ -249,8 +275,8 @@ pub fn network_badge(network: &str) -> Div {
         .border_color(t.border)
         .px(px(8.))
         .py(px(2.))
-        .text_size(px(11.))
-        .line_height(px(13.))
+        .text_size(px(12.))
+        .line_height(px(16.))
         .font_weight(gpui::FontWeight::MEDIUM)
         .whitespace_nowrap()
         .text_color(t.muted_foreground)
@@ -329,5 +355,85 @@ pub fn default_save_dir() -> std::path::PathBuf {
         downloads
     } else {
         home
+    }
+}
+
+/// A wallet-backend error as a plain sentence. Internal prefixes
+/// (`persist: …`, `build_tx: …`, `seed store: …`) become a message that
+/// names what failed; the raw text follows as "Details" when it adds
+/// something.
+pub fn plain_error(raw: &str) -> String {
+    let raw = raw.trim();
+    let lower = raw.to_lowercase();
+    let plain = if lower.contains("decryption failed") || lower.contains("wrong passphrase") {
+        // The message is the whole story here.
+        return "That passphrase didn't unlock the wallet. Check it and try again.".into();
+    } else if lower.contains("electrum") || lower.contains("connection refused") {
+        "Couldn't reach your Electrum server. Check the server address in Settings."
+    } else if lower.starts_with("build_tx") || lower.contains("insufficient") {
+        "Couldn't build the transaction."
+    } else if lower.starts_with("persist") || lower.starts_with("initialize") {
+        "Couldn't save the wallet to disk."
+    } else if lower.starts_with("io") || lower.starts_with("serde") {
+        "Couldn't read the wallet files on this computer."
+    } else if lower.starts_with("wallet not found") {
+        "This wallet isn't on this computer any more."
+    } else if lower.contains("is not unlocked") {
+        // Details would only add the wallet's internal id.
+        return "This wallet is locked. Unlock it from the wallet's page, then try again.".into();
+    } else if lower.contains("hardware wallet manager not initialized")
+        || lower.contains("hardware manager unavailable")
+    {
+        return "Hardware wallet support isn't ready yet. Reopen the workspace from the top bar, then try again.".into();
+    } else if lower.contains("no environment selected") {
+        return "Choose a SigVault Cloud environment first: sign in from the SigVault Cloud workspace, then try again.".into();
+    } else {
+        return scrub_ids(raw);
+    };
+    format!("{plain} Details: {}", scrub_ids(raw))
+}
+
+/// Drop internal ids (UUIDs) in a backend message: they mean nothing to
+/// the person reading it.
+fn scrub_ids(raw: &str) -> String {
+    let is_uuid = |w: &str| {
+        let parts: Vec<&str> = w.split('-').collect();
+        parts.len() == 5
+            && [8, 4, 4, 4, 12]
+                .iter()
+                .zip(&parts)
+                .all(|(n, p)| p.len() == *n && p.chars().all(|c| c.is_ascii_hexdigit()))
+    };
+    raw.split(' ')
+        .filter(|w| !is_uuid(w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-')))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_error;
+
+    #[test]
+    fn plain_error_names_the_failure() {
+        assert_eq!(
+            plain_error("seed store: decryption failed (wrong passphrase or tampered file)"),
+            "That passphrase didn't unlock the wallet. Check it and try again."
+        );
+        assert_eq!(
+            plain_error("persist: disk full"),
+            "Couldn't save the wallet to disk. Details: persist: disk full"
+        );
+        assert_eq!(plain_error("Something specific"), "Something specific");
+        let locked = plain_error("wallet '206789aa-7bcc-4875-91f9-0cbcd17c8133' is not unlocked");
+        assert!(!locked.contains("206789aa"), "{locked}");
+        assert_eq!(
+            plain_error("io: wallet 206789aa-7bcc-4875-91f9-0cbcd17c8133 missing"),
+            "Couldn't read the wallet files on this computer. Details: io: wallet missing"
+        );
+        assert!(
+            plain_error("Hardware wallet manager not initialized (no environment selected)")
+                .starts_with("Hardware wallet support isn't ready")
+        );
     }
 }

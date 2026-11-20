@@ -4,6 +4,7 @@
 
 use gpui::{div, prelude::*, px, ClipboardItem, ElementId, Hsla, SharedString};
 
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::KeyRecord;
 use crate::pages::local::setup::api::{self, SlotKey};
 use crate::pages::local::setup::keys::{extended_key_depth, normalize_path};
@@ -161,8 +162,8 @@ pub fn network_badge(network: &str) -> gpui::Div {
         .border_color(t.border)
         .px(px(8.))
         .py(px(2.))
-        .text_size(px(11.))
-        .line_height(px(14.))
+        .text_size(px(12.))
+        .line_height(px(16.))
         .text_color(t.muted_foreground)
         .child(div().size(px(6.)).rounded_full().bg(network_color(network)))
         .child(network_label(network))
@@ -294,11 +295,21 @@ pub fn copy_box(id: impl Into<ElementId>, value: impl Into<SharedString>) -> gpu
                 .flex_basis(px(0.))
                 .min_w_0()
                 .py(px(5.))
+                .flex()
+                .flex_col()
                 .font_family(FONT_MONO)
                 .text_size(px(12.))
                 .line_height(px(18.))
                 .text_color(t.foreground)
-                .child(value),
+                .children(display_lines(&value).into_iter().map(|groups| {
+                    // Wrap only between 4-character groups, never mid-group.
+                    div()
+                        .flex()
+                        .flex_row()
+                        .flex_wrap()
+                        .gap_x(px(5.))
+                        .children(groups.into_iter().map(|g| div().child(g)))
+                })),
         )
         .child(
             div()
@@ -308,12 +319,29 @@ pub fn copy_box(id: impl Into<ElementId>, value: impl Into<SharedString>) -> gpu
                 .rounded(px(4.))
                 .cursor_pointer()
                 .hover(move |s| s.bg(t.muted))
-                .on_click(move |_, _, cx| {
+                .clickable(Probe::new("button", "Copy"), move |_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(v2.to_string()));
                     crate::shell::toast(cx, "Copied to clipboard");
                 })
                 .child(icon("copy").size(px(14.))),
         )
+}
+
+/// How [`copy_box`] lays a key out: a `[fingerprint/path]` origin on its
+/// own line, then the key in 4-character groups (the copied text is
+/// unchanged).
+fn display_lines(value: &str) -> Vec<Vec<String>> {
+    let (origin, rest) = match value.find(']') {
+        Some(i) if value.starts_with('[') => (Some(&value[..=i]), &value[i + 1..]),
+        _ => (None, value),
+    };
+    let chars: Vec<char> = rest.chars().collect();
+    let groups: Vec<String> = chars.chunks(4).map(|c| c.iter().collect()).collect();
+    origin
+        .map(|o| vec![o.to_string()])
+        .into_iter()
+        .chain(std::iter::once(groups))
+        .collect()
 }
 
 #[cfg(test)]

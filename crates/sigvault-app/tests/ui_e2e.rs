@@ -211,3 +211,87 @@ fn cloud_workspace_starts_at_network_choice() {
     // and Continue must wait for a choice.
     assert!(app.node("heading", "Choose a network").is_some());
 }
+
+/// Tab + Enter, as a keyboard user would (no mouse).
+impl App {
+    fn key(&mut self, keys: &str) {
+        let r = self.call(json!({ "cmd": "key", "keys": keys }));
+        assert_eq!(r["ok"], true, "key {keys}: {r}");
+    }
+
+    fn has(&mut self, role: &str, label: &str) -> bool {
+        self.node(role, label).is_some()
+    }
+}
+
+#[test]
+#[ignore = "opens a window; run with --ignored (xvfb-run on headless Linux)"]
+fn key_picker_is_completable_by_keyboard() {
+    const XPUB: &str = "[d093c7a2/48'/1'/0'/2']tpubDEvZxV86Br8Knbm9tWcr5Hvmg5cYTYsg92vinqH6Bie6U8ix8CsoN9W11NQygqTSkNCj6UmcE4DBXZ8Nxp6RzBzBQUuUqmrqQ8mnBpBNZLx";
+    let mut app = App::launch();
+    app.click("card", "On this device");
+    app.wait_page("/local/home");
+
+    // A watch-only key in the library (no keychain password needed).
+    app.click("nav", "Add key");
+    app.wait_page("/local/keys/add");
+    app.click("choice", "Extended public key");
+    app.wait_until("the xpub field to take focus", |s| {
+        s["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|n| n["role"] == "input" && n["focused"] == true)
+    });
+    app.type_text(XPUB);
+    app.click("button", "Continue");
+    app.click("input", "e.g. Laptop key, Trezor (Alice), Backup seed");
+    app.type_text("Cosigner");
+    app.click("button", "Add to library");
+    app.wait_until("the key to be saved", |s| s["page"] != "/local/keys/add");
+
+    // New single-key wallet, then pick its key with Tab + Enter only.
+    app.click("nav", "New wallet");
+    app.wait_page("/local/wallets/new");
+    app.click("input", "Savings");
+    app.type_text("Rainy day");
+    app.click("option", "Single key");
+    app.click("button", "Continue");
+    // A single-slot wallet may open the picker straight away.
+    let overlay = |s: &Value| {
+        s["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|n| n["role"] == "overlay")
+    };
+    let s = app.wait_until("the keys step", |s| {
+        overlay(s)
+            || s["nodes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|n| n["label"] == "Choose key")
+    });
+    if !overlay(&s) {
+        app.click("button", "Choose key");
+    }
+    app.wait_until("the key picker", |s| {
+        s["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|n| n["role"] == "option" && n["label"] == "Cosigner")
+    });
+    // Focus starts in the search field; one Tab reaches the first key.
+    app.key("tab");
+    app.key("enter");
+    app.wait_until("the picker to close with the key chosen", |s| {
+        let nodes = s["nodes"].as_array().cloned().unwrap_or_default();
+        !nodes.iter().any(|n| n["role"] == "overlay")
+            && nodes
+                .iter()
+                .any(|n| n["role"] == "button" && n["label"] == "Change")
+    });
+    assert!(!app.has("button", "Choose key"), "slot still empty");
+}

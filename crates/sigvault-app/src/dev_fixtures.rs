@@ -218,7 +218,8 @@ fn session_state(ty: &str, signer_fp: Option<String>) -> SessionState {
                 },
                 "signature_slots": [
                     { "fingerprint": signer_fp.unwrap_or_else(|| "3f8a91c2".into()), "derivation_path": "m/48'/1'/0'/2'" },
-                    { "fingerprint": "b71d04e9", "derivation_path": "m/48'/1'/0'/2'" }
+                    { "fingerprint": "b71d04e9", "derivation_path": "m/48'/1'/0'/2'" },
+                    { "fingerprint": "5c2e88a0", "derivation_path": "m/48'/1'/0'/2'" }
                 ]
             })),
         ),
@@ -266,7 +267,7 @@ fn txout(value: u64, script: &[u8]) -> Vec<u8> {
     o
 }
 
-fn fixture_psbt() -> String {
+pub(crate) fn fixture_psbt() -> String {
     let inputs = [(0x11u8, 50_000_000u64), (0x22, 49_500_000)];
     let outputs = [
         (p2wsh(0x5a), 25_000_000u64, false),

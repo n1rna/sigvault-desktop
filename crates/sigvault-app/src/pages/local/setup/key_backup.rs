@@ -11,17 +11,16 @@ use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 
 use gpui::{
-    div, prelude::*, px, Context, Entity, EventEmitter, FontWeight, SharedString, Subscription,
-    Window,
+    div, prelude::*, px, AnyElement, Context, Entity, EventEmitter, FontWeight, SharedString,
+    Subscription, Window,
 };
 
 use super::api::{self, DerivedKey, HotSecret};
 use super::files::{file_safe, save_text_file};
-use super::ui::{
-    alert_text, error_line, field_label, primary_button, secondary_button, setup_alert, AlertTone,
-};
+use super::ui::{alert_text, error_line, field_label, secondary_button, setup_alert, AlertTone};
+use crate::e2e::{E2eClick, Probe};
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{checkbox, InputEvent, TextInput};
+use crate::ui::{button, checkbox, InputEvent, TextInput};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Stage {
@@ -121,8 +120,13 @@ impl KeyBackup {
             file_safe(&slot_label),
             derived.fingerprint
         );
+        let positions = pick_positions(3, words.len());
+        for (a, p) in answers.iter().zip(&positions) {
+            let label = format!("Word {}", p + 1);
+            a.update(cx, |a, cx| a.set_label(label, cx));
+        }
         Self {
-            positions: pick_positions(3, words.len()),
+            positions,
             words,
             derived,
             slot_label,
@@ -168,8 +172,12 @@ impl KeyBackup {
     fn go_quiz(&mut self, cx: &mut Context<Self>) {
         // A fresh quiz each time, like the remounted TSX stage.
         self.positions = pick_positions(3, self.words.len());
-        for a in &self.answers {
-            a.update(cx, |a, cx| a.clear(cx));
+        for (a, p) in self.answers.iter().zip(&self.positions) {
+            let label = format!("Word {}", p + 1);
+            a.update(cx, |a, cx| {
+                a.clear(cx);
+                a.set_label(label, cx);
+            });
         }
         self.checked = false;
         self.stage = Stage::Quiz;
@@ -298,19 +306,15 @@ impl KeyBackup {
                             .child(
                                 div()
                                     .font_family(FONT_MONO)
-                                    .text_size(px(10.))
-                                    .text_color(alpha(t.muted_foreground, 0.7))
+                                    .text_size(px(12.))
+                                    .text_color(t.ink_3)
                                     .child(format!("{:02}", i + 1)),
                             )
                             .child(
                                 div()
                                     .font_family(FONT_MONO)
                                     .text_size(px(12.))
-                                    .text_color(if revealed {
-                                        t.foreground
-                                    } else {
-                                        alpha(t.muted_foreground, 0.35)
-                                    })
+                                    .text_color(if revealed { t.foreground } else { t.ink_3 })
                                     .child(if revealed {
                                         w.clone()
                                     } else {
@@ -361,34 +365,17 @@ impl KeyBackup {
                                         .shadow_sm()
                                         .cursor_pointer()
                                         .hover(move |s| s.border_color(t.primary))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.revealed = true;
-                                            cx.notify();
-                                        }))
+                                        .clickable(
+                                            Probe::new("button", "Reveal words"),
+                                            cx.listener(|this, _, _, cx| {
+                                                this.revealed = true;
+                                                cx.notify();
+                                            }),
+                                        )
                                         .child("Make sure no one is watching, then reveal"),
                                 ),
                         )
                     }),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        secondary_button("discard-key", "Discard key")
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(KeyBackupEvent::Discard))),
-                    )
-                    .child(
-                        div().flex_1().child(
-                            primary_button("written", "I've written them down")
-                                .full_width()
-                                .icon_right("arrow-right")
-                                .disabled(!revealed)
-                                .on_click(cx.listener(|this, _, _, cx| this.go_quiz(cx))),
-                        ),
-                    ),
             )
     }
 
@@ -396,10 +383,6 @@ impl KeyBackup {
         let t = theme();
         let correct = self.correct(cx);
         let all_correct = correct.iter().all(|c| *c);
-        let any_blank = self
-            .answers
-            .iter()
-            .any(|a| a.read(cx).text().trim().is_empty());
         let checked = self.checked;
 
         div()
@@ -421,7 +404,7 @@ impl KeyBackup {
                         .gap_1()
                         .child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(t.muted_foreground)
                                 .child(format!("Word #{}", p + 1)),
                         )
@@ -439,27 +422,6 @@ impl KeyBackup {
                     "That doesn't match. Check your written copy, or go back and look at the words again.",
                 ))
             })
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(secondary_button("show-words", "← Show words").on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.stage = Stage::Words;
-                            cx.notify();
-                        },
-                    )))
-                    .child(
-                        div().flex_1().child(
-                            primary_button("confirm-quiz", "Confirm")
-                                .full_width()
-                                .disabled(any_blank)
-                                .on_click(cx.listener(|this, _, _, cx| this.submit_quiz(cx))),
-                        ),
-                    ),
-            )
     }
 
     fn render_files(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -550,19 +512,55 @@ impl KeyBackup {
                 d.child(div().flex().flex_col().gap_1().children(self.saved_files.iter().map(|p| {
                     div()
                         .font_family(FONT_MONO)
-                        .text_size(px(11.))
+                        .text_size(px(12.))
                         .text_color(t.muted_foreground)
                         .truncate()
                         .child(format!("✓ {p}"))
                 })))
             })
             .children(self.error.clone().map(|e| alert_text(AlertTone::Error, e)))
-            .child(
-                primary_button("use-key", self.done_label.clone())
-                    .full_width()
+    }
+
+    /// The current stage's buttons, for the host's footer bar (so they
+    /// never scroll out of view under it).
+    pub fn footer_actions(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        match self.stage {
+            Stage::Words => vec![
+                button("discard-key", "Discard key")
+                    .outline()
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(KeyBackupEvent::Discard)))
+                    .into_any_element(),
+                button("written", "I've written them down")
                     .icon_right("arrow-right")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(KeyBackupEvent::Done))),
-            )
+                    .disabled(!self.revealed)
+                    .on_click(cx.listener(|this, _, _, cx| this.go_quiz(cx)))
+                    .into_any_element(),
+            ],
+            Stage::Quiz => {
+                let any_blank = self
+                    .answers
+                    .iter()
+                    .any(|a| a.read(cx).text().trim().is_empty());
+                vec![
+                    button("show-words", "Show words")
+                        .outline()
+                        .icon("arrow-left")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.stage = Stage::Words;
+                            cx.notify();
+                        }))
+                        .into_any_element(),
+                    button("confirm-quiz", "Confirm")
+                        .disabled(any_blank)
+                        .on_click(cx.listener(|this, _, _, cx| this.submit_quiz(cx)))
+                        .into_any_element(),
+                ]
+            }
+            Stage::Files => vec![button("use-key", self.done_label.clone())
+                .icon_right("arrow-right")
+                .on_click(cx.listener(|_, _, _, cx| cx.emit(KeyBackupEvent::Done)))
+                .into_any_element()],
+        }
     }
 }
 
@@ -585,7 +583,7 @@ impl Render for KeyBackup {
                     .flex_row()
                     .items_center()
                     .gap_2()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(t.muted_foreground)
                     .children(crumbs.iter().enumerate().map(|(i, (s, label))| {
@@ -594,9 +592,7 @@ impl Render for KeyBackup {
                             .flex_row()
                             .items_center()
                             .gap_2()
-                            .when(i > 0, |d| {
-                                d.child(div().text_color(alpha(t.muted_foreground, 0.5)).child("›"))
-                            })
+                            .when(i > 0, |d| d.child(div().text_color(t.ink_3).child("›")))
                             .child(
                                 div()
                                     .when(*s == stage, |d| d.text_color(t.foreground))

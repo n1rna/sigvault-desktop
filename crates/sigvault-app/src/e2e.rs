@@ -202,9 +202,38 @@ pub trait E2e: ParentElement + Sized {
 impl<T: ParentElement> E2e for T {}
 
 /// `.clickable(Probe::new("nav", "Keys"), handler)`: `on_click` plus a probe
-/// the driver can click.
-pub trait E2eClick: StatefulInteractiveElement + ParentElement + Sized {
+/// the driver can click. Unless the probe is disabled, the element also
+/// becomes a keyboard tab stop with the focus ring (Enter / Space click it),
+/// see [`crate::ui::focus`].
+pub trait E2eClick: StatefulInteractiveElement + ParentElement + Styled + Sized {
     fn clickable(
+        mut self,
+        probe: Probe,
+        f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        if probe.disabled {
+            return self.clickable_no_focus(probe, f);
+        }
+        let h: ClickHandler = Rc::new(f);
+        let key = self
+            .interactivity()
+            .element_id
+            .clone()
+            .unwrap_or_else(|| gpui::ElementId::Name(probe.label.clone().into()));
+        let radius = crate::ui::focus::radius_of(self.style())
+            .unwrap_or(crate::ui::focus::DEFAULT_RING_RADIUS);
+        // The focus target is absolutely positioned over this element.
+        if self.style().position.is_none() {
+            self = self.relative();
+        }
+        let h2 = h.clone();
+        self.child(crate::ui::focus::focus_target(key, radius, h.clone()))
+            .clickable_no_focus(probe, move |e, w, cx| h2(e, w, cx))
+    }
+
+    /// [`E2eClick::clickable`] without making the element a tab stop (for
+    /// an element inside another tab stop, or a backdrop).
+    fn clickable_no_focus(
         self,
         probe: Probe,
         f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -219,7 +248,7 @@ pub trait E2eClick: StatefulInteractiveElement + ParentElement + Sized {
     }
 }
 
-impl<T: StatefulInteractiveElement + ParentElement> E2eClick for T {}
+impl<T: StatefulInteractiveElement + ParentElement + Styled> E2eClick for T {}
 
 // ─── Server ─────────────────────────────────────────────────────────────
 

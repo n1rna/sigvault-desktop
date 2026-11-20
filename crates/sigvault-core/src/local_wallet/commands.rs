@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::host::{AppHandle, State};
 use bdk_wallet::bitcoin::bip32::{Fingerprint, Xpriv};
 use bdk_wallet::bitcoin::secp256k1::Secp256k1;
-use bdk_wallet::bitcoin::{Address, Amount, FeeRate, Network, Psbt};
+use bdk_wallet::bitcoin::{Address, Amount, FeeRate, Network, Psbt, Transaction};
 use bdk_wallet::chain::ChainPosition;
 use bdk_wallet::miniscript::psbt::PsbtExt;
 use bdk_wallet::KeychainKind;
@@ -1263,6 +1263,96 @@ pub async fn cmd_local_sign_psbt_hardware(
     })
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FinalizePsbtRequest {
+    pub psbt_base64: String,
+}
+
+/// What a signed PSBT would put on the network, without broadcasting it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct FinalizePsbtResponse {
+    /// Every input carries enough signatures: the transaction can be
+    /// broadcast as is.
+    pub complete: bool,
+    /// The final transaction's id (only when `complete`).
+    pub txid: Option<String>,
+    /// Virtual size of the final transaction (only when `complete`).
+    pub vsize: Option<u64>,
+    /// Absolute fee, when every input carries its UTXO.
+    pub fee_sat: Option<u64>,
+    /// Why the PSBT can't be finalized yet (missing signatures, …).
+    pub detail: Option<String>,
+}
+
+/// Finalize a copy of `psbt` via miniscript and extract the transaction.
+/// Nothing is broadcast and `psbt` itself is left untouched, so the caller
+/// can still hand the signed (not finalized) PSBT to
+/// [`cmd_local_broadcast_psbt`] or to another signer.
+///
+/// `wallet.sign(.., try_finalize: true)` does not handle multisig PSBTs
+/// correctly; `PsbtExt::finalize_mut` is the canonical path used by
+/// walletrs's server too.
+pub fn finalize_psbt(psbt: &Psbt) -> Result<Transaction, String> {
+    let mut psbt = psbt.clone();
+    let secp = Secp256k1::verification_only();
+    if let Err(errors) = psbt.finalize_mut(&secp) {
+        return Err(format!("finalize: {:?}", errors));
+    }
+    psbt.extract_tx().map_err(|e| format!("extract_tx: {}", e))
+}
+
+/// [`FinalizePsbtResponse`] for a base64 PSBT. Errors only when the PSBT
+/// can't be parsed; missing signatures are reported as `complete: false`.
+pub fn inspect_signed_psbt(psbt_base64: &str) -> Result<FinalizePsbtResponse, String> {
+    let psbt = Psbt::from_str(psbt_base64.trim()).map_err(|e| format!("parse psbt: {}", e))?;
+    let fee_sat = psbt.fee().ok().map(|f| f.to_sat());
+    Ok(match finalize_psbt(&psbt) {
+        Ok(tx) => FinalizePsbtResponse {
+            complete: true,
+            txid: Some(tx.compute_txid().to_string()),
+            vsize: Some(tx.vsize() as u64),
+            fee_sat,
+            detail: None,
+        },
+        Err(detail) => FinalizePsbtResponse {
+            complete: false,
+            txid: None,
+            vsize: None,
+            fee_sat,
+            detail: Some(detail),
+        },
+    })
+}
+
+/// Upper bound on the virtual size the transaction in an unsigned PSBT
+/// will have once `descriptor` (the spending wallet's) satisfies every
+/// input: the same estimate the wallet used when it picked the fee. Lets
+/// the send review show the fee rate the built PSBT actually pays rather
+/// than the rate that was typed in. `None` if either can't be parsed.
+pub fn estimate_signed_vsize(psbt_base64: &str, descriptor: &str) -> Option<u64> {
+    use bdk_wallet::bitcoin::Weight;
+    use bdk_wallet::miniscript::{Descriptor, DescriptorPublicKey};
+    let psbt = Psbt::from_str(psbt_base64.trim()).ok()?;
+    let desc = Descriptor::<DescriptorPublicKey>::from_str(descriptor.trim()).ok()?;
+    let single = desc.into_single_descriptors().ok()?.into_iter().next()?;
+    let per_input = single.max_weight_to_satisfy().ok()?;
+    let tx = &psbt.unsigned_tx;
+    // Unsigned weight + segwit marker/flag + each input's witness.
+    let weight = tx.weight() + Weight::from_wu(2) + per_input * tx.input.len() as u64;
+    Some(weight.to_vbytes_ceil())
+}
+
+/// Check that a signed PSBT is ready to broadcast and describe the final
+/// transaction (txid, size, fee) without broadcasting it. The send flow
+/// shows this between signing and [`cmd_local_broadcast_psbt`].
+pub async fn cmd_local_finalize_psbt(
+    app_state: State<'_, ApplicationState>,
+    request: FinalizePsbtRequest,
+) -> Result<FinalizePsbtResponse, String> {
+    app_state.require_local_mode().await?;
+    inspect_signed_psbt(&request.psbt_base64)
+}
+
 pub async fn cmd_local_broadcast_psbt(
     app: AppHandle,
     app_state: State<'_, ApplicationState>,
@@ -1286,20 +1376,8 @@ pub async fn cmd_local_broadcast_psbt(
         .electrs_url_for(network)
         .map_err(|e| e.to_string())?;
 
-    let mut psbt =
-        Psbt::from_str(&request.psbt_base64).map_err(|e| format!("parse psbt: {}", e))?;
-
-    // Finalize via miniscript. wallet.sign(.., try_finalize: true) does
-    // not handle multisig PSBTs correctly; PsbtExt::finalize_mut is the
-    // canonical path used by walletrs's server too.
-    let secp = Secp256k1::verification_only();
-    if let Err(errors) = psbt.finalize_mut(&secp) {
-        return Err(format!("finalize: {:?}", errors));
-    }
-
-    let tx = psbt
-        .extract_tx()
-        .map_err(|e| format!("extract_tx: {}", e))?;
+    let psbt = Psbt::from_str(&request.psbt_base64).map_err(|e| format!("parse psbt: {}", e))?;
+    let tx = finalize_psbt(&psbt)?;
 
     // Electrum I/O blocks; offload to a blocking thread so the runtime
     // stays responsive.
@@ -1493,4 +1571,111 @@ pub async fn cmd_local_export_wallet_backup(
         meta.created_at,
     );
     serde_json::to_string_pretty(&backup).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bdk_wallet::bitcoin::hashes::Hash;
+    use bdk_wallet::bitcoin::{absolute, transaction, Amount, OutPoint, ScriptBuf, Sequence};
+    use bdk_wallet::bitcoin::{TxIn, TxOut, Txid, Witness};
+    use bdk_wallet::{SignOptions, Wallet};
+
+    const DESC: &str = "wpkh(tprv8ZgxMBicQKsPdy6LMhUtFHAgpocR8GC6QmwMSFpZs7h6Eziw3SpThFfczTDh5rW2krkqffa11UpX3XkeTTB2FvzZKWXqPY54Y6Rq4AQ5R8L/84'/1'/0'/0/*)";
+    const CHANGE: &str = "wpkh(tprv8ZgxMBicQKsPdy6LMhUtFHAgpocR8GC6QmwMSFpZs7h6Eziw3SpThFfczTDh5rW2krkqffa11UpX3XkeTTB2FvzZKWXqPY54Y6Rq4AQ5R8L/84'/1'/0'/1/*)";
+
+    /// A wallet holding one unconfirmed 100k sat coin, and an unsigned
+    /// PSBT paying 40k of it to an outside address.
+    fn wallet_and_psbt() -> (Wallet, Psbt) {
+        let mut wallet = Wallet::create(DESC, CHANGE)
+            .network(Network::Regtest)
+            .create_wallet_no_persist()
+            .unwrap();
+        let addr = wallet.reveal_next_address(KeychainKind::External).address;
+        let funding = Transaction {
+            version: transaction::Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::new(Txid::from_byte_array([7; 32]), 0),
+                script_sig: ScriptBuf::new(),
+                sequence: Sequence::MAX,
+                witness: Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(100_000),
+                script_pubkey: addr.script_pubkey(),
+            }],
+        };
+        wallet.apply_unconfirmed_txs([(funding, 1)]);
+        let dest = Address::from_str("bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080")
+            .unwrap()
+            .require_network(Network::Regtest)
+            .unwrap();
+        let mut b = wallet.build_tx();
+        b.fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
+        b.add_recipient(dest.script_pubkey(), Amount::from_sat(40_000));
+        let psbt = b.finish().unwrap();
+        (wallet, psbt)
+    }
+
+    #[test]
+    fn unsigned_psbt_is_not_ready_to_broadcast() {
+        let (_, psbt) = wallet_and_psbt();
+        let r = inspect_signed_psbt(&psbt.to_string()).unwrap();
+        assert!(!r.complete);
+        assert_eq!(r.txid, None);
+        assert!(r.detail.is_some());
+        // The fee is known before signing: inputs carry their UTXOs.
+        assert!(r.fee_sat.is_some_and(|f| f > 0));
+    }
+
+    #[test]
+    fn estimated_vsize_bounds_the_signed_size() {
+        let (wallet, mut psbt) = wallet_and_psbt();
+        let desc = wallet.public_descriptor(KeychainKind::External).to_string();
+        let est = estimate_signed_vsize(&psbt.to_string(), &desc).unwrap();
+        let opts = SignOptions {
+            try_finalize: false,
+            ..Default::default()
+        };
+        wallet.sign(&mut psbt, opts).unwrap();
+        let actual = inspect_signed_psbt(&psbt.to_string())
+            .unwrap()
+            .vsize
+            .unwrap();
+        // An upper bound, off by at most a byte per signature (ECDSA
+        // signature length varies).
+        assert!(est >= actual && est - actual <= 2, "{est} vs {actual}");
+        assert_eq!(estimate_signed_vsize("nonsense", &desc), None);
+    }
+
+    #[test]
+    fn signed_psbt_finalizes_without_broadcasting() {
+        let (wallet, mut psbt) = wallet_and_psbt();
+        let unsigned_txid = psbt.unsigned_tx.compute_txid();
+        let opts = SignOptions {
+            try_finalize: false,
+            ..Default::default()
+        };
+        wallet.sign(&mut psbt, opts).unwrap();
+        let signed = psbt.to_string();
+
+        let r = inspect_signed_psbt(&signed).unwrap();
+        assert!(r.complete, "{r:?}");
+        // Segwit: signing doesn't change the txid.
+        assert_eq!(r.txid, Some(unsigned_txid.to_string()));
+        assert_eq!(r.fee_sat, Some(psbt.fee().unwrap().to_sat()));
+        assert!(r.vsize.is_some_and(|v| v > 100));
+        assert_eq!(r.detail, None);
+        // The PSBT handed in is untouched (still not finalized), so it can
+        // go to cmd_local_broadcast_psbt or another signer afterwards.
+        let again = Psbt::from_str(&signed).unwrap();
+        assert!(again.inputs[0].final_script_witness.is_none());
+        assert!(finalize_psbt(&again).is_ok());
+    }
+
+    #[test]
+    fn garbage_is_an_error() {
+        assert!(inspect_signed_psbt("not a psbt").is_err());
+    }
 }

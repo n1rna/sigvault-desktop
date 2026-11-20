@@ -27,10 +27,11 @@ use sigvault_core::local_wallet::commands::cmd_local_get_settings;
 use sigvault_core::State;
 
 use super::sources::{
-    default_path, icon_tile, key_expr, network_badge, to_core_secret, with_origin, KeySource,
-    PathPreset, NETWORKS,
+    copy_box, default_path, icon_tile, key_expr, network_badge, to_core_secret, with_origin,
+    KeySource, PathPreset, NETWORKS,
 };
 use super::unlock::{KeychainUnlock, UnlockEvent};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, NewKey};
 use crate::pages::local::setup::api::{self, DeriveInput, DerivedKey, HotSecret, SlotKey};
 use crate::pages::local::setup::device_picker::{DevicePicker, DevicePickerEvent};
@@ -40,6 +41,7 @@ use crate::pages::local::setup::keys::{
     classify_pasted_key, extended_key_depth, is_test_network_key, normalize_path, PastedKey,
 };
 use crate::pages::local::setup::mnemonic::{MnemonicEvent, MnemonicInput};
+use crate::pages::local::setup::slot_board::custody_badge;
 use crate::pages::local::setup::ui::{seg, segmented};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme, FONT_MONO};
@@ -145,6 +147,7 @@ impl AddKeyFlow {
         let path = cx.new(|cx| {
             TextInput::new(window, cx)
                 .mono()
+                .label("Derivation path")
                 .with_text(default_path(&network))
         });
         let label = cx.new(|cx| {
@@ -153,7 +156,12 @@ impl AddKeyFlow {
                 .placeholder("e.g. Laptop key, Trezor (Alice), Backup seed")
         });
         let mnemonic = cx.new(|cx| MnemonicInput::new(24, window, cx));
-        let bip39_passphrase = cx.new(|cx| TextInput::new(window, cx).masked().mono());
+        let bip39_passphrase = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .mono()
+                .label("BIP39 passphrase")
+        });
         let xprv = cx.new(|cx| {
             TextInput::new(window, cx)
                 .mono()
@@ -648,6 +656,8 @@ impl AddKeyFlow {
                 KeyBackupEvent::Done => this.go_details(Material::Derivable(secret.clone()), cx),
             }),
         );
+        // Its buttons live in our footer: re-render when it changes.
+        self._subs.push(cx.observe(&backup, |_, _, cx| cx.notify()));
         self.backup = Some(backup);
     }
 
@@ -861,7 +871,12 @@ impl AddKeyFlow {
                         .into_any_element()
                 };
                 match self.source {
-                    Some(KeySource::Generate) if self.backup.is_none() => right.push(
+                    Some(KeySource::Generate) if self.backup.is_some() => {
+                        if let Some(b) = self.backup.clone() {
+                            right.extend(b.update(cx, |b, cx| b.footer_actions(cx)));
+                        }
+                    }
+                    Some(KeySource::Generate) => right.push(
                         button("akf-generate", "Generate key")
                             .icon("sparkles")
                             .loading(self.busy)
@@ -925,18 +940,34 @@ impl AddKeyFlow {
 
     // ── render ──
 
-    fn render_source_step(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_source_step(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let t = theme();
+        // Columns follow the room there is: the page sits beside the
+        // sidebar; the picker modal is ~640px wide.
+        let vw = f32::from(window.viewport_size().width);
+        let cols: u16 = if !self.hosted {
+            if vw < 760. {
+                1
+            } else {
+                2
+            }
+        } else if vw >= 1320. {
+            3
+        } else if vw >= 860. {
+            2
+        } else {
+            1
+        };
         let source_card = |s: KeySource, cx: &mut Context<Self>| {
             div()
-                .flex_1()
-                .flex_basis(px(0.))
                 .min_w_0()
                 .flex()
                 .child(
                     choice_card(SharedString::from(format!("src-{}", s.id())), false)
                         .w_full()
-                        .on_click(
+                        .h_full()
+                        .clickable(
+                            Probe::new("choice", s.title()),
                             cx.listener(move |this, _, window, cx| this.choose(s, window, cx)),
                         )
                         .child(
@@ -990,41 +1021,32 @@ impl AddKeyFlow {
                 )
                 .into_any_element()
         };
-        let group =
-            |title: &'static str, desc: &'static str, cards: Vec<AnyElement>, cols: usize| {
-                let filler = cols.saturating_sub(cards.len());
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(t.foreground)
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(t.muted_foreground)
-                                    .child(desc),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap_3()
-                            .children(cards)
-                            .children((0..filler).map(|_| div().flex_1().flex_basis(px(0.)))),
-                    )
-            };
+        let group = |title: &'static str, desc: &'static str, cards: Vec<AnyElement>| {
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(t.foreground)
+                                .child(title),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(t.muted_foreground)
+                                .child(desc),
+                        ),
+                )
+                .child(div().grid().grid_cols(cols).gap_3().children(cards))
+        };
         let create: Vec<_> = KeySource::CREATE
             .iter()
             .map(|s| source_card(*s, cx))
@@ -1045,19 +1067,16 @@ impl AddKeyFlow {
                 "Create new",
                 "Start a key from scratch on this computer.",
                 create,
-                3,
             ))
             .child(group(
                 "Import a private key",
                 "Bring in a key you already have. It's stored encrypted under your keychain password.",
                 private,
-                3,
             ))
             .child(group(
                 "Add a public key (watch-only)",
                 "Only the public key is stored here. The private key never leaves the device or its owner, and signing happens there.",
                 public,
-                3,
             ))
             .into_any_element()
     }
@@ -1133,8 +1152,8 @@ impl AddKeyFlow {
                         .rounded_full()
                         .border_1()
                         .border_color(alpha(t.primary, 0.5))
-                        .text_size(px(11.))
-                        .text_color(t.primary)
+                        .text_size(px(12.))
+                        .text_color(t.brand_ink)
                         .child(n),
                 )
                 .child(
@@ -1205,7 +1224,7 @@ impl AddKeyFlow {
                     .text_color(t.muted_foreground)
                     .cursor_pointer()
                     .hover(move |s| s.text_color(t.foreground))
-                    .on_click(cx.listener(|this, _, window, cx| {
+                    .clickable(Probe::new("button", "This phrase uses a BIP39 passphrase"), cx.listener(|this, _, window, cx| {
                         this.show_passphrase = true;
                         this.bip39_passphrase.read(cx).focus(window);
                         cx.notify();
@@ -1303,13 +1322,23 @@ impl AddKeyFlow {
                     .child(
                         div()
                             .id("hw-advanced")
-                            .text_color(t.primary)
+                            .text_color(t.brand_ink)
                             .cursor_pointer()
                             .hover(|s| s.underline())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.show_advanced = !this.show_advanced;
-                                cx.notify();
-                            }))
+                            .clickable(
+                                Probe::new(
+                                    "button",
+                                    if self.show_advanced {
+                                        "Hide derivation path"
+                                    } else {
+                                        "Change derivation path"
+                                    },
+                                ),
+                                cx.listener(|this, _, _, cx| {
+                                    this.show_advanced = !this.show_advanced;
+                                    cx.notify();
+                                }),
+                            )
                             .child(if self.show_advanced { "Hide" } else { "Change" }),
                     ),
             )
@@ -1399,9 +1428,9 @@ impl AddKeyFlow {
             .child(self.path.clone())
             .child(
                 div()
-                    .text_size(px(11.5))
+                    .text_size(px(12.))
                     .line_height(px(16.))
-                    .text_color(alpha(theme().muted_foreground, 0.85))
+                    .text_color(theme().ink_3)
                     .child("Multisig and timelocked wallets use BIP48 (m/48'/1'/0'/2'). Change the account number to get another independent key from the same seed."),
             )
             .into_any_element()
@@ -1456,11 +1485,7 @@ impl AddKeyFlow {
                             }),
                     ),
             )
-            .child(if is_secret {
-                badge("Private key", Tone::Success)
-            } else {
-                badge("Watch-only", Tone::Secondary)
-            });
+            .child(custody_badge(is_secret));
 
         let network_control = if self.network_locked {
             div()
@@ -1530,9 +1555,17 @@ impl AddKeyFlow {
                 .child(divider())
                 .child(row("Derivation path", mono_(k.derivation_path.clone())))
                 .child(divider())
-                .child(row("Extended public key", mono_(k.xpub.clone())))
+                // Same 4-character grouping as the key's detail page, so
+                // long keys wrap and can be compared against a device.
+                .child(row(
+                    "Extended public key",
+                    copy_box("akf-copy-xpub", k.xpub.clone()).into_any_element(),
+                ))
                 .child(divider())
-                .child(row("Key expression", mono_(key_expr(&k))))
+                .child(row(
+                    "Key expression",
+                    copy_box("akf-copy-expr", key_expr(&k)).into_any_element(),
+                ))
                 .into_any_element()
         } else {
             card()
@@ -1566,10 +1599,14 @@ impl AddKeyFlow {
                     .text_color(t.muted_foreground)
                     .cursor_pointer()
                     .hover(move |s| s.text_color(t.foreground))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.show_advanced = !this.show_advanced;
-                        cx.notify();
-                    }))
+                    .clickable(
+                        Probe::new("button", "Advanced: derivation path")
+                            .selected(self.show_advanced),
+                        cx.listener(|this, _, _, cx| {
+                            this.show_advanced = !this.show_advanced;
+                            cx.notify();
+                        }),
+                    )
                     .child(
                         icon(if self.show_advanced {
                             "chevron-down"
@@ -1609,8 +1646,8 @@ impl AddKeyFlow {
                     .when(!derivable, |d| {
                         d.child(
                             div()
-                                .text_size(px(11.5))
-                                .text_color(alpha(t.muted_foreground, 0.85))
+                                .text_size(px(12.))
+                                .text_color(t.ink_3)
                                 .child(match source {
                                     KeySource::Hardware => "The derivation path was chosen before reading the device. Go back to read a different account.",
                                     _ => "The derivation path comes from the key's origin and can't be changed.",
@@ -1668,7 +1705,7 @@ impl Render for AddKeyFlow {
         }
         let t = theme();
         let body = match self.step {
-            AddKeyStep::Source => self.render_source_step(cx),
+            AddKeyStep::Source => self.render_source_step(window, cx),
             AddKeyStep::Key => self.render_key_step(cx),
             AddKeyStep::Details => self.render_details_step(cx),
         };

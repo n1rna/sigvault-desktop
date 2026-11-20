@@ -8,6 +8,7 @@ use gpui::{
     Window,
 };
 
+use crate::e2e::{E2e, E2eClick, Probe};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{button, Button};
 
@@ -141,7 +142,6 @@ pub fn segmented(
                 .items_center()
                 .justify_center()
                 .rounded(px(3.))
-                .font_weight(FontWeight::MEDIUM)
                 .map(|d| {
                     if small {
                         d.px(px(10.)).py(px(4.)).text_size(px(12.))
@@ -149,17 +149,31 @@ pub fn segmented(
                         d.h(px(32.)).flex_1().text_size(px(12.))
                     }
                 })
-                .text_color(if selected {
-                    t.foreground
-                } else {
-                    t.muted_foreground
+                // Selected: brand fill (≥3:1 against the card in both
+                // themes) with white semibold text.
+                .map(|d| {
+                    if selected {
+                        d.bg(t.brand_fill)
+                            .text_color(t.brand_fill_contrast)
+                            .font_weight(FontWeight::SEMIBOLD)
+                    } else if o.disabled {
+                        d.text_color(t.ink_3).font_weight(FontWeight::MEDIUM)
+                    } else {
+                        d.text_color(t.muted_foreground)
+                            .font_weight(FontWeight::MEDIUM)
+                            .hover(move |s| s.text_color(t.foreground).bg(t.hover))
+                    }
                 })
-                .when(selected, |d| d.bg(alpha(t.primary, 0.10)))
-                .when(o.disabled, |d| d.opacity(0.4))
-                .when(!o.disabled, |d| {
-                    d.cursor_pointer()
-                        .hover(move |s| s.text_color(t.foreground))
-                        .on_click(move |_, w, cx| handler(v.clone(), w, cx))
+                .map(|d| {
+                    let probe = Probe::new("tab", o.label.to_string())
+                        .selected(selected)
+                        .disabled(o.disabled);
+                    if o.disabled {
+                        d.e2e(probe)
+                    } else {
+                        d.cursor_pointer()
+                            .clickable(probe, move |_, w, cx| handler(v.clone(), w, cx))
+                    }
                 })
                 .child(o.label)
         }))
@@ -228,7 +242,10 @@ pub fn network_options(
                 .min_w_0()
                 .px_3()
                 .py(px(10.))
-                .on_click(move |_, w, cx| handler(id, w, cx))
+                .clickable(
+                    Probe::new("option", *label).selected(value == id),
+                    move |_, w, cx| handler(id, w, cx),
+                )
                 .child(
                     div()
                         .text_size(px(13.))

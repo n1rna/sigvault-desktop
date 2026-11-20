@@ -23,15 +23,27 @@ mod ui;
 
 use futures::StreamExt;
 use gpui::{
-    point, px, size, App, AppContext, Application, Bounds, KeyBinding, TitlebarOptions,
-    WindowBounds, WindowOptions,
+    point, px, size, App, AppContext, Application, Bounds, KeyBinding, Menu, MenuItem, OsAction,
+    TitlebarOptions, WindowBounds, WindowOptions,
 };
 use sigvault_core::commands::cmd_initialize_app;
 use sigvault_core::{AppHandle, State};
 
 use crate::runtime::{backend, Backend};
 
-gpui::actions!(sigvault, [Quit, SwitchToDevice, SwitchToCloud]);
+gpui::actions!(
+    sigvault,
+    [
+        Quit,
+        About,
+        OpenSettings,
+        SwitchToDevice,
+        SwitchToCloud,
+        Minimize,
+        Zoom,
+        CloseWindow,
+    ]
+);
 
 fn main() {
     env_logger::Builder::from_env(
@@ -61,30 +73,10 @@ fn main() {
             theme::load_fonts(cx);
             #[cfg(debug_assertions)]
             dev_fixtures::install(cx);
+            theme::init(cx);
             ui::input::bind_keys(cx);
-            cx.on_action(|_: &Quit, cx| cx.quit());
-            cx.on_action(|_: &SwitchToDevice, cx| {
-                shell::switch_space(sigvault_core::app_mode::AppMode::Local, cx)
-            });
-            cx.on_action(|_: &SwitchToCloud, cx| {
-                shell::switch_space(sigvault_core::app_mode::AppMode::Cloud, cx)
-            });
-            #[cfg(target_os = "macos")]
-            cx.bind_keys([
-                KeyBinding::new("cmd-q", Quit, None),
-                KeyBinding::new("cmd-1", SwitchToDevice, None),
-                KeyBinding::new("cmd-2", SwitchToCloud, None),
-            ]);
-            #[cfg(not(target_os = "macos"))]
-            cx.bind_keys([
-                KeyBinding::new("ctrl-q", Quit, None),
-                KeyBinding::new("ctrl-1", SwitchToDevice, None),
-                KeyBinding::new("ctrl-2", SwitchToCloud, None),
-            ]);
-            cx.set_menus(vec![gpui::Menu {
-                name: "SigVault".into(),
-                items: vec![gpui::MenuItem::action("Quit SigVault", Quit)],
-            }]);
+            ui::focus::bind_keys(cx);
+            install_menus(cx);
 
             let bounds = Bounds::centered(None, size(px(980.), px(680.)), cx);
             let window = cx
@@ -139,4 +131,72 @@ fn main() {
             })
             .detach();
         });
+}
+
+/// App actions, their shortcuts and the menu bar (SigVault / Edit / Window).
+fn install_menus(cx: &mut App) {
+    use ui::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
+
+    cx.on_action(|_: &Quit, cx| cx.quit());
+    cx.on_action(|_: &SwitchToDevice, cx| {
+        shell::switch_space(sigvault_core::app_mode::AppMode::Local, cx)
+    });
+    cx.on_action(|_: &SwitchToCloud, cx| {
+        shell::switch_space(sigvault_core::app_mode::AppMode::Cloud, cx)
+    });
+    cx.on_action(|_: &OpenSettings, cx| shell::open_settings(cx));
+    // About / Minimize / Zoom / Close need the window: the root view
+    // handles them (shell/mod.rs).
+
+    #[cfg(target_os = "macos")]
+    cx.bind_keys([
+        KeyBinding::new("cmd-q", Quit, None),
+        KeyBinding::new("cmd-,", OpenSettings, None),
+        KeyBinding::new("cmd-1", SwitchToDevice, None),
+        KeyBinding::new("cmd-2", SwitchToCloud, None),
+        KeyBinding::new("cmd-m", Minimize, None),
+        KeyBinding::new("cmd-w", CloseWindow, None),
+    ]);
+    #[cfg(not(target_os = "macos"))]
+    cx.bind_keys([
+        KeyBinding::new("ctrl-q", Quit, None),
+        KeyBinding::new("ctrl-,", OpenSettings, None),
+        KeyBinding::new("ctrl-1", SwitchToDevice, None),
+        KeyBinding::new("ctrl-2", SwitchToCloud, None),
+        KeyBinding::new("ctrl-w", CloseWindow, None),
+    ]);
+
+    cx.set_menus(vec![
+        Menu {
+            name: "SigVault".into(),
+            items: vec![
+                MenuItem::action("About SigVault", About),
+                MenuItem::separator(),
+                MenuItem::action("Settings…", OpenSettings),
+                MenuItem::separator(),
+                MenuItem::action("Quit SigVault", Quit),
+            ],
+        },
+        Menu {
+            name: "Edit".into(),
+            items: vec![
+                MenuItem::os_action("Undo", Undo, OsAction::Undo),
+                MenuItem::os_action("Redo", Redo, OsAction::Redo),
+                MenuItem::separator(),
+                MenuItem::os_action("Cut", Cut, OsAction::Cut),
+                MenuItem::os_action("Copy", Copy, OsAction::Copy),
+                MenuItem::os_action("Paste", Paste, OsAction::Paste),
+                MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
+            ],
+        },
+        Menu {
+            name: "Window".into(),
+            items: vec![
+                MenuItem::action("Minimize", Minimize),
+                MenuItem::action("Zoom", Zoom),
+                MenuItem::separator(),
+                MenuItem::action("Close Window", CloseWindow),
+            ],
+        },
+    ]);
 }

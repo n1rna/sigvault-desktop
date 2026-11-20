@@ -13,7 +13,9 @@ use super::common::{icon_tile, main_window, network_badge_unless_named};
 use crate::runtime::backend;
 use crate::state::store;
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, button, card, divider, page_frame, section, Tone, FORM_WIDTH};
+use crate::ui::{
+    alert, appearance_section, button, card, divider, page_frame, section, Tone, FORM_WIDTH,
+};
 
 #[derive(Default, Clone)]
 struct Account {
@@ -187,7 +189,7 @@ impl CloudSettingsPage {
                     .bg(alpha(t.primary, 0.15))
                     .text_size(px(14.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(t.primary)
+                    .text_color(t.brand_ink)
                     .child(initial),
             )
             .child(
@@ -357,6 +359,7 @@ impl Render for CloudSettingsPage {
                             .description("Switch any time from the workspace switcher in the top bar (⌘1 / ⌘2).")
                             .child(workspace),
                     )
+                    .child(appearance_section(cx))
                     .child(section("About").child(about)),
             )
     }

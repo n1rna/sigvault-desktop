@@ -13,4 +13,5 @@ pub mod settings;
 pub mod setup;
 pub mod sync_status;
 pub mod wallet_list;
+pub mod wallet_unlock;
 pub mod widgets;

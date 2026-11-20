@@ -1,6 +1,9 @@
 //! Read-only PSBT (v0, BIP 174) summary for the signing review: outputs,
 //! their addresses, which ones return to the wallet, and the fee.
 //!
+//! Shared by both workspaces: the cloud signing session and the local send
+//! flow feed it into `ui::tx_summary` and `ui::signer_roster`.
+//!
 //! The app crate has no `bitcoin` dependency (only the core does), so this
 //! is a small dedicated parser. It never signs or modifies anything; on any
 //! parse problem it returns `None` and the page falls back to the raw PSBT.
@@ -24,6 +27,10 @@ pub struct PsbtSummary {
     /// Sum of input values, when every input carries its UTXO.
     pub input_total: Option<u64>,
     pub fee: Option<u64>,
+    /// Master fingerprints (lowercase hex) of keys that already signed at
+    /// least one input, from partial / taproot signatures matched to their
+    /// key origins.
+    pub signed_fingerprints: Vec<String>,
 }
 
 impl PsbtSummary {
@@ -69,10 +76,17 @@ pub fn summarize(psbt_base64: &str, hrp: &str) -> Option<PsbtSummary> {
     }
     let tx = tx?;
 
-    // Input maps: witness_utxo (0x01) or non_witness_utxo (0x00).
+    // Input maps: witness_utxo (0x01) or non_witness_utxo (0x00) for the
+    // amounts; partial / taproot signatures plus key origins for who has
+    // signed already.
     let mut input_total: Option<u64> = Some(0);
+    let mut signed: Vec<String> = Vec::new();
     for txin in &tx.inputs {
         let mut value = None;
+        let mut origins: Vec<(&[u8], String)> = Vec::new();
+        let mut sig_keys: Vec<&[u8]> = Vec::new();
+        let mut key_path_signed = false;
+        let mut internal_fps: Vec<String> = Vec::new();
         for (key, val) in r.map()? {
             match key.first() {
                 Some(0x01) if key.len() == 1 => {
@@ -83,8 +97,35 @@ pub fn summarize(psbt_base64: &str, hrp: &str) -> Option<PsbtSummary> {
                     let prev = parse_tx(val)?;
                     value = prev.outputs.get(txin.vout as usize).map(|o| o.value);
                 }
+                // partial_sig: key = 0x02 || pubkey
+                Some(0x02) => sig_keys.push(&key[1..]),
+                // bip32_derivation: key = 0x06 || pubkey, value = fp || path
+                Some(0x06) if val.len() >= 4 => origins.push((&key[1..], hex(&val[..4]))),
+                // tap_key_sig (key path)
+                Some(0x13) => key_path_signed = true,
+                // tap_script_sig: key = 0x14 || xonly || leaf hash
+                Some(0x14) if key.len() >= 33 => sig_keys.push(&key[1..33]),
+                // tap_bip32_derivation: value = leaf hashes || fp || path
+                Some(0x16) => {
+                    let mut vr = Reader { b: val, pos: 0 };
+                    let n = vr.varint()? as usize;
+                    vr.take(n.checked_mul(32)?)?;
+                    let fp = hex(vr.take(4)?);
+                    if n == 0 {
+                        internal_fps.push(fp.clone());
+                    }
+                    origins.push((&key[1..], fp));
+                }
                 _ => {}
             }
+        }
+        for k in sig_keys {
+            if let Some((_, fp)) = origins.iter().find(|(pk, _)| *pk == k) {
+                signed.push(fp.clone());
+            }
+        }
+        if key_path_signed {
+            signed.extend(internal_fps);
         }
         input_total = match (input_total, value) {
             (Some(t), Some(v)) => Some(t + v),
@@ -110,12 +151,19 @@ pub fn summarize(psbt_base64: &str, hrp: &str) -> Option<PsbtSummary> {
 
     let out_total: u64 = outputs.iter().map(|o| o.value).sum();
     let fee = input_total.and_then(|i| i.checked_sub(out_total));
+    signed.sort();
+    signed.dedup();
     Some(PsbtSummary {
         input_count: tx.inputs.len(),
         outputs,
         input_total,
         fee,
+        signed_fingerprints: signed,
     })
+}
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 // ── transaction parsing ──
@@ -359,6 +407,32 @@ mod tests {
         assert!(s.outputs[1].is_change);
         assert_eq!(s.fee, Some(1_000));
         assert_eq!(s.sending(), 40_000);
+        assert!(s.signed_fingerprints.is_empty());
+
+        // A partial signature from a key whose origin is known marks that
+        // fingerprint as signed.
+        let secp = bitcoin::secp256k1::Secp256k1::new();
+        let mut one = [0u8; 32];
+        one[31] = 1; // the generator point's secret key
+        let sk = bitcoin::secp256k1::SecretKey::from_slice(&one).unwrap();
+        let msg = bitcoin::secp256k1::Message::from_digest([9; 32]);
+        let sig = bitcoin::ecdsa::Signature::sighash_all(secp.sign_ecdsa(&msg, &sk));
+        psbt.inputs[0]
+            .partial_sigs
+            .insert(bitcoin::PublicKey::new(pk), sig);
+        psbt.inputs[0].bip32_derivation.insert(
+            pk,
+            (
+                Fingerprint::from([0xab, 0xcd, 0xef, 0x01]),
+                DerivationPath::from_str("m/48'/1'/0'/2'/0/3").unwrap(),
+            ),
+        );
+        let s = summarize(
+            &base64::engine::general_purpose::STANDARD.encode(psbt.serialize()),
+            "tb",
+        )
+        .expect("parses");
+        assert_eq!(s.signed_fingerprints, vec!["abcdef01".to_string()]);
     }
 
     #[test]

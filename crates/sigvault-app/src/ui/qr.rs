@@ -3,8 +3,8 @@ use qrcode::{Color, EcLevel};
 
 use crate::theme::theme;
 
-/// Static QR code. Dark modules on a light quiet-zone tile so phones and
-/// hardware-wallet cameras can read it on the dark theme.
+/// Static QR code. Always dark modules on a white quiet-zone tile (in both
+/// themes) so phones and hardware-wallet cameras read it reliably.
 #[derive(IntoElement)]
 pub struct QrCode {
     data: String,
@@ -32,12 +32,13 @@ impl RenderOnce for QrCode {
             }
             Err(_) => (Vec::new(), 0),
         };
-        let fg = t.background;
+        let fg: gpui::Hsla = gpui::rgb(0x09131a).into();
         div()
             .size(self.size)
             .flex_none()
             .rounded_md()
-            .bg(t.foreground)
+            .bg(gpui::white())
+            .when(!t.is_dark, |d| d.border_1().border_color(t.line))
             .p(px(10.))
             .child(
                 canvas(

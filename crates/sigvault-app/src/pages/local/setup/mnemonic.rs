@@ -11,7 +11,8 @@ use gpui::{
 
 use super::ui::{seg, segmented};
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::input::{Down, Enter, FocusNext, Up};
+use crate::ui::focus::FocusNext;
+use crate::ui::input::{Down, Enter, Up};
 use crate::ui::{InputEvent, TextInput};
 
 pub const PHRASE_LENGTHS: [usize; 5] = [12, 15, 18, 21, 24];
@@ -65,7 +66,11 @@ impl MnemonicInput {
         let mut words = Vec::with_capacity(MAX_WORDS);
         let mut subs = Vec::with_capacity(MAX_WORDS);
         for i in 0..MAX_WORDS {
-            let input = cx.new(|cx| TextInput::new(window, cx).mono());
+            let input = cx.new(|cx| {
+                TextInput::new(window, cx)
+                    .mono()
+                    .label(format!("Word {}", i + 1))
+            });
             subs.push(
                 cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| match ev {
                     InputEvent::Changed => this.on_word_changed(i, cx),
@@ -217,8 +222,8 @@ impl MnemonicInput {
                             .w(px(16.))
                             .flex_none()
                             .font_family(FONT_MONO)
-                            .text_size(px(10.))
-                            .text_color(alpha(t.muted_foreground, 0.7))
+                            .text_size(px(12.))
+                            .text_color(t.ink_3)
                             .child(format!("{:02}", i + 1)),
                     )
                     .child(div().flex_1().min_w_0().child(input)),
@@ -259,7 +264,7 @@ impl MnemonicInput {
                                         .px(px(10.))
                                         .py(px(4.))
                                         .font_family(FONT_MONO)
-                                        .text_size(px(11.))
+                                        .text_size(px(12.))
                                         .cursor_pointer()
                                         .map(|d| {
                                             if j == highlight {
@@ -315,7 +320,7 @@ fn checksum_badge(complete: bool, valid: bool) -> impl IntoElement {
         .bg(bg)
         .px(px(6.))
         .py(px(2.))
-        .text_size(px(10.))
+        .text_size(px(12.))
         .text_color(fg)
         .child(text)
 }
@@ -383,7 +388,7 @@ impl Render for MnemonicInput {
             .child(
                 div()
                     .mt_1()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .line_height(px(17.))
                     .text_color(t.muted_foreground)
                     .child("Type each word, or paste the whole phrase into the first box. Tab accepts a suggestion."),

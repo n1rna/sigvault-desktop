@@ -11,6 +11,7 @@ use sigvault_core::State;
 use super::add::open_add_key;
 use super::sources::{icon_tile, network_badge, source_icon, KeySource, NETWORKS};
 use super::unlock::{KeychainUnlock, UnlockEvent};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, source_label, KeyRecord, KeychainEvent};
 use crate::router::Page;
 use crate::runtime::backend;
@@ -252,7 +253,9 @@ impl KeyListPage {
             .px_4()
             .cursor_pointer()
             .hover(move |s| s.bg(alpha(t.muted, 0.5)))
-            .on_click(move |_, _, cx| navigate(page.clone(), cx))
+            .clickable(Probe::new("row", k.label.clone()), move |_, _, cx| {
+                navigate(page.clone(), cx)
+            })
             .child(icon_tile(
                 source_icon(&k.source),
                 32.,
@@ -288,8 +291,8 @@ impl KeyListPage {
                                 d.child(
                                     div()
                                         .flex_none()
-                                        .text_size(px(11.))
-                                        .text_color(alpha(t.muted_foreground, 0.85))
+                                        .text_size(px(12.))
+                                        .text_color(t.ink_3)
                                         .child("Watch-only"),
                                 )
                             }),
@@ -482,6 +485,8 @@ impl Render for KeyListPage {
             .action(
                 button("add-key", "Add key")
                     .icon("plus")
+                    // The empty state has its own primary action.
+                    .when(all.is_empty(), |b| b.outline())
                     .on_click(|_, _, cx| open_add_key(None, cx)),
             )
             .when(!all.is_empty(), |f| f.header_extra(filters))

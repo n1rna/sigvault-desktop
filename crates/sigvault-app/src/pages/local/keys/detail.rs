@@ -10,15 +10,17 @@ use gpui::{
 use super::list::{load_usage, wallets_using, UsageMap};
 use super::sources::{copy_box, custody_text, from_core_secret, network_badge};
 use super::unlock::{KeychainUnlock, UnlockEvent};
+use crate::e2e::{E2eClick, Probe};
 use crate::keychain::{keychain, source_label, KeyRecord, KeychainEvent};
 use crate::pages::local::setup::api::{self, SlotKey};
 use crate::pages::local::setup::files::{file_safe, save_text_file};
+use crate::pages::local::setup::slot_board::custody_badge;
 use crate::router::Page;
 use crate::shell::{navigate, toast};
 use crate::state::{store, StoreEvent};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, badge, button, card, divider, field, format_timestamp, icon, modal, page_frame, section,
+    alert, button, card, divider, field, format_timestamp, icon, modal, page_frame, section,
     InputEvent, QrCode, TextInput, Tone,
 };
 
@@ -44,7 +46,7 @@ pub struct KeyDetailPage {
 
 impl KeyDetailPage {
     pub fn new(key_id: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let rename_input = cx.new(|cx| TextInput::new(window, cx).max_len(60));
+        let rename_input = cx.new(|cx| TextInput::new(window, cx).max_len(60).label("Key name"));
         let export_pw = cx.new(|cx| {
             TextInput::new(window, cx)
                 .masked()
@@ -55,7 +57,8 @@ impl KeyDetailPage {
                 .masked()
                 .placeholder("Repeat password")
         });
-        let delete_input = cx.new(|cx| TextInput::new(window, cx));
+        let delete_input =
+            cx.new(|cx| TextInput::new(window, cx).label("Type the key name to confirm"));
         let mut subs = vec![
             cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()),
             cx.subscribe(&store(cx), |this, _, ev: &StoreEvent, cx| {
@@ -343,8 +346,8 @@ impl KeyDetailPage {
                         div()
                             .w(px(184.))
                             .text_center()
-                            .text_size(px(11.))
-                            .line_height(px(15.))
+                            .text_size(px(12.))
+                            .line_height(px(16.))
                             .text_color(t.muted_foreground)
                             .child("Scan to share this public key with a co-signer"),
                     ),
@@ -414,7 +417,10 @@ impl KeyDetailPage {
                     .px_4()
                     .cursor_pointer()
                     .hover(move |s| s.bg(alpha(t.muted, 0.5)))
-                    .on_click(move |_, _, cx| navigate(page.clone(), cx))
+                    .clickable(
+                        Probe::new("link", format!("Open wallet {}", w.name)),
+                        move |_, _, cx| navigate(page.clone(), cx),
+                    )
                     .child(icon("wallet").size(px(15.)))
                     .child(
                         div()
@@ -676,11 +682,7 @@ impl Render for KeyDetailPage {
             .flex_row()
             .items_center()
             .gap_2()
-            .child(if k.is_hot() {
-                badge("Private key on this computer", Tone::Success)
-            } else {
-                badge("Watch-only", Tone::Secondary)
-            })
+            .child(custody_badge(k.is_hot()))
             .child(network_badge(&k.network));
         let subtitle = custody_text(&k);
         let dialog = self.render_dialog(&k, cx);
