@@ -1,8 +1,8 @@
 // Application initialization commands
 
+use crate::host::{AppHandle, State};
 use log::{debug, error, info, warn};
 use std::error::Error;
-use crate::host::{AppHandle, State};
 
 use crate::app_mode::AppMode;
 use crate::env_config;

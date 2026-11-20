@@ -66,12 +66,12 @@ impl MnemonicInput {
         let mut subs = Vec::with_capacity(MAX_WORDS);
         for i in 0..MAX_WORDS {
             let input = cx.new(|cx| TextInput::new(window, cx).mono());
-            subs.push(cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| {
-                match ev {
+            subs.push(
+                cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| match ev {
                     InputEvent::Changed => this.on_word_changed(i, cx),
                     InputEvent::Submit => cx.emit(MnemonicEvent::Submit),
-                }
-            }));
+                }),
+            );
             words.push(input);
         }
         Self {
@@ -263,10 +263,12 @@ impl MnemonicInput {
                                         .cursor_pointer()
                                         .map(|d| {
                                             if j == highlight {
-                                                d.bg(alpha(t.primary, 0.10)).text_color(t.foreground)
+                                                d.bg(alpha(t.primary, 0.10))
+                                                    .text_color(t.foreground)
                                             } else {
                                                 d.text_color(t.muted_foreground).hover(move |s| {
-                                                    s.bg(alpha(t.muted, 0.4)).text_color(t.foreground)
+                                                    s.bg(alpha(t.muted, 0.4))
+                                                        .text_color(t.foreground)
                                                 })
                                             }
                                         })
@@ -292,9 +294,19 @@ fn checksum_badge(complete: bool, valid: bool) -> impl IntoElement {
     let (border, bg, fg, text) = if !complete {
         (t.border, t.card, t.muted_foreground, "Incomplete")
     } else if valid {
-        (alpha(t.success, 0.4), alpha(t.success, 0.08), t.success, "Valid checksum")
+        (
+            alpha(t.success, 0.4),
+            alpha(t.success, 0.08),
+            t.success,
+            "Valid checksum",
+        )
     } else {
-        (alpha(t.destructive, 0.4), alpha(t.destructive, 0.06), t.destructive, "Bad checksum")
+        (
+            alpha(t.destructive, 0.4),
+            alpha(t.destructive, 0.06),
+            t.destructive,
+            "Bad checksum",
+        )
     };
     div()
         .rounded(px(3.))

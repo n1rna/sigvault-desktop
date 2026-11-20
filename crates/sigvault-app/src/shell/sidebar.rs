@@ -15,7 +15,9 @@ use gpui::{
     SharedString, Window, WindowControlArea,
 };
 use sigvault_core::app_mode::AppMode;
-use sigvault_core::commands::{cmd_get_current_user, cmd_list_environments, cmd_logout, cmd_set_app_mode};
+use sigvault_core::commands::{
+    cmd_get_current_user, cmd_list_environments, cmd_logout, cmd_set_app_mode,
+};
 use sigvault_core::local_wallet::commands::{cmd_local_get_settings, cmd_local_list_wallets};
 use sigvault_core::local_wallet::manager::WalletSummary;
 use sigvault_core::State;
@@ -47,9 +49,8 @@ pub fn switch_space(mode: AppMode, cx: &mut App) {
     if store(cx).read(cx).app_mode == Some(mode) {
         return;
     }
-    let task = backend(cx).call(move |app, st| async move {
-        cmd_set_app_mode(app, State::new(&st), mode).await
-    });
+    let task = backend(cx)
+        .call(move |app, st| async move { cmd_set_app_mode(app, State::new(&st), mode).await });
     cx.spawn(async move |_| {
         if let Err(e) = task.await {
             log::error!("switch workspace failed: {e}");
@@ -103,7 +104,8 @@ impl AppSidebar {
             _ => {}
         })
         .detach();
-        cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()).detach();
+        cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify())
+            .detach();
         let mut this = Self {
             current: Page::Loading,
             collapsed: false,
@@ -125,7 +127,8 @@ impl AppSidebar {
 
     pub fn set_current(&mut self, page: Page, cx: &mut Context<Self>) {
         if self.current != page {
-            let refresh = !self.wallets_loaded || matches!(page, Page::LocalWallets | Page::LocalHome);
+            let refresh =
+                !self.wallets_loaded || matches!(page, Page::LocalWallets | Page::LocalHome);
             self.current = page;
             if refresh {
                 self.refresh_local(cx);
@@ -140,19 +143,17 @@ impl AppSidebar {
         if store(cx).read(cx).app_mode != Some(AppMode::Local) {
             return;
         }
-        let list = backend(cx).call(|app, st| async move {
-            cmd_local_list_wallets(app, State::new(&st)).await
-        });
-        let settings = backend(cx).call(|app, st| async move {
-            cmd_local_get_settings(app, State::new(&st)).await
-        });
+        let list = backend(cx)
+            .call(|app, st| async move { cmd_local_list_wallets(app, State::new(&st)).await });
+        let settings = backend(cx)
+            .call(|app, st| async move { cmd_local_get_settings(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             let list = list.await;
             let settings = settings.await.ok();
             this.update(cx, |this, cx| {
                 if let Ok(list) = list {
                     let mut list: Vec<WalletSummary> = list;
-                    list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                    list.sort_by_key(|a| a.name.to_lowercase());
                     this.wallets = list
                         .into_iter()
                         .map(|w| WalletItem {
@@ -185,9 +186,8 @@ impl AppSidebar {
         let user = authenticated.then(|| {
             backend(cx).call(|_app, st| async move { cmd_get_current_user(State::new(&st)).await })
         });
-        let envs = backend(cx).call(|app, st| async move {
-            cmd_list_environments(app, State::new(&st)).await
-        });
+        let envs = backend(cx)
+            .call(|app, st| async move { cmd_list_environments(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             let user = match user {
                 Some(t) => t.await.ok(),
@@ -229,7 +229,8 @@ impl AppSidebar {
         self.signing_out = true;
         self.menu = None;
         cx.notify();
-        let task = backend(cx).call(|app, st| async move { cmd_logout(app, State::new(&st)).await });
+        let task =
+            backend(cx).call(|app, st| async move { cmd_logout(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
@@ -280,10 +281,17 @@ impl AppSidebar {
         };
         let wallet = self.active_wallet().cloned();
         let network: Option<SharedString> = match mode {
-            AppMode::Local => wallet.as_ref().map(|w| w.network.clone().into()).or(self.default_network.clone()),
+            AppMode::Local => wallet
+                .as_ref()
+                .map(|w| w.network.clone().into())
+                .or(self.default_network.clone()),
             AppMode::Cloud => self.env_network.clone(),
         };
-        let traffic_pad = if cfg!(target_os = "macos") { px(80.) } else { px(16.) };
+        let traffic_pad = if cfg!(target_os = "macos") {
+            px(80.)
+        } else {
+            px(16.)
+        };
 
         let workspace_items = [AppMode::Local, AppMode::Cloud].map(|m| {
             let (name, meta, _) = space_meta(m);
@@ -304,7 +312,8 @@ impl AppSidebar {
             .map(|w| {
                 let id = w.id.clone();
                 let active = wallet.as_ref().is_some_and(|a| a.id == w.id);
-                let meta: SharedString = format!("{} · {}", w.network, policy_label(&w.policy)).into();
+                let meta: SharedString =
+                    format!("{} · {}", w.network, policy_label(&w.policy)).into();
                 let on = cx.listener(move |this, _, _, cx| {
                     this.menu = None;
                     navigate(Page::LocalWallet(id.clone()), cx);
@@ -389,7 +398,13 @@ impl AppSidebar {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(move |_, _, cx| navigate(home.clone(), cx))
                     .child(logo(px(17.)))
-                    .child(div().text_size(px(14.)).font_weight(gpui::FontWeight::MEDIUM).text_color(t.ink).child("sigvault")),
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(t.ink)
+                            .child("sigvault"),
+                    ),
             )
             .child(separator())
             .child(switcher_segment(
@@ -409,15 +424,20 @@ impl AppSidebar {
             ))
             .children(wallet.clone().map(|w| {
                 let id = w.id.clone();
-                div().flex().flex_row().items_center().child(separator()).child(switcher_segment(
-                    "wallet",
-                    w.name.clone().into(),
-                    Some(pill(if w.locked { "locked" } else { "unlocked" }).into_any_element()),
-                    self.menu == Some(Menu::Wallet),
-                    cx.listener(move |_, _, _, cx| navigate(Page::LocalWallet(id.clone()), cx)),
-                    cx.listener(|this, _, _, cx| this.toggle_menu(Menu::Wallet, cx)),
-                    wallet_menu,
-                ))
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .child(separator())
+                    .child(switcher_segment(
+                        "wallet",
+                        w.name.clone().into(),
+                        Some(pill(if w.locked { "locked" } else { "unlocked" }).into_any_element()),
+                        self.menu == Some(Menu::Wallet),
+                        cx.listener(move |_, _, _, cx| navigate(Page::LocalWallet(id.clone()), cx)),
+                        cx.listener(|this, _, _, cx| this.toggle_menu(Menu::Wallet, cx)),
+                        wallet_menu,
+                    ))
             }))
             .child(div().flex_1())
             .child(
@@ -454,40 +474,176 @@ impl AppSidebar {
             AppMode::Local => {
                 if let Some(w) = self.active_wallet().cloned() {
                     out.push(section_label("vault", c));
-                    out.push(nav("sb-overview", "wallet", "Overview", cur == Page::LocalWallet(w.id.clone()), None, Page::LocalWallet(w.id.clone()), c));
-                    out.push(nav("sb-receive", "arrow-down-left", "Receive", cur == Page::LocalReceive(w.id.clone()), None, Page::LocalReceive(w.id.clone()), c));
-                    out.push(nav("sb-send", "arrow-up-right", "Send", cur == Page::LocalSend(w.id.clone()), None, Page::LocalSend(w.id.clone()), c));
-                    out.push(nav("sb-back", "arrow-left", "All wallets", false, None, Page::LocalWallets, c));
+                    out.push(nav(
+                        "sb-overview",
+                        "wallet",
+                        "Overview",
+                        cur == Page::LocalWallet(w.id.clone()),
+                        None,
+                        Page::LocalWallet(w.id.clone()),
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-receive",
+                        "arrow-down-left",
+                        "Receive",
+                        cur == Page::LocalReceive(w.id.clone()),
+                        None,
+                        Page::LocalReceive(w.id.clone()),
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-send",
+                        "arrow-up-right",
+                        "Send",
+                        cur == Page::LocalSend(w.id.clone()),
+                        None,
+                        Page::LocalSend(w.id.clone()),
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-back",
+                        "arrow-left",
+                        "All wallets",
+                        false,
+                        None,
+                        Page::LocalWallets,
+                        c,
+                    ));
                 } else {
                     let keys = keychain(cx).read(cx).keys().len();
                     out.push(section_label("workspace", c));
-                    out.push(nav("sb-home", "home", "Dashboard", cur == Page::LocalHome, None, Page::LocalHome, c));
-                    out.push(nav("sb-wallets", "wallet", "Wallets", cur == Page::LocalWallets, Some(self.wallets.len()), Page::LocalWallets, c));
-                    out.push(nav("sb-keys", "key", "Keys", matches!(cur, Page::LocalKeys | Page::LocalKey(_)), Some(keys), Page::LocalKeys, c));
-                    out.push(nav("sb-settings", "settings", "Settings", cur == Page::LocalSettings, None, Page::LocalSettings, c));
+                    out.push(nav(
+                        "sb-home",
+                        "home",
+                        "Dashboard",
+                        cur == Page::LocalHome,
+                        None,
+                        Page::LocalHome,
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-wallets",
+                        "wallet",
+                        "Wallets",
+                        cur == Page::LocalWallets,
+                        Some(self.wallets.len()),
+                        Page::LocalWallets,
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-keys",
+                        "key",
+                        "Keys",
+                        matches!(cur, Page::LocalKeys | Page::LocalKey(_)),
+                        Some(keys),
+                        Page::LocalKeys,
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-settings",
+                        "settings",
+                        "Settings",
+                        cur == Page::LocalSettings,
+                        None,
+                        Page::LocalSettings,
+                        c,
+                    ));
                     out.push(spacer());
                     out.push(section_label("create", c));
-                    out.push(nav("sb-new-wallet", "wallet-plus", "New wallet", cur == Page::LocalWalletNew, None, Page::LocalWalletNew, c));
-                    out.push(nav("sb-add-key", "key-plus", "Add key", cur == Page::LocalKeyAdd, None, Page::LocalKeyAdd, c));
-                    out.push(nav("sb-restore", "history", "Restore wallet", cur == Page::LocalWalletRecover, None, Page::LocalWalletRecover, c));
+                    out.push(nav(
+                        "sb-new-wallet",
+                        "wallet-plus",
+                        "New wallet",
+                        cur == Page::LocalWalletNew,
+                        None,
+                        Page::LocalWalletNew,
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-add-key",
+                        "key-plus",
+                        "Add key",
+                        cur == Page::LocalKeyAdd,
+                        None,
+                        Page::LocalKeyAdd,
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-restore",
+                        "history",
+                        "Restore wallet",
+                        cur == Page::LocalWalletRecover,
+                        None,
+                        Page::LocalWalletRecover,
+                        c,
+                    ));
                 }
             }
             AppMode::Cloud => {
                 let s = store(cx).read(cx);
                 if !s.authenticated {
                     out.push(section_label("get started", c));
-                    out.push(nav("sb-env", "globe", "Network", cur == Page::SelectEnv, None, Page::SelectEnv, c));
-                    out.push(nav("sb-login", "user", "Sign in", cur == Page::Login, None, Page::Login, c));
+                    out.push(nav(
+                        "sb-env",
+                        "globe",
+                        "Network",
+                        cur == Page::SelectEnv,
+                        None,
+                        Page::SelectEnv,
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-login",
+                        "user",
+                        "Sign in",
+                        cur == Page::Login,
+                        None,
+                        Page::Login,
+                        c,
+                    ));
                 } else {
                     let total = s.remote_sessions.len();
                     let live = s.active_session.is_connected || cur == Page::SessionDetails;
                     out.push(section_label("workspace", c));
-                    out.push(nav("sb-chome", "home", "Dashboard", cur == Page::CloudHome, None, Page::CloudHome, c));
-                    out.push(nav("sb-sessions", "users", "Sessions", cur == Page::Sessions, Some(total), Page::Sessions, c));
+                    out.push(nav(
+                        "sb-chome",
+                        "home",
+                        "Dashboard",
+                        cur == Page::CloudHome,
+                        None,
+                        Page::CloudHome,
+                        c,
+                    ));
+                    out.push(nav(
+                        "sb-sessions",
+                        "users",
+                        "Sessions",
+                        cur == Page::Sessions,
+                        Some(total),
+                        Page::Sessions,
+                        c,
+                    ));
                     if live {
-                        out.push(nav("sb-live", "radio", "Live session", cur == Page::SessionDetails, None, Page::SessionDetails, c));
+                        out.push(nav(
+                            "sb-live",
+                            "radio",
+                            "Live session",
+                            cur == Page::SessionDetails,
+                            None,
+                            Page::SessionDetails,
+                            c,
+                        ));
                     }
-                    out.push(nav("sb-csettings", "settings", "Settings", cur == Page::CloudSettings, None, Page::CloudSettings, c));
+                    out.push(nav(
+                        "sb-csettings",
+                        "settings",
+                        "Settings",
+                        cur == Page::CloudSettings,
+                        None,
+                        Page::CloudSettings,
+                        c,
+                    ));
                 }
             }
         }
@@ -502,10 +658,26 @@ impl AppSidebar {
 
         let (initials, line1, line2): (SharedString, SharedString, SharedString) = match mode {
             AppMode::Cloud if authenticated => {
-                let name = self.user_name.clone().or(self.user_email.clone()).unwrap_or_else(|| "Signed in".into());
-                (initials_of(&name), name, self.user_email.clone().unwrap_or_else(|| self.env_name.clone().unwrap_or_default()))
+                let name = self
+                    .user_name
+                    .clone()
+                    .or(self.user_email.clone())
+                    .unwrap_or_else(|| "Signed in".into());
+                (
+                    initials_of(&name),
+                    name,
+                    self.user_email
+                        .clone()
+                        .unwrap_or_else(|| self.env_name.clone().unwrap_or_default()),
+                )
             }
-            AppMode::Cloud => ("—".into(), "Not signed in".into(), self.env_name.clone().unwrap_or_else(|| "SigVault Cloud".into())),
+            AppMode::Cloud => (
+                "—".into(),
+                "Not signed in".into(),
+                self.env_name
+                    .clone()
+                    .unwrap_or_else(|| "SigVault Cloud".into()),
+            ),
             AppMode::Local => {
                 let kc = keychain(cx).read(cx);
                 let status = if !kc.has_password() {
@@ -525,45 +697,76 @@ impl AppSidebar {
                 AppMode::Local => {
                     let kc = keychain(cx).read(cx);
                     if kc.is_unlocked() {
-                        items.push(menu_action("acct-lock", "lock", "Lock keychain", false, cx.listener(|this, _, _, cx| {
-                            this.menu = None;
-                            keychain(cx).update(cx, |k, cx| k.lock(cx));
-                        })));
+                        items.push(menu_action(
+                            "acct-lock",
+                            "lock",
+                            "Lock keychain",
+                            false,
+                            cx.listener(|this, _, _, cx| {
+                                this.menu = None;
+                                keychain(cx).update(cx, |k, cx| k.lock(cx));
+                            }),
+                        ));
                     }
-                    items.push(menu_action("acct-lsettings", "settings", "Settings", false, cx.listener(|this, _, _, cx| {
-                        this.menu = None;
-                        navigate(Page::LocalSettings, cx);
-                    })));
+                    items.push(menu_action(
+                        "acct-lsettings",
+                        "settings",
+                        "Settings",
+                        false,
+                        cx.listener(|this, _, _, cx| {
+                            this.menu = None;
+                            navigate(Page::LocalSettings, cx);
+                        }),
+                    ));
                 }
                 AppMode::Cloud => {
-                    items.push(menu_action("acct-csettings", "settings", "Settings", false, cx.listener(|this, _, _, cx| {
-                        this.menu = None;
-                        navigate(Page::CloudSettings, cx);
-                    })));
+                    items.push(menu_action(
+                        "acct-csettings",
+                        "settings",
+                        "Settings",
+                        false,
+                        cx.listener(|this, _, _, cx| {
+                            this.menu = None;
+                            navigate(Page::CloudSettings, cx);
+                        }),
+                    ));
                     if authenticated {
-                        items.push(menu_action("acct-signout", "log-out", if self.signing_out { "Signing out…" } else { "Sign out" }, true, cx.listener(|this, _, _, cx| this.sign_out(cx))));
+                        items.push(menu_action(
+                            "acct-signout",
+                            "log-out",
+                            if self.signing_out {
+                                "Signing out…"
+                            } else {
+                                "Sign out"
+                            },
+                            true,
+                            cx.listener(|this, _, _, cx| this.sign_out(cx)),
+                        ));
                     }
                 }
             }
             deferred(
-                anchored().anchor(Corner::BottomLeft).snap_to_window().child(
-                    div()
-                        .id("account-menu")
-                        .occlude()
-                        .mb(px(56.))
-                        .w(px(SIDEBAR_WIDTH - 16.))
-                        .py_1()
-                        .rounded(RADIUS_CARD)
-                        .border_1()
-                        .border_color(t.line_tertiary)
-                        .bg(t.surface_3)
-                        .shadow_lg()
-                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                            this.menu = None;
-                            cx.notify();
-                        }))
-                        .children(items),
-                ),
+                anchored()
+                    .anchor(Corner::BottomLeft)
+                    .snap_to_window()
+                    .child(
+                        div()
+                            .id("account-menu")
+                            .occlude()
+                            .mb(px(56.))
+                            .w(px(SIDEBAR_WIDTH - 16.))
+                            .py_1()
+                            .rounded(RADIUS_CARD)
+                            .border_1()
+                            .border_color(t.line_tertiary)
+                            .bg(t.surface_3)
+                            .shadow_lg()
+                            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                                this.menu = None;
+                                cx.notify();
+                            }))
+                            .children(items),
+                    ),
             )
             .with_priority(10)
         });
@@ -610,8 +813,21 @@ impl AppSidebar {
                                 .min_w_0()
                                 .flex()
                                 .flex_col()
-                                .child(div().truncate().text_size(px(13.5)).font_weight(gpui::FontWeight::MEDIUM).text_color(t.ink).child(line1))
-                                .child(div().truncate().text_size(px(11.5)).text_color(t.ink_2).child(line2)),
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(13.5))
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(t.ink)
+                                        .child(line1),
+                                )
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(11.5))
+                                        .text_color(t.ink_2)
+                                        .child(line2),
+                                ),
                         )
                         .child(icon("more-vertical").size(px(15.)).text_color(t.ink_3))
                     }),
@@ -625,7 +841,11 @@ impl Render for AppSidebar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let c = self.collapsed;
-        let width = if c { SIDEBAR_WIDTH_COLLAPSED } else { SIDEBAR_WIDTH };
+        let width = if c {
+            SIDEBAR_WIDTH_COLLAPSED
+        } else {
+            SIDEBAR_WIDTH
+        };
         let sections = self.nav_sections(cx);
         let identity = self.identity_card(cx);
 
@@ -684,7 +904,14 @@ impl Render for AppSidebar {
                     .child(
                         div()
                             .id("sb-docs")
-                            .child(nav_row("sb-docs-row", icon_el("book-open", false), "Documentation", false, None, c))
+                            .child(nav_row(
+                                "sb-docs-row",
+                                icon_el("book-open", false),
+                                "Documentation",
+                                false,
+                                None,
+                                c,
+                            ))
                             .on_click(|_, _, cx| cx.open_url(DOCS_URL)),
                     )
                     .child(div().mx_2().my(px(10.)).h(px(1.)).bg(t.line))
@@ -713,7 +940,9 @@ pub fn bare_titlebar() -> impl IntoElement {
 }
 
 fn initials_of(name: &str) -> SharedString {
-    let mut parts = name.split(|c: char| c.is_whitespace() || c == '@' || c == '.').filter(|p| !p.is_empty());
+    let mut parts = name
+        .split(|c: char| c.is_whitespace() || c == '@' || c == '.')
+        .filter(|p| !p.is_empty());
     let a = parts.next().and_then(|p| p.chars().next());
     let b = parts.next().and_then(|p| p.chars().next());
     match (a, b) {
@@ -734,7 +963,11 @@ fn policy_label(policy: &str) -> &str {
 }
 
 fn separator() -> impl IntoElement {
-    div().px_1().text_size(px(14.)).text_color(alpha(theme().ink_3, 0.6)).child("/")
+    div()
+        .px_1()
+        .text_size(px(14.))
+        .text_color(alpha(theme().ink_3, 0.6))
+        .child("/")
 }
 
 /// Neon-style switcher segment: the name navigates, the ⇕ button opens the
@@ -870,7 +1103,14 @@ fn menu_entry(
                 .flex()
                 .flex_col()
                 .gap(px(2.))
-                .child(div().truncate().text_size(px(14.)).font_weight(gpui::FontWeight::MEDIUM).text_color(t.ink).child(label))
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(14.))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(t.ink)
+                        .child(label),
+                )
                 .children(meta.map(|m| {
                     div()
                         .truncate()
@@ -881,7 +1121,11 @@ fn menu_entry(
                 })),
         )
         .child(if active {
-            icon("check").size(px(15.)).text_color(t.brand_ink).mt(px(2.)).into_any_element()
+            icon("check")
+                .size(px(15.))
+                .text_color(t.brand_ink)
+                .mt(px(2.))
+                .into_any_element()
         } else {
             div()
                 .mt(px(2.))
@@ -914,7 +1158,10 @@ fn menu_action(
         .text_size(px(13.5))
         .text_color(t.ink_2)
         .cursor_pointer()
-        .hover(move |s| s.bg(t.hover_strong).text_color(if danger { t.destructive } else { t.ink }))
+        .hover(move |s| {
+            s.bg(t.hover_strong)
+                .text_color(if danger { t.destructive } else { t.ink })
+        })
         .on_click(on_click)
         .child(icon(icon_name).size(px(15.)))
         .child(label)
@@ -974,10 +1221,22 @@ fn nav_row(
         .cursor_pointer()
         .text_size(px(14.))
         .text_color(if active { t.ink } else { t.ink_2 })
-        .when(active, |d| d.bg(t.hover_strong).font_weight(gpui::FontWeight::MEDIUM))
-        .when(!active, |d| d.hover(|s| s.text_color(t.ink).bg(alpha(t.hover_strong, 0.6))))
+        .when(active, |d| {
+            d.bg(t.hover_strong).font_weight(gpui::FontWeight::MEDIUM)
+        })
+        .when(!active, |d| {
+            d.hover(|s| s.text_color(t.ink).bg(alpha(t.hover_strong, 0.6)))
+        })
         .when(collapsed, |d| d.justify_center())
-        .child(div().size(px(20.)).flex_none().flex().items_center().justify_center().child(leading))
+        .child(
+            div()
+                .size(px(20.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(leading),
+        )
         .when(!collapsed, |d| {
             d.child(div().flex_1().min_w_0().truncate().child(label.into()))
                 .children(trailing)

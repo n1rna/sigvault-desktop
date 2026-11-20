@@ -1,7 +1,7 @@
 // Authentication-related commands
 
-use log::{error, info};
 use crate::host::{State, WebviewWindow};
+use log::{error, info};
 
 use crate::api::ApiClient;
 use crate::error::AppErrorCode;

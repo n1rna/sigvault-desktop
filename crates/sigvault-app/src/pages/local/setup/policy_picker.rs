@@ -30,7 +30,10 @@ pub struct PolicyPicker {
 impl EventEmitter<PolicyPickerEvent> for PolicyPicker {}
 
 fn preset_id(value: &PolicyDraft) -> Option<&'static str> {
-    common_presets().into_iter().find(|p| &p.draft == value).map(|p| p.id)
+    common_presets()
+        .into_iter()
+        .find(|p| &p.draft == value)
+        .map(|p| p.id)
 }
 
 /// Which (threshold, n) pair a ThresholdPicker edits.
@@ -67,15 +70,20 @@ impl PolicyPicker {
 
     /// Keep one timelock input per recovery path, showing its value.
     fn sync_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let blocks: Vec<u32> = self.recoveries().iter().map(|r| r.timelock_blocks).collect();
+        let blocks: Vec<u32> = self
+            .recoveries()
+            .iter()
+            .map(|r| r.timelock_blocks)
+            .collect();
         while self.timelock_inputs.len() < blocks.len() {
             let i = self.timelock_inputs.len();
             let input = cx.new(|cx| TextInput::new(window, cx).max_len(5));
-            self._subs.push(cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| {
-                if matches!(ev, InputEvent::Changed) {
-                    this.on_timelock_typed(i, cx);
-                }
-            }));
+            self._subs
+                .push(cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| {
+                    if matches!(ev, InputEvent::Changed) {
+                        this.on_timelock_typed(i, cx);
+                    }
+                }));
             self.timelock_inputs.push(input);
         }
         for (i, b) in blocks.iter().enumerate() {
@@ -88,7 +96,12 @@ impl PolicyPicker {
 
     fn on_timelock_typed(&mut self, i: usize, cx: &mut Context<Self>) {
         let text = self.timelock_inputs[i].read(cx).text().to_string();
-        let n = text.trim().parse::<u64>().ok().filter(|n| *n > 0).unwrap_or(1);
+        let n = text
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|n| *n > 0)
+            .unwrap_or(1);
         let clamped = n.clamp(1, MAX_TIMELOCK_BLOCKS as u64) as u32;
         if let PolicyDraft::Timelocked { recoveries, .. } = &mut self.value {
             if let Some(r) = recoveries.get_mut(i) {
@@ -121,9 +134,22 @@ impl PolicyPicker {
         self.set(v, window, cx);
     }
 
-    fn set_threshold(&mut self, target: Target, threshold: u32, n: u32, window: &mut Window, cx: &mut Context<Self>) {
+    fn set_threshold(
+        &mut self,
+        target: Target,
+        threshold: u32,
+        n: u32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.edit(window, cx, |v| match (target, v) {
-            (Target::Multisig, PolicyDraft::Multisig { threshold: t, n: nn }) => {
+            (
+                Target::Multisig,
+                PolicyDraft::Multisig {
+                    threshold: t,
+                    n: nn,
+                },
+            ) => {
                 *t = threshold;
                 *nn = n;
             }
@@ -217,7 +243,10 @@ impl PolicyPicker {
                 .text_size(px(13.))
                 .text_color(t.muted_foreground)
                 .when(!enabled, |d| d.opacity(0.3))
-                .when(enabled, |d| d.cursor_pointer().hover(move |s| s.text_color(t.foreground)))
+                .when(enabled, |d| {
+                    d.cursor_pointer()
+                        .hover(move |s| s.text_color(t.foreground))
+                })
                 .child(label)
         };
         let dec = on_change.clone();
@@ -377,7 +406,10 @@ impl PolicyPicker {
                                         .hover(move |s| s.text_color(t.destructive))
                                         .on_click(cx.listener(move |this, _, w, cx| {
                                             this.edit(w, cx, |p| {
-                                                if let PolicyDraft::Timelocked { recoveries, .. } = p {
+                                                if let PolicyDraft::Timelocked {
+                                                    recoveries, ..
+                                                } = p
+                                                {
                                                     if i < recoveries.len() {
                                                         recoveries.remove(i);
                                                     }
@@ -429,7 +461,11 @@ impl PolicyPicker {
                             .flex_row()
                             .items_center()
                             .gap_2()
-                            .children(self.timelock_inputs.get(i).map(|inp| div().w(px(112.)).child(inp.clone())))
+                            .children(
+                                self.timelock_inputs
+                                    .get(i)
+                                    .map(|inp| div().w(px(112.)).child(inp.clone())),
+                            )
                             .child(
                                 div()
                                     .text_size(px(12.))
@@ -475,7 +511,10 @@ impl PolicyPicker {
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(t.muted_foreground)
                         .cursor_pointer()
-                        .hover(move |s| s.border_color(alpha(t.primary, 0.6)).text_color(t.foreground))
+                        .hover(move |s| {
+                            s.border_color(alpha(t.primary, 0.6))
+                                .text_color(t.foreground)
+                        })
                         .on_click(cx.listener(|this, _, w, cx| {
                             this.edit(w, cx, |p| {
                                 if let PolicyDraft::Timelocked { recoveries, .. } = p {
@@ -513,7 +552,10 @@ impl PolicyPicker {
             .child(segmented(
                 "advanced-kind",
                 kind,
-                vec![seg("multisig", "Multisig (M-of-N)"), seg("timelocked", "Timelocked recovery")],
+                vec![
+                    seg("multisig", "Multisig (M-of-N)"),
+                    seg("timelocked", "Timelocked recovery"),
+                ],
                 false,
                 move |v, w, cx: &mut App| {
                     let next = if v.as_ref() == "multisig" {

@@ -78,7 +78,8 @@ impl SessionDetailsPage {
             Some(DEVICE_REGISTRATION) => {
                 self.signing = None;
                 let network = requirement(&session, "network").unwrap_or_else(|| "testnet".into());
-                let path = requirement(&session, "derivation_path").unwrap_or_else(|| "m/84'/0'/0'".into());
+                let path = requirement(&session, "derivation_path")
+                    .unwrap_or_else(|| "m/84'/0'/0'".into());
                 match &self.device_session {
                     Some(e) => e.update(cx, |c, cx| c.set_props(network, path, session_id, cx)),
                     None => {
@@ -142,9 +143,16 @@ impl Render for SessionDetailsPage {
         let session_type = st.session_type.clone();
         let connected = session.is_connected;
 
-        let title = session_type.as_deref().map(session_title).unwrap_or_else(|| {
-            if connected { "Waiting for session…".into() } else { "Joining session…".into() }
-        });
+        let title = session_type
+            .as_deref()
+            .map(session_title)
+            .unwrap_or_else(|| {
+                if connected {
+                    "Waiting for session…".into()
+                } else {
+                    "Joining session…".into()
+                }
+            });
 
         let adornment = div()
             .flex()
@@ -179,13 +187,27 @@ impl Render for SessionDetailsPage {
         ) = match (session_type.as_deref(), connected) {
             (Some(DEVICE_REGISTRATION), true) if self.device_session.is_some() => {
                 let e = self.device_session.clone().unwrap();
-                let (idx, sub, foot) = e.update(cx, |c, cx| (c.step_index(), c.subtitle(), c.footer(cx)));
-                (Some(&device_creation::STEPS[..]), idx, sub.into(), Some(foot), Some(e.into_any_element()))
+                let (idx, sub, foot) =
+                    e.update(cx, |c, cx| (c.step_index(), c.subtitle(), c.footer(cx)));
+                (
+                    Some(&device_creation::STEPS[..]),
+                    idx,
+                    sub.into(),
+                    Some(foot),
+                    Some(e.into_any_element()),
+                )
             }
             (Some(TRANSACTION_SIGNING), true) => match self.signing.clone() {
                 Some(e) => {
-                    let (idx, sub, foot) = e.update(cx, |c, cx| (c.step_index(), c.subtitle(), c.footer(cx)));
-                    (Some(&signing::STEPS[..]), idx, sub.into(), Some(foot), Some(e.into_any_element()))
+                    let (idx, sub, foot) =
+                        e.update(cx, |c, cx| (c.step_index(), c.subtitle(), c.footer(cx)));
+                    (
+                        Some(&signing::STEPS[..]),
+                        idx,
+                        sub.into(),
+                        Some(foot),
+                        Some(e.into_any_element()),
+                    )
                 }
                 None => (
                     Some(&signing::STEPS[..]),
@@ -202,7 +224,10 @@ impl Render for SessionDetailsPage {
                 None,
                 Some(
                     section("Waiting")
-                        .child(alert(Tone::Secondary, "This session type isn't supported by this version of SigVault."))
+                        .child(alert(
+                            Tone::Secondary,
+                            "This session type isn't supported by this version of SigVault.",
+                        ))
                         .into_any_element(),
                 ),
             ),
@@ -227,13 +252,23 @@ impl Render for SessionDetailsPage {
             }
         };
 
-        let crumb = session_type.as_deref().map(session_title).unwrap_or_else(|| "Session".into());
-        let leave = button("exit-session", if self.leaving { "Leaving…" } else { "Leave session" })
-            .outline()
-            .small()
-            .icon("log-out")
-            .loading(self.leaving)
-            .on_click(cx.listener(|this, _, _, cx| this.exit(cx)));
+        let crumb = session_type
+            .as_deref()
+            .map(session_title)
+            .unwrap_or_else(|| "Session".into());
+        let leave = button(
+            "exit-session",
+            if self.leaving {
+                "Leaving…"
+            } else {
+                "Leave session"
+            },
+        )
+        .outline()
+        .small()
+        .icon("log-out")
+        .loading(self.leaving)
+        .on_click(cx.listener(|this, _, _, cx| this.exit(cx)));
 
         let frame = page_frame("session-details")
             .crumb("Sessions", None)
@@ -243,9 +278,10 @@ impl Render for SessionDetailsPage {
             .subtitle(subtitle)
             .action(leave)
             .when_some(steps, |f, steps| f.header_extra(stepper(steps, step)))
-            .when_some(footer.filter(|(l, r)| !l.is_empty() || !r.is_empty()), |f, (l, r)| {
-                f.footer(footer_bar(l, r))
-            })
+            .when_some(
+                footer.filter(|(l, r)| !l.is_empty() || !r.is_empty()),
+                |f, (l, r)| f.footer(footer_bar(l, r)),
+            )
             .children(st.error.clone().map(|e| alert(Tone::Destructive, e)))
             .children(content);
 

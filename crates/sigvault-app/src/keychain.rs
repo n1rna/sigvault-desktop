@@ -78,7 +78,10 @@ impl KeyRecord {
 
     /// Output-descriptor key expression `[fp/path]xpub`.
     pub fn key_expr(&self) -> String {
-        let path = self.derivation_path.trim_start_matches("m/").trim_start_matches('m');
+        let path = self
+            .derivation_path
+            .trim_start_matches("m/")
+            .trim_start_matches('m');
         if path.is_empty() {
             format!("[{}]{}", self.fingerprint, self.xpub)
         } else {
@@ -147,12 +150,23 @@ impl Keychain {
         let (file, load_error) = match std::fs::read(&path) {
             Ok(bytes) => match serde_json::from_slice::<KeychainFile>(&bytes) {
                 Ok(f) => (f, None),
-                Err(e) => (KeychainFile::default(), Some(format!("keychain.json is unreadable: {e}"))),
+                Err(e) => (
+                    KeychainFile::default(),
+                    Some(format!("keychain.json is unreadable: {e}")),
+                ),
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (KeychainFile::default(), None),
-            Err(e) => (KeychainFile::default(), Some(format!("cannot read keychain: {e}"))),
+            Err(e) => (
+                KeychainFile::default(),
+                Some(format!("cannot read keychain: {e}")),
+            ),
         };
-        Self { path, file, password: None, load_error }
+        Self {
+            path,
+            file,
+            password: None,
+            load_error,
+        }
     }
 
     // ── queries ──
@@ -167,7 +181,10 @@ impl Keychain {
 
     /// Keys usable for a wallet on `network` (testnet/testnet4/signet/regtest
     /// share tpub encoding but not coin-type paths, so match exactly).
-    pub fn keys_for_network<'a>(&'a self, network: &'a str) -> impl Iterator<Item = &'a KeyRecord> + 'a {
+    pub fn keys_for_network<'a>(
+        &'a self,
+        network: &'a str,
+    ) -> impl Iterator<Item = &'a KeyRecord> + 'a {
         self.file.keys.iter().filter(move |k| k.network == network)
     }
 
@@ -292,14 +309,17 @@ impl Keychain {
     /// Decrypt a hot key's secret. Requires the keychain to be unlocked.
     pub fn secret(&self, id: &str, cx: &mut Context<Self>) -> Task<Result<HotSecret, String>> {
         let Some(env) = self.get(id).and_then(|k| k.secret.clone()) else {
-            return Task::ready(Err("This key has no private material on this computer".into()));
+            return Task::ready(Err(
+                "This key has no private material on this computer".into()
+            ));
         };
         let Some(pw) = self.password.clone() else {
             return Task::ready(Err("Unlock the keychain first".into()));
         };
         let work = backend(cx).call(move |_, _| async move {
             let plain = Zeroizing::new(
-                decrypt_seed(&env, pw.as_bytes()).map_err(|_| "Wrong keychain password".to_string())?,
+                decrypt_seed(&env, pw.as_bytes())
+                    .map_err(|_| "Wrong keychain password".to_string())?,
             );
             serde_json::from_slice::<HotSecret>(&plain).map_err(|e| e.to_string())
         });
@@ -330,10 +350,15 @@ impl Keychain {
     // ── internals ──
 
     fn check_duplicate(&self, key: &NewKey) -> Result<(), String> {
-        if let Some(existing) = self.file.keys.iter().find(|k| {
-            k.xpub == key.xpub && k.fingerprint.eq_ignore_ascii_case(&key.fingerprint)
-        }) {
-            return Err(format!("This key is already in your library as “{}”", existing.label));
+        if let Some(existing) =
+            self.file.keys.iter().find(|k| {
+                k.xpub == key.xpub && k.fingerprint.eq_ignore_ascii_case(&key.fingerprint)
+            })
+        {
+            return Err(format!(
+                "This key is already in your library as “{}”",
+                existing.label
+            ));
         }
         Ok(())
     }
@@ -410,7 +435,10 @@ mod tests {
         let f: KeychainFile = serde_json::from_str(r#"{"version":1}"#).unwrap();
         assert!(f.keys.is_empty() && f.verifier.is_none());
         let env = encrypt_seed(VERIFIER_PLAINTEXT, b"password1").unwrap();
-        assert_eq!(decrypt_seed(&env, b"password1").unwrap(), VERIFIER_PLAINTEXT);
+        assert_eq!(
+            decrypt_seed(&env, b"password1").unwrap(),
+            VERIFIER_PLAINTEXT
+        );
         assert!(decrypt_seed(&env, b"wrong-pass").is_err());
     }
 }

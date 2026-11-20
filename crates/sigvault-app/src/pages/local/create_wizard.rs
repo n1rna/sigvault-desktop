@@ -20,7 +20,9 @@ use gpui::{div, prelude::*, AnyElement, App, Context, Entity, SharedString, Subs
 use super::key_picker::{fetch_secrets, key_identity, KeyPicker, KeyPickerEvent};
 use super::keys::unlock::{KeychainUnlock, UnlockEvent};
 use super::setup::api::{self, CreateFromSlots, SlotKey, SlotSource, WireSlot};
-use super::setup::finish::{network_label, DoneStep, ReviewData, ReviewEvent, ReviewRow, ReviewStep};
+use super::setup::finish::{
+    network_label, DoneStep, ReviewData, ReviewEvent, ReviewRow, ReviewStep,
+};
 use super::setup::policy::{
     layout_for_policy, paths_spendable_by, policy_problem, policy_summary, to_wire_policy,
     PolicyDraft, Slot, SlotLayout,
@@ -72,18 +74,30 @@ impl CreateWalletWizardPage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dev = dev_preset();
         let name = cx.new(|cx| TextInput::new(window, cx).placeholder("Savings"));
-        let initial = if dev.is_some() { PolicyDraft::Multisig { threshold: 2, n: 3 } } else { PolicyDraft::Singlesig };
+        let initial = if dev.is_some() {
+            PolicyDraft::Multisig { threshold: 2, n: 3 }
+        } else {
+            PolicyDraft::Singlesig
+        };
         let picker = cx.new(|cx| PolicyPicker::new(initial, window, cx));
         let review = cx.new(|cx| ReviewStep::new(window, cx));
         let subs = vec![
-            cx.subscribe_in(&name, window, |this, _, ev: &InputEvent, window, cx| match ev {
-                InputEvent::Changed => cx.notify(),
-                InputEvent::Submit => this.continue_from_policy(window, cx),
-            }),
+            cx.subscribe_in(
+                &name,
+                window,
+                |this, _, ev: &InputEvent, window, cx| match ev {
+                    InputEvent::Changed => cx.notify(),
+                    InputEvent::Submit => this.continue_from_policy(window, cx),
+                },
+            ),
             cx.subscribe(&picker, |_, _, _: &PolicyPickerEvent, cx| cx.notify()),
-            cx.subscribe_in(&review, window, |this, _, ev: &ReviewEvent, window, cx| match ev {
-                ReviewEvent::Submit => this.submit(window, cx),
-            }),
+            cx.subscribe_in(
+                &review,
+                window,
+                |this, _, ev: &ReviewEvent, window, cx| match ev {
+                    ReviewEvent::Submit => this.submit(window, cx),
+                },
+            ),
             cx.subscribe(&keychain(cx), |this, _, ev: &KeychainEvent, cx| {
                 if matches!(ev, KeychainEvent::Changed) {
                     // Drop choices whose key was deleted from the library.
@@ -182,13 +196,19 @@ impl CreateWalletWizardPage {
         if !self.keys_ready() {
             return;
         }
-        let Some(layout) = self.layout.clone() else { return };
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
         let kc = keychain(cx).read(cx);
         let rows = layout
             .slots
             .iter()
             .map(|s| {
-                let key = self.assigned.get(&s.id).and_then(|id| kc.get(id)).map(BoardKey::from_record);
+                let key = self
+                    .assigned
+                    .get(&s.id)
+                    .and_then(|id| kc.get(id))
+                    .map(BoardKey::from_record);
                 ReviewRow {
                     slot_label: s.label.clone(),
                     path_title: layout
@@ -197,13 +217,23 @@ impl CreateWalletWizardPage {
                         .find(|p| p.id == s.path_id)
                         .map(|p| p.title.clone())
                         .unwrap_or_default(),
-                    fingerprint: key.as_ref().map(|k| k.fingerprint.clone()).unwrap_or_default(),
-                    derivation_path: key.as_ref().map(|k| k.derivation_path.clone()).unwrap_or_default(),
+                    fingerprint: key
+                        .as_ref()
+                        .map(|k| k.fingerprint.clone())
+                        .unwrap_or_default(),
+                    derivation_path: key
+                        .as_ref()
+                        .map(|k| k.derivation_path.clone())
+                        .unwrap_or_default(),
                     key,
                 }
             })
             .collect::<Vec<_>>();
-        let hot = layout.slots.iter().filter(|s| self.is_hot_slot(s, cx)).count();
+        let hot = layout
+            .slots
+            .iter()
+            .filter(|s| self.is_hot_slot(s, cx))
+            .count();
         let exposed = paths_spendable_by(&layout, |s| self.is_hot_slot(s, cx))
             .into_iter()
             .map(|p| p.title)
@@ -238,7 +268,9 @@ impl CreateWalletWizardPage {
         if self.submitting || !self.keys_ready() || !self.review.read(cx).ready(cx) {
             return;
         }
-        let Some(layout) = self.layout.clone() else { return };
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
         let hot: Vec<(String, String)> = layout
             .slots
             .iter()
@@ -247,13 +279,18 @@ impl CreateWalletWizardPage {
             .collect();
 
         if !hot.is_empty() && !keychain(cx).read(cx).is_unlocked() {
-            let unlock = cx.new(|cx| KeychainUnlock::new("to copy the private keys into this wallet", window, cx));
-            self._modal_sub = Some(cx.subscribe_in(&unlock, window, |this, _, ev: &UnlockEvent, window, cx| {
-                this.close_modal(cx);
-                if matches!(ev, UnlockEvent::Unlocked) {
-                    this.submit(window, cx);
-                }
-            }));
+            let unlock = cx.new(|cx| {
+                KeychainUnlock::new("to copy the private keys into this wallet", window, cx)
+            });
+            self._modal_sub =
+                Some(
+                    cx.subscribe_in(&unlock, window, |this, _, ev: &UnlockEvent, window, cx| {
+                        this.close_modal(cx);
+                        if matches!(ev, UnlockEvent::Unlocked) {
+                            this.submit(window, cx);
+                        }
+                    }),
+                );
             self.unlock = Some(unlock);
             cx.notify();
             return;
@@ -279,8 +316,12 @@ impl CreateWalletWizardPage {
                 secret: None,
             });
         }
-        let index: HashMap<String, usize> =
-            layout.slots.iter().enumerate().map(|(i, s)| (s.id.clone(), i)).collect();
+        let index: HashMap<String, usize> = layout
+            .slots
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.id.clone(), i))
+            .collect();
 
         self.submitting = true;
         self.error = None;
@@ -317,7 +358,13 @@ impl CreateWalletWizardPage {
                     .map_err(|e| e.to_string())?;
                 let id = create.await?;
                 let unlock = cx
-                    .update(|cx| api::unlock_wallet(cx, id.clone(), if has_hot { passphrase } else { String::new() }))
+                    .update(|cx| {
+                        api::unlock_wallet(
+                            cx,
+                            id.clone(),
+                            if has_hot { passphrase } else { String::new() },
+                        )
+                    })
                     .map_err(|e| e.to_string())?;
                 unlock.await?;
                 Ok(id)
@@ -329,7 +376,8 @@ impl CreateWalletWizardPage {
                 match res {
                     Ok(id) => {
                         crate::state::local_changed(cx);
-                        let done = cx.new(|_| DoneStep::new("Wallet created", id.clone(), name, multi_key));
+                        let done = cx
+                            .new(|_| DoneStep::new("Wallet created", id.clone(), name, multi_key));
                         this.done = Some((id, done));
                         this.step = Step::Done;
                     }
@@ -347,7 +395,10 @@ impl CreateWalletWizardPage {
     fn render_policy_step(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = theme();
         let keys_will_reset = !self.assigned.is_empty()
-            && self.layout_for.as_ref().is_some_and(|k| k != &self.policy_key(cx));
+            && self
+                .layout_for
+                .as_ref()
+                .is_some_and(|k| k != &self.policy_key(cx));
         let this = cx.entity().downgrade();
         div()
             .max_w(FORM_WIDTH)
@@ -402,7 +453,12 @@ impl CreateWalletWizardPage {
         let states: HashMap<String, SlotState> = self
             .assigned
             .iter()
-            .filter_map(|(slot, id)| Some((slot.clone(), SlotState::Assigned(BoardKey::from_record(kc.get(id)?)))))
+            .filter_map(|(slot, id)| {
+                Some((
+                    slot.clone(),
+                    SlotState::Assigned(BoardKey::from_record(kc.get(id)?)),
+                ))
+            })
             .collect();
         let net = network_label(self.network);
         div()
@@ -424,11 +480,21 @@ impl CreateWalletWizardPage {
     fn render_modal(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let dismiss = cx.listener(|this, _, _, cx| this.close_modal(cx));
         if let Some(u) = &self.unlock {
-            return Some(modal("keychain-unlock", 420.).on_dismiss(dismiss).child(u.clone()).into_any_element());
+            return Some(
+                modal("keychain-unlock", 420.)
+                    .on_dismiss(dismiss)
+                    .child(u.clone())
+                    .into_any_element(),
+            );
         }
         let (_, picker) = self.key_picker.as_ref()?;
         let w = picker.read(cx).modal_width();
-        Some(modal("key-picker", w).on_dismiss(dismiss).child(picker.clone()).into_any_element())
+        Some(
+            modal("key-picker", w)
+                .on_dismiss(dismiss)
+                .child(picker.clone())
+                .into_any_element(),
+        )
     }
 
     fn render_footer(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -465,7 +531,12 @@ impl CreateWalletWizardPage {
                 let left_n = self
                     .layout
                     .as_ref()
-                    .map(|l| l.slots.iter().filter(|s| !self.assigned.contains_key(&s.id)).count())
+                    .map(|l| {
+                        l.slots
+                            .iter()
+                            .filter(|s| !self.assigned.contains_key(&s.id))
+                            .count()
+                    })
                     .unwrap_or(0);
                 (
                     vec![back(Step::Policy)],
@@ -498,7 +569,11 @@ impl CreateWalletWizardPage {
                 ],
             ),
             Step::Done => {
-                let id = self.done.as_ref().map(|(id, _)| id.clone()).unwrap_or_default();
+                let id = self
+                    .done
+                    .as_ref()
+                    .map(|(id, _)| id.clone())
+                    .unwrap_or_default();
                 (
                     vec![button("wizard-all-wallets", "All wallets")
                         .ghost()
@@ -517,11 +592,19 @@ impl CreateWalletWizardPage {
     // ── dev hook (debug builds): SIGVAULT_DEV_WIZARD=keys|picker|review ──
 
     fn apply_dev_preset(&mut self, stage: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.name.update(cx, |n, cx| n.set_text("Family vault".to_string(), cx));
+        self.name
+            .update(cx, |n, cx| n.set_text("Family vault".to_string(), cx));
         self.continue_from_policy(window, cx);
-        let ids: Vec<String> = keychain(cx).read(cx).keys_for_network(self.network).map(|k| k.id.clone()).collect();
-        let slots: Vec<String> =
-            self.layout.as_ref().map(|l| l.slots.iter().map(|s| s.id.clone()).collect()).unwrap_or_default();
+        let ids: Vec<String> = keychain(cx)
+            .read(cx)
+            .keys_for_network(self.network)
+            .map(|k| k.id.clone())
+            .collect();
+        let slots: Vec<String> = self
+            .layout
+            .as_ref()
+            .map(|l| l.slots.iter().map(|s| s.id.clone()).collect())
+            .unwrap_or_default();
         let fill = if stage == "review" { slots.len() } else { 1 };
         for (slot, key) in slots.iter().zip(ids.iter()).take(fill) {
             self.assigned.insert(slot.clone(), key.clone());
@@ -548,8 +631,12 @@ fn dev_preset() -> Option<String> {
 
 impl SlotBoardHost for CreateWalletWizardPage {
     fn pick_key(&mut self, slot_id: String, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(layout) = self.layout.as_ref() else { return };
-        let Some(slot) = layout.slot(&slot_id) else { return };
+        let Some(layout) = self.layout.as_ref() else {
+            return;
+        };
+        let Some(slot) = layout.slot(&slot_id) else {
+            return;
+        };
         let kc = keychain(cx).read(cx);
         let used = self
             .assigned
@@ -565,10 +652,12 @@ impl SlotBoardHost for CreateWalletWizardPage {
         let (network, label) = (self.network.to_string(), slot.label.clone());
         let picker = cx.new(|cx| KeyPicker::new(network, label, used, current, window, cx));
         let sid = slot_id.clone();
-        self._modal_sub = Some(cx.subscribe(&picker, move |this, _, ev: &KeyPickerEvent, cx| match ev {
-            KeyPickerEvent::Picked(id) => this.assign(sid.clone(), id.clone(), cx),
-            KeyPickerEvent::Cancelled => this.close_modal(cx),
-        }));
+        self._modal_sub = Some(
+            cx.subscribe(&picker, move |this, _, ev: &KeyPickerEvent, cx| match ev {
+                KeyPickerEvent::Picked(id) => this.assign(sid.clone(), id.clone(), cx),
+                KeyPickerEvent::Cancelled => this.close_modal(cx),
+            }),
+        );
         self.key_picker = Some((slot_id, picker));
         cx.notify();
     }
@@ -588,7 +677,11 @@ impl Render for CreateWalletWizardPage {
             Step::Done => 3,
         };
         let name = self.name_text(cx);
-        let title = if self.step == Step::Policy || name.is_empty() { "New wallet".to_string() } else { name };
+        let title = if self.step == Step::Policy || name.is_empty() {
+            "New wallet".to_string()
+        } else {
+            name
+        };
         let subtitle = match self.step {
             Step::Policy => "Name the wallet and choose who has to sign.",
             Step::Keys => "Choose a key from your library for each slot.",
@@ -599,7 +692,10 @@ impl Render for CreateWalletWizardPage {
             Step::Policy => Some(self.render_policy_step(cx)),
             Step::Keys => self.layout.clone().map(|l| self.render_keys_step(&l, cx)),
             Step::Review => Some(self.review.clone().into_any_element()),
-            Step::Done => self.done.as_ref().map(|(_, d)| d.clone().into_any_element()),
+            Step::Done => self
+                .done
+                .as_ref()
+                .map(|(_, d)| d.clone().into_any_element()),
         };
         let footer = self.render_footer(cx);
 

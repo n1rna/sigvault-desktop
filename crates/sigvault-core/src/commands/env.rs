@@ -4,9 +4,9 @@
 // one before logging in; once authenticated, the choice is locked until
 // they log out (or explicitly clear it from the login screen).
 
+use crate::host::{AppHandle, State};
 use log::{error, info, warn};
 use serde::Serialize;
-use crate::host::{AppHandle, State};
 
 use crate::env_config::{self, EnvConfig};
 use crate::error::AppErrorCode;

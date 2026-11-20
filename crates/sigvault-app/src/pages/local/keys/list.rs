@@ -18,7 +18,8 @@ use crate::shell::navigate;
 use crate::state::{store, StoreEvent};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, button, card, divider, icon, modal, page_frame, tabs, Select, SelectEvent, SelectOption, Tone,
+    alert, button, card, divider, icon, modal, page_frame, tabs, Select, SelectEvent, SelectOption,
+    Tone,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -54,7 +55,8 @@ fn usage_key(fingerprint: &str, network: &str) -> String {
 
 /// Load wallets and index them by the fingerprints they contain.
 pub fn load_usage(cx: &mut gpui::App) -> gpui::Task<Result<UsageMap, String>> {
-    let task = backend(cx).call(|app, st| async move { cmd_local_list_wallets(app, State::new(&st)).await });
+    let task = backend(cx)
+        .call(|app, st| async move { cmd_local_list_wallets(app, State::new(&st)).await });
     cx.spawn(async move |_| {
         let wallets = task.await?;
         let mut map: UsageMap = HashMap::new();
@@ -62,7 +64,9 @@ pub fn load_usage(cx: &mut gpui::App) -> gpui::Task<Result<UsageMap, String>> {
             let mut fps: Vec<String> = w.fingerprints.iter().map(|f| f.to_lowercase()).collect();
             fps.dedup();
             for fp in fps {
-                map.entry(usage_key(&fp, &w.network)).or_default().push(w.clone());
+                map.entry(usage_key(&fp, &w.network))
+                    .or_default()
+                    .push(w.clone());
             }
         }
         Ok(map)
@@ -70,7 +74,10 @@ pub fn load_usage(cx: &mut gpui::App) -> gpui::Task<Result<UsageMap, String>> {
 }
 
 pub fn wallets_using<'a>(usage: &'a UsageMap, k: &KeyRecord) -> &'a [WalletSummary] {
-    usage.get(&usage_key(&k.fingerprint, &k.network)).map(Vec::as_slice).unwrap_or(&[])
+    usage
+        .get(&usage_key(&k.fingerprint, &k.network))
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
 pub struct KeyListPage {
@@ -84,7 +91,11 @@ pub struct KeyListPage {
 impl KeyListPage {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut options = vec![SelectOption::new("all", "All networks")];
-        options.extend(NETWORKS.iter().map(|(id, label)| SelectOption::new(*id, *label)));
+        options.extend(
+            NETWORKS
+                .iter()
+                .map(|(id, label)| SelectOption::new(*id, *label)),
+        );
         let network = cx.new(|_| Select::new(options).with_value("all"));
         let subs = vec![
             cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()),
@@ -95,7 +106,13 @@ impl KeyListPage {
                 }
             }),
         ];
-        let mut this = Self { filter: Filter::All, network, usage: None, unlock: None, _subs: subs };
+        let mut this = Self {
+            filter: Filter::All,
+            network,
+            usage: None,
+            unlock: None,
+            _subs: subs,
+        };
         this.refresh_usage(cx);
         this
     }
@@ -115,10 +132,11 @@ impl KeyListPage {
 
     fn open_unlock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let unlock = cx.new(|cx| KeychainUnlock::new("to use private keys", window, cx));
-        self._subs.push(cx.subscribe(&unlock, |this, _, _: &UnlockEvent, cx| {
-            this.unlock = None;
-            cx.notify();
-        }));
+        self._subs
+            .push(cx.subscribe(&unlock, |this, _, _: &UnlockEvent, cx| {
+                this.unlock = None;
+                cx.notify();
+            }));
         self.unlock = Some(unlock);
         cx.notify();
     }
@@ -127,7 +145,9 @@ impl KeyListPage {
         let t = theme();
         let kc = keychain(cx).read(cx);
         let hot = kc.hot_count();
-        let (icon_name, color, title, body): (&str, _, SharedString, SharedString) = if !kc.has_password() {
+        let (icon_name, color, title, body): (&str, _, SharedString, SharedString) = if !kc
+            .has_password()
+        {
             (
                 "shield",
                 t.muted_foreground,
@@ -192,8 +212,18 @@ impl KeyListPage {
                     .flex()
                     .flex_col()
                     .gap(px(2.))
-                    .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).child(title))
-                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(body)),
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(body),
+                    ),
             )
             .children(action)
     }
@@ -226,7 +256,11 @@ impl KeyListPage {
             .child(icon_tile(
                 source_icon(&k.source),
                 32.,
-                Some(if k.is_hot() { t.primary } else { t.muted_foreground }),
+                Some(if k.is_hot() {
+                    t.primary
+                } else {
+                    t.muted_foreground
+                }),
             ))
             .child(
                 div()
@@ -268,7 +302,13 @@ impl KeyListPage {
                             .child(meta),
                     ),
             )
-            .child(div().w(px(96.)).flex_none().flex().child(network_badge(&k.network)))
+            .child(
+                div()
+                    .w(px(96.))
+                    .flex_none()
+                    .flex()
+                    .child(network_badge(&k.network)),
+            )
             .child(
                 div()
                     .w(px(80.))
@@ -283,7 +323,11 @@ impl KeyListPage {
                     .w(px(120.))
                     .flex_none()
                     .text_size(px(12.))
-                    .text_color(if used.unwrap_or(0) > 0 { t.foreground } else { t.muted_foreground })
+                    .text_color(if used.unwrap_or(0) > 0 {
+                        t.foreground
+                    } else {
+                        t.muted_foreground
+                    })
                     .child(used_text),
             )
             .child(icon("chevron-right").size(px(14.)))
@@ -346,16 +390,34 @@ impl Render for KeyListPage {
         let kc = keychain(cx).read(cx);
         let all: Vec<KeyRecord> = kc.keys().to_vec();
         let load_error = kc.load_error().map(str::to_string);
-        let net = self.network.read(cx).value().map(|v| v.to_string()).unwrap_or_else(|| "all".into());
-        let in_net: Vec<&KeyRecord> = all.iter().filter(|k| net == "all" || k.network == net).collect();
+        let net = self
+            .network
+            .read(cx)
+            .value()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "all".into());
+        let in_net: Vec<&KeyRecord> = all
+            .iter()
+            .filter(|k| net == "all" || k.network == net)
+            .collect();
         let count = |f: Filter| in_net.iter().filter(|k| f.matches(k)).count();
         let tab_items: [(&'static str, SharedString); 3] = [
             ("all", format!("All  {}", count(Filter::All)).into()),
-            ("private", format!("On this computer  {}", count(Filter::Private)).into()),
-            ("public", format!("Hardware & watch-only  {}", count(Filter::Public)).into()),
+            (
+                "private",
+                format!("On this computer  {}", count(Filter::Private)).into(),
+            ),
+            (
+                "public",
+                format!("Hardware & watch-only  {}", count(Filter::Public)).into(),
+            ),
         ];
-        let mut shown: Vec<&KeyRecord> = in_net.iter().copied().filter(|k| self.filter.matches(k)).collect();
-        shown.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+        let mut shown: Vec<&KeyRecord> = in_net
+            .iter()
+            .copied()
+            .filter(|k| self.filter.matches(k))
+            .collect();
+        shown.sort_by_key(|a| a.label.to_lowercase());
 
         let filters = div()
             .flex()
@@ -363,25 +425,24 @@ impl Render for KeyListPage {
             .items_center()
             .justify_between()
             .gap_4()
-            .child(div().w(px(500.)).child(tabs(
-                "key-filter",
-                &tab_items,
-                self.filter.key(),
-                {
-                    let this = cx.entity().downgrade();
-                    move |key: &'static str, _, cx: &mut gpui::App| {
-                        this.update(cx, |this, cx| {
-                            this.filter = match key {
-                                "private" => Filter::Private,
-                                "public" => Filter::Public,
-                                _ => Filter::All,
-                            };
-                            cx.notify();
-                        })
-                        .ok();
-                    }
-                },
-            )))
+            .child(
+                div()
+                    .w(px(500.))
+                    .child(tabs("key-filter", &tab_items, self.filter.key(), {
+                        let this = cx.entity().downgrade();
+                        move |key: &'static str, _, cx: &mut gpui::App| {
+                            this.update(cx, |this, cx| {
+                                this.filter = match key {
+                                    "private" => Filter::Private,
+                                    "public" => Filter::Public,
+                                    _ => Filter::All,
+                                };
+                                cx.notify();
+                            })
+                            .ok();
+                        }
+                    })),
+            )
             .child(div().w(px(180.)).child(self.network.clone()));
 
         let body = if all.is_empty() {
@@ -391,7 +452,12 @@ impl Render for KeyListPage {
                 .items_center()
                 .py_10()
                 .gap_1()
-                .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("No keys match these filters"))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child("No keys match these filters"),
+                )
                 .child(
                     div()
                         .text_size(px(12.))
@@ -423,13 +489,17 @@ impl Render for KeyListPage {
             .when(!all.is_empty(), |f| f.child(self.render_status(cx)))
             .child(body);
 
-        div().size_full().relative().child(frame).children(self.unlock.clone().map(|u| {
-            modal("kc-unlock-modal", 420.)
-                .on_dismiss(cx.listener(|this, _, _, cx| {
-                    this.unlock = None;
-                    cx.notify();
-                }))
-                .child(u)
-        }))
+        div()
+            .size_full()
+            .relative()
+            .child(frame)
+            .children(self.unlock.clone().map(|u| {
+                modal("kc-unlock-modal", 420.)
+                    .on_dismiss(cx.listener(|this, _, _, cx| {
+                        this.unlock = None;
+                        cx.notify();
+                    }))
+                    .child(u)
+            }))
     }
 }

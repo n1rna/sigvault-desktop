@@ -28,14 +28,11 @@ pub fn spinner(size: Pixels) -> gpui::AnimationElement<Svg> {
 
 /// Rotating loader arc in a given colour.
 pub fn spinner_with(size: Pixels, color: Hsla) -> gpui::AnimationElement<Svg> {
-    icon("loader")
-        .size(size)
-        .text_color(color)
-        .with_animation(
-            "spinner",
-            Animation::new(Duration::from_millis(900)).repeat(),
-            |svg, delta| svg.with_transformation(Transformation::rotate(percentage(delta))),
-        )
+    icon("loader").size(size).text_color(color).with_animation(
+        "spinner",
+        Animation::new(Duration::from_millis(900)).repeat(),
+        |svg, delta| svg.with_transformation(Transformation::rotate(percentage(delta))),
+    )
 }
 
 /// The SigVault 3×3 mark (orange centre), drawn with quads.
@@ -49,7 +46,11 @@ pub fn logo(size: Pixels) -> Div {
             .flex_row()
             .gap(gap)
             .child(div().size(cell).bg(t.foreground))
-            .child(div().size(cell).bg(if center { t.bitcoin } else { t.foreground }))
+            .child(
+                div()
+                    .size(cell)
+                    .bg(if center { t.bitcoin } else { t.foreground }),
+            )
             .child(div().size(cell).bg(t.foreground))
     };
     div()
@@ -219,41 +220,46 @@ pub fn stat_grid(stats: Vec<(SharedString, SharedString, SharedString)>) -> Div 
         .border_1()
         .border_color(t.line)
         .overflow_hidden()
-        .children(stats.into_iter().enumerate().map(move |(i, (label, value, hint))| {
-            div()
-                .flex_1()
-                .flex_basis(px(0.))
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .p_6()
-                .bg(t.page)
-                .when(i + 1 < n, |d| d.border_r_1().border_color(t.line))
-                .child(
+        .children(
+            stats
+                .into_iter()
+                .enumerate()
+                .map(move |(i, (label, value, hint))| {
                     div()
-                        .font_family(FONT_MONO)
-                        .text_size(px(10.))
-                        .text_color(t.ink_2)
-                        .child(label.to_uppercase()),
-                )
-                .child(
-                    div()
-                        .font_family(FONT_MONO)
-                        .text_size(px(34.))
-                        .line_height(px(42.))
-                        .text_color(t.ink)
-                        .truncate()
-                        .child(value),
-                )
-                .child(
-                    div()
-                        .font_family(FONT_MONO)
-                        .text_size(px(10.))
-                        .text_color(alpha(t.ink_2, 0.7))
-                        .child(hint.to_uppercase()),
-                )
-        }))
+                        .flex_1()
+                        .flex_basis(px(0.))
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .p_6()
+                        .bg(t.page)
+                        .when(i + 1 < n, |d| d.border_r_1().border_color(t.line))
+                        .child(
+                            div()
+                                .font_family(FONT_MONO)
+                                .text_size(px(10.))
+                                .text_color(t.ink_2)
+                                .child(label.to_uppercase()),
+                        )
+                        .child(
+                            div()
+                                .font_family(FONT_MONO)
+                                .text_size(px(34.))
+                                .line_height(px(42.))
+                                .text_color(t.ink)
+                                .truncate()
+                                .child(value),
+                        )
+                        .child(
+                            div()
+                                .font_family(FONT_MONO)
+                                .text_size(px(10.))
+                                .text_color(alpha(t.ink_2, 0.7))
+                                .child(hint.to_uppercase()),
+                        )
+                }),
+        )
 }
 
 /// Page title (h1, web `PageHeader`).
@@ -402,8 +408,16 @@ pub fn choice_card(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
         .rounded_lg()
         .border_1()
         .cursor_pointer()
-        .border_color(if selected { alpha(t.primary, 0.6) } else { t.border })
-        .bg(if selected { alpha(t.primary, 0.06) } else { t.card })
+        .border_color(if selected {
+            alpha(t.primary, 0.6)
+        } else {
+            t.border
+        })
+        .bg(if selected {
+            alpha(t.primary, 0.06)
+        } else {
+            t.card
+        })
         .hover(move |s| s.border_color(alpha(t.primary, 0.4)))
 }
 
@@ -439,7 +453,11 @@ pub fn tabs(
                 .text_size(px(12.5))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .cursor_pointer()
-                .text_color(if selected { t.foreground } else { t.muted_foreground })
+                .text_color(if selected {
+                    t.foreground
+                } else {
+                    t.muted_foreground
+                })
                 .when(selected, |d| d.bg(t.card).border_1().border_color(t.border))
                 .on_click(move |_, w, cx| handler(key, w, cx))
                 .child(text.clone())
@@ -598,7 +616,11 @@ pub fn stepper(steps: &[&str], current: usize) -> Div {
         .children(steps.iter().enumerate().map(|(i, s)| {
             let done = i < current;
             let active = i == current;
-            let color = if active || done { t.primary } else { t.muted_foreground };
+            let color = if active || done {
+                t.primary
+            } else {
+                t.muted_foreground
+            };
             div()
                 .flex()
                 .flex_row()
@@ -618,7 +640,10 @@ pub fn stepper(steps: &[&str], current: usize) -> Div {
                         .text_size(px(11.))
                         .text_color(color)
                         .child(if done {
-                            icon("check").size(px(12.)).text_color(color).into_any_element()
+                            icon("check")
+                                .size(px(12.))
+                                .text_color(color)
+                                .into_any_element()
                         } else {
                             format!("{}", i + 1).into_any_element()
                         }),
@@ -626,7 +651,11 @@ pub fn stepper(steps: &[&str], current: usize) -> Div {
                 .child(
                     div()
                         .text_size(px(12.))
-                        .text_color(if active { t.foreground } else { t.muted_foreground })
+                        .text_color(if active {
+                            t.foreground
+                        } else {
+                            t.muted_foreground
+                        })
                         .child(s.to_string()),
                 )
         }))
@@ -636,7 +665,12 @@ pub fn stepper(steps: &[&str], current: usize) -> Div {
 pub fn format_btc(sat: i64) -> String {
     let neg = sat < 0;
     let abs = sat.unsigned_abs();
-    format!("{}{}.{:08} BTC", if neg { "-" } else { "" }, abs / 100_000_000, abs % 100_000_000)
+    format!(
+        "{}{}.{:08} BTC",
+        if neg { "-" } else { "" },
+        abs / 100_000_000,
+        abs % 100_000_000
+    )
 }
 
 /// Format satoshis with thousands separators: `12,345 sat`.
@@ -644,7 +678,7 @@ pub fn format_sat(sat: i64) -> String {
     let s = sat.unsigned_abs().to_string();
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
@@ -658,7 +692,14 @@ pub fn truncate_middle(s: &str, keep: usize) -> String {
         return s.to_string();
     }
     let start: String = s.chars().take(keep).collect();
-    let end: String = s.chars().rev().take(keep).collect::<Vec<_>>().into_iter().rev().collect();
+    let end: String = s
+        .chars()
+        .rev()
+        .take(keep)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("{start}…{end}")
 }
 

@@ -4,8 +4,8 @@
 #![allow(dead_code)]
 
 use gpui::{
-    div, prelude::*, px, AnyElement, App, Div, ElementId, FontWeight, SharedString,
-    Stateful, Window,
+    div, prelude::*, px, AnyElement, App, Div, ElementId, FontWeight, SharedString, Stateful,
+    Window,
 };
 
 use crate::theme::{alpha, theme, FONT_MONO};
@@ -27,14 +27,14 @@ pub enum AlertTone {
 }
 
 /// `<Alert tone title>children</Alert>`.
-pub fn setup_alert(
-    tone: AlertTone,
-    title: Option<SharedString>,
-    body: Option<AnyElement>,
-) -> Div {
+pub fn setup_alert(tone: AlertTone, title: Option<SharedString>, body: Option<AnyElement>) -> Div {
     let t = theme();
     let (border, bg, fg) = match tone {
-        AlertTone::Error => (alpha(t.destructive, 0.3), alpha(t.destructive, 0.06), t.destructive),
+        AlertTone::Error => (
+            alpha(t.destructive, 0.3),
+            alpha(t.destructive, 0.06),
+            t.destructive,
+        ),
         AlertTone::Warning => (alpha(t.warning, 0.4), alpha(t.warning, 0.07), t.foreground),
         AlertTone::Info => (t.border, alpha(t.card, 0.4), t.muted_foreground),
         AlertTone::Success => (alpha(t.success, 0.4), alpha(t.success, 0.07), t.foreground),
@@ -61,7 +61,9 @@ pub fn setup_alert(
         .children(body.map(|b| {
             div()
                 .when(has_title, |d| d.mt_1())
-                .when(tone != AlertTone::Error, |d| d.text_color(t.muted_foreground))
+                .when(tone != AlertTone::Error, |d| {
+                    d.text_color(t.muted_foreground)
+                })
                 .child(b)
         }))
 }
@@ -147,7 +149,11 @@ pub fn segmented(
                         d.h(px(32.)).flex_1().text_size(px(12.))
                     }
                 })
-                .text_color(if selected { t.foreground } else { t.muted_foreground })
+                .text_color(if selected {
+                    t.foreground
+                } else {
+                    t.muted_foreground
+                })
                 .when(selected, |d| d.bg(alpha(t.primary, 0.10)))
                 .when(o.disabled, |d| d.opacity(0.4))
                 .when(!o.disabled, |d| {
@@ -181,8 +187,14 @@ pub fn option_card(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
         .border_1()
         .cursor_pointer()
         .border_color(if selected { t.primary } else { t.border })
-        .bg(if selected { alpha(t.primary, 0.06) } else { t.card })
-        .when(!selected, |d| d.hover(move |s| s.border_color(alpha(t.primary, 0.6))))
+        .bg(if selected {
+            alpha(t.primary, 0.06)
+        } else {
+            t.card
+        })
+        .when(!selected, |d| {
+            d.hover(move |s| s.border_color(alpha(t.primary, 0.6)))
+        })
 }
 
 /// Network choice, shared by the create and recover wizards.
@@ -245,7 +257,6 @@ pub fn fingerprint(value: &str) -> Div {
         .child(value.to_lowercase())
 }
 
-
 pub fn truncate_middle(s: &str, head: usize, tail: usize) -> String {
     let n = s.chars().count();
     if n <= head + tail + 1 {
@@ -283,5 +294,3 @@ pub fn para(text: impl Into<SharedString>) -> Div {
         .text_color(t.muted_foreground)
         .child(text.into())
 }
-
-

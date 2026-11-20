@@ -131,7 +131,11 @@ impl Render for Select {
                     .child(
                         div()
                             .flex_1()
-                            .text_color(if has_value { t.foreground } else { t.muted_foreground })
+                            .text_color(if has_value {
+                                t.foreground
+                            } else {
+                                t.muted_foreground
+                            })
                             .child(current),
                     )
                     .child(icon("chevron-down").size(px(14.))),
@@ -169,7 +173,9 @@ impl Render for Select {
                                         .gap_2()
                                         .px_3()
                                         .py(px(7.))
-                                        .when(!disabled, |d| d.cursor_pointer().hover(|s| s.bg(alpha(t.muted, 0.8))))
+                                        .when(!disabled, |d| {
+                                            d.cursor_pointer().hover(|s| s.bg(alpha(t.muted, 0.8)))
+                                        })
                                         .when(disabled, |d| d.opacity(0.45))
                                         .when(selected, |d| d.bg(alpha(t.primary, 0.08)))
                                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -200,7 +206,9 @@ impl Render for Select {
                                                 })),
                                         )
                                         .when(selected, |d| {
-                                            d.child(icon("check").size(px(14.)).text_color(t.primary))
+                                            d.child(
+                                                icon("check").size(px(14.)).text_color(t.primary),
+                                            )
                                         })
                                 })),
                         ),

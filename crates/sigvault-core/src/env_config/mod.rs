@@ -9,9 +9,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::host::AppHandle;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use crate::host::AppHandle;
 
 const ENVIRONMENTS_URL: &str = "https://sigvault.org/environments.json";
 const CACHE_FILENAME: &str = "environments.cache.json";

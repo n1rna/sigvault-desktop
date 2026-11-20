@@ -29,9 +29,15 @@ use super::setup::api::{
     WireSlot,
 };
 use super::setup::files::open_text_file;
-use super::setup::finish::{network_label, DoneStep, ReviewData, ReviewEvent, ReviewRow, ReviewStep};
-use super::setup::policy::{describe_timelock, layout_for_analysis, paths_spendable_by, SlotLayout};
-use super::setup::slot_board::{meta_line, slot_board, BoardKey, BoardMode, SlotBoardHost, SlotState};
+use super::setup::finish::{
+    network_label, DoneStep, ReviewData, ReviewEvent, ReviewRow, ReviewStep,
+};
+use super::setup::policy::{
+    describe_timelock, layout_for_analysis, paths_spendable_by, SlotLayout,
+};
+use super::setup::slot_board::{
+    meta_line, slot_board, BoardKey, BoardMode, SlotBoardHost, SlotState,
+};
 use super::setup::ui::network_options;
 use crate::keychain::{keychain, KeyRecord, KeychainEvent};
 use crate::router::Page;
@@ -117,9 +123,13 @@ impl RecoveryFlowPage {
                     cx.notify();
                 }
             }),
-            cx.subscribe_in(&review, window, |this, _, ev: &ReviewEvent, window, cx| match ev {
-                ReviewEvent::Submit => this.submit(window, cx),
-            }),
+            cx.subscribe_in(
+                &review,
+                window,
+                |this, _, ev: &ReviewEvent, window, cx| match ev {
+                    ReviewEvent::Submit => this.submit(window, cx),
+                },
+            ),
             cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()),
         ];
         let mut this = Self {
@@ -148,7 +158,8 @@ impl RecoveryFlowPage {
         if cfg!(debug_assertions) {
             if let Ok(text) = std::env::var("SIGVAULT_DEV_DESCRIPTOR") {
                 this.dev_stage = std::env::var("SIGVAULT_DEV_WIZARD").ok();
-                this.descriptor.update(cx, |d, cx| d.set_text(text.clone(), cx));
+                this.descriptor
+                    .update(cx, |d, cx| d.set_text(text.clone(), cx));
                 this.read_descriptor(text, cx);
             }
         }
@@ -164,15 +175,22 @@ impl RecoveryFlowPage {
     }
 
     /// The library key matching a slot's descriptor key, on this network.
-    fn matched<'a>(&self, slot_id: &str, kc: &'a crate::keychain::Keychain) -> Option<&'a KeyRecord> {
+    fn matched<'a>(
+        &self,
+        slot_id: &str,
+        kc: &'a crate::keychain::Keychain,
+    ) -> Option<&'a KeyRecord> {
         let e = self.layout.as_ref()?.slot(slot_id)?.expected.as_ref()?;
-        kc.find_match(e.fingerprint.as_deref(), &e.xpub).filter(|k| k.network == self.network)
+        kc.find_match(e.fingerprint.as_deref(), &e.xpub)
+            .filter(|k| k.network == self.network)
     }
 
     /// Slot → library key actually used (matched and not skipped).
     fn used_keys(&self, cx: &App) -> HashMap<String, KeyRecord> {
         let kc = keychain(cx).read(cx);
-        let Some(layout) = &self.layout else { return HashMap::new() };
+        let Some(layout) = &self.layout else {
+            return HashMap::new();
+        };
         layout
             .slots
             .iter()
@@ -183,7 +201,9 @@ impl RecoveryFlowPage {
 
     fn slot_states(&self, cx: &App) -> HashMap<String, SlotState> {
         let kc = keychain(cx).read(cx);
-        let Some(layout) = &self.layout else { return HashMap::new() };
+        let Some(layout) = &self.layout else {
+            return HashMap::new();
+        };
         layout
             .slots
             .iter()
@@ -201,7 +221,10 @@ impl RecoveryFlowPage {
 
     /// No used key can sign anywhere → create a watch-only wallet.
     fn watch_only(&self, cx: &App) -> bool {
-        !self.used_keys(cx).values().any(|k| k.is_hot() || k.source == "hardware")
+        !self
+            .used_keys(cx)
+            .values()
+            .any(|k| k.is_hot() || k.source == "hardware")
     }
 
     fn set_analysis(&mut self, a: DescriptorAnalysis, cx: &mut Context<Self>) {
@@ -279,7 +302,9 @@ impl RecoveryFlowPage {
     }
 
     fn continue_from_keys(&mut self, cx: &mut Context<Self>) {
-        let Some(layout) = self.layout.clone() else { return };
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
         let used = self.used_keys(cx);
         let rows = layout
             .slots
@@ -296,13 +321,18 @@ impl RecoveryFlowPage {
                         .unwrap_or_default(),
                     key: used.get(&s.id).map(BoardKey::from_record),
                     fingerprint: e.and_then(|e| e.fingerprint.clone()).unwrap_or_default(),
-                    derivation_path: e.and_then(|e| e.derivation_path.clone()).unwrap_or_default(),
+                    derivation_path: e
+                        .and_then(|e| e.derivation_path.clone())
+                        .unwrap_or_default(),
                 }
             })
             .collect();
         let is_hot = |id: &str| used.get(id).is_some_and(|k| k.is_hot());
         let hot = layout.slots.iter().filter(|s| is_hot(&s.id)).count();
-        let exposed = paths_spendable_by(&layout, |s| is_hot(&s.id)).into_iter().map(|p| p.title).collect();
+        let exposed = paths_spendable_by(&layout, |s| is_hot(&s.id))
+            .into_iter()
+            .map(|p| p.title)
+            .collect();
         let a = self.analysis.as_ref();
         let data = ReviewData {
             name: self.name_text(cx),
@@ -331,19 +361,29 @@ impl RecoveryFlowPage {
         if self.submitting || !self.review.read(cx).ready(cx) {
             return;
         }
-        let (Some(layout), Some(a)) = (self.layout.clone(), self.analysis.clone()) else { return };
+        let (Some(layout), Some(a)) = (self.layout.clone(), self.analysis.clone()) else {
+            return;
+        };
         let used = self.used_keys(cx);
-        let hot: Vec<(String, String)> =
-            used.iter().filter(|(_, k)| k.is_hot()).map(|(s, k)| (s.clone(), k.id.clone())).collect();
+        let hot: Vec<(String, String)> = used
+            .iter()
+            .filter(|(_, k)| k.is_hot())
+            .map(|(s, k)| (s.clone(), k.id.clone()))
+            .collect();
 
         if !hot.is_empty() && !keychain(cx).read(cx).is_unlocked() {
-            let unlock = cx.new(|cx| KeychainUnlock::new("to copy the private keys into this wallet", window, cx));
-            self._modal_sub = Some(cx.subscribe_in(&unlock, window, |this, _, ev: &UnlockEvent, window, cx| {
-                this.close_modal(cx);
-                if matches!(ev, UnlockEvent::Unlocked) {
-                    this.submit(window, cx);
-                }
-            }));
+            let unlock = cx.new(|cx| {
+                KeychainUnlock::new("to copy the private keys into this wallet", window, cx)
+            });
+            self._modal_sub =
+                Some(
+                    cx.subscribe_in(&unlock, window, |this, _, ev: &UnlockEvent, window, cx| {
+                        this.close_modal(cx);
+                        if matches!(ev, UnlockEvent::Unlocked) {
+                            this.submit(window, cx);
+                        }
+                    }),
+                );
             self.unlock = Some(unlock);
             cx.notify();
             return;
@@ -361,16 +401,26 @@ impl RecoveryFlowPage {
         let mut index = HashMap::new();
         let mut slots = Vec::new();
         for s in &layout.slots {
-            let Some(e) = s.expected.as_ref() else { continue };
-            let (Some(fp), Some(path)) = (e.fingerprint.clone(), e.derivation_path.clone()) else { continue };
+            let Some(e) = s.expected.as_ref() else {
+                continue;
+            };
+            let (Some(fp), Some(path)) = (e.fingerprint.clone(), e.derivation_path.clone()) else {
+                continue;
+            };
             let k = used.get(&s.id);
             index.insert(s.id.clone(), slots.len());
             slots.push(WireSlot {
-                label: k.map(|k| k.label.clone()).unwrap_or_else(|| s.label.clone()),
+                label: k
+                    .map(|k| k.label.clone())
+                    .unwrap_or_else(|| s.label.clone()),
                 source: k
                     .and_then(|k| SlotSource::from_key_source(&k.source))
                     .unwrap_or(SlotSource::Xpub),
-                key: SlotKey { fingerprint: fp, derivation_path: path, xpub: e.xpub.clone() },
+                key: SlotKey {
+                    fingerprint: fp,
+                    derivation_path: path,
+                    xpub: e.xpub.clone(),
+                },
                 secret: None,
             });
         }
@@ -393,7 +443,11 @@ impl RecoveryFlowPage {
                                 network,
                                 external_descriptor: a.external_descriptor.clone(),
                                 internal_descriptor: a.internal_descriptor.clone(),
-                                fingerprints: a.slots.iter().filter_map(|s| s.fingerprint.clone()).collect(),
+                                fingerprints: a
+                                    .slots
+                                    .iter()
+                                    .filter_map(|s| s.fingerprint.clone())
+                                    .collect(),
                             },
                         )
                     })
@@ -423,7 +477,13 @@ impl RecoveryFlowPage {
                 };
                 let id = create.await?;
                 let unlock = cx
-                    .update(|cx| api::unlock_wallet(cx, id.clone(), if has_hot { passphrase } else { String::new() }))
+                    .update(|cx| {
+                        api::unlock_wallet(
+                            cx,
+                            id.clone(),
+                            if has_hot { passphrase } else { String::new() },
+                        )
+                    })
                     .map_err(|e| e.to_string())?;
                 unlock.await?;
                 Ok(id)
@@ -435,7 +495,8 @@ impl RecoveryFlowPage {
                 match res {
                     Ok(id) => {
                         crate::state::local_changed(cx);
-                        let done = cx.new(|_| DoneStep::new("Wallet restored", id.clone(), name, multi_key));
+                        let done = cx
+                            .new(|_| DoneStep::new("Wallet restored", id.clone(), name, multi_key));
                         this.done = Some((id, done));
                         this.step = Step::Done;
                     }
@@ -449,9 +510,12 @@ impl RecoveryFlowPage {
     }
 
     fn run_dev_stage(&mut self, cx: &mut Context<Self>) {
-        let Some(stage) = self.dev_stage.take() else { return };
+        let Some(stage) = self.dev_stage.take() else {
+            return;
+        };
         if self.name_text(cx).is_empty() {
-            self.name.update(cx, |n, cx| n.set_text("Family vault".to_string(), cx));
+            self.name
+                .update(cx, |n, cx| n.set_text("Family vault".to_string(), cx));
         }
         self.continue_from_backup(cx);
         if stage == "review" {
@@ -509,16 +573,20 @@ impl RecoveryFlowPage {
                             .text_color(t.foreground)
                             .child(p.label.clone())
                             .children(p.timelock_blocks.map(|b| {
-                                div().text_color(t.muted_foreground).child(format!("· after {}", describe_timelock(b)))
+                                div()
+                                    .text_color(t.muted_foreground)
+                                    .child(format!("· after {}", describe_timelock(b)))
                             })),
                     )
-                    .child(div().flex().flex_row().flex_wrap().gap_x_4().children(p.slot_ids.iter().filter_map(|id| {
-                        let s = a.slots.iter().find(|s| &s.id == id)?;
-                        Some(meta_line(
-                            s.fingerprint.as_deref().unwrap_or(""),
-                            s.derivation_path.as_deref().unwrap_or(""),
-                        ))
-                    })))
+                    .child(div().flex().flex_row().flex_wrap().gap_x_4().children(
+                        p.slot_ids.iter().filter_map(|id| {
+                            let s = a.slots.iter().find(|s| &s.id == id)?;
+                            Some(meta_line(
+                                s.fingerprint.as_deref().unwrap_or(""),
+                                s.derivation_path.as_deref().unwrap_or(""),
+                            ))
+                        }),
+                    ))
                     .into_any_element(),
             );
         }
@@ -653,10 +721,19 @@ impl RecoveryFlowPage {
     fn render_keys_step(&self, layout: &SlotLayout, cx: &mut Context<Self>) -> AnyElement {
         let states = self.slot_states(cx);
         let total = layout.slots.len();
-        let found = states.values().filter(|s| !matches!(s, SlotState::WatchOnly { skipped: None })).count();
+        let found = states
+            .values()
+            .filter(|s| !matches!(s, SlotState::WatchOnly { skipped: None }))
+            .count();
         let net = network_label(self.network);
         let summary = if found == total {
-            (Tone::Success, format!("All {total} key{} found in your key library.", if total == 1 { "" } else { "s" }))
+            (
+                Tone::Success,
+                format!(
+                    "All {total} key{} found in your key library.",
+                    if total == 1 { "" } else { "s" }
+                ),
+            )
         } else if found == 0 {
             (
                 Tone::Secondary,
@@ -681,10 +758,20 @@ impl RecoveryFlowPage {
     fn render_modal(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let dismiss = cx.listener(|this, _, _, cx| this.close_modal(cx));
         if let Some(u) = &self.unlock {
-            return Some(modal("keychain-unlock", 420.).on_dismiss(dismiss).child(u.clone()).into_any_element());
+            return Some(
+                modal("keychain-unlock", 420.)
+                    .on_dismiss(dismiss)
+                    .child(u.clone())
+                    .into_any_element(),
+            );
         }
         let (_, flow) = self.adding.as_ref()?;
-        Some(modal("add-key", 640.).on_dismiss(dismiss).child(flow.clone()).into_any_element())
+        Some(
+            modal("add-key", 640.)
+                .on_dismiss(dismiss)
+                .child(flow.clone())
+                .into_any_element(),
+        )
     }
 
     fn render_footer(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -739,7 +826,11 @@ impl RecoveryFlowPage {
                 ],
             ),
             Step::Done => {
-                let id = self.done.as_ref().map(|(id, _)| id.clone()).unwrap_or_default();
+                let id = self
+                    .done
+                    .as_ref()
+                    .map(|(id, _)| id.clone())
+                    .unwrap_or_default();
                 (
                     vec![button("wizard-all-wallets", "All wallets")
                         .ghost()
@@ -814,7 +905,11 @@ impl Render for RecoveryFlowPage {
             Step::Done => 3,
         };
         let name = self.name_text(cx);
-        let title = if self.step == Step::Backup || name.is_empty() { "Restore wallet".to_string() } else { name };
+        let title = if self.step == Step::Backup || name.is_empty() {
+            "Restore wallet".to_string()
+        } else {
+            name
+        };
         let subtitle = match self.step {
             Step::Backup => "Bring back a wallet from its backup file or descriptor.",
             Step::Keys => "Keys are matched against your key library.",
@@ -825,7 +920,10 @@ impl Render for RecoveryFlowPage {
             Step::Backup => Some(self.render_backup_step(cx)),
             Step::Keys => self.layout.clone().map(|l| self.render_keys_step(&l, cx)),
             Step::Review => Some(self.review.clone().into_any_element()),
-            Step::Done => self.done.as_ref().map(|(_, d)| d.clone().into_any_element()),
+            Step::Done => self
+                .done
+                .as_ref()
+                .map(|(_, d)| d.clone().into_any_element()),
         };
         let footer = self.render_footer(cx);
 

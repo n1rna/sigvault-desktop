@@ -1,7 +1,7 @@
+use crate::host::{AppHandle, State, WebviewWindow};
 use log::{error, info};
 use serde::Deserialize;
 use serde_json;
-use crate::host::{AppHandle, State, WebviewWindow};
 
 use crate::error::AppErrorCode;
 use crate::hwi::{DeviceInfo, WalletConfig};

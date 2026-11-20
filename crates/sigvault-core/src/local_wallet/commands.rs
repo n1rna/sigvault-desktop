@@ -9,13 +9,13 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use crate::host::{AppHandle, State};
 use bdk_wallet::bitcoin::secp256k1::Secp256k1;
 use bdk_wallet::bitcoin::{Address, Amount, FeeRate, Network, Psbt};
 use bdk_wallet::chain::ChainPosition;
 use bdk_wallet::miniscript::psbt::PsbtExt;
 use bdk_wallet::KeychainKind;
 use serde::{Deserialize, Serialize};
-use crate::host::{AppHandle, State};
 use wallet_runtime::{
     add_xprv_signer, analyze_for_signing, list_spending_paths, sign_psbt, ElectrumClient,
     SpendingPath,

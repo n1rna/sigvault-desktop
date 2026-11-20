@@ -22,9 +22,7 @@
 //!     .child(list)
 //! ```
 
-use gpui::{
-    div, prelude::*, px, AnyElement, App, ElementId, Pixels, SharedString, Window,
-};
+use gpui::{div, prelude::*, px, AnyElement, App, ElementId, Pixels, SharedString, Window};
 
 use super::common::{icon, section_head};
 use crate::router::Page;
@@ -124,13 +122,32 @@ pub fn footer_bar(left: Vec<AnyElement>, right: Vec<AnyElement>) -> gpui::Div {
         .items_center()
         .justify_between()
         .gap_3()
-        .child(div().flex().flex_row().items_center().gap_2().children(left))
-        .child(div().flex().flex_row().items_center().gap_2().children(right))
+        .child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .children(left),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .children(right),
+        )
 }
 
 /// A titled section inside a page body (`Recent activity`, `Keys`, …).
 pub fn section(title: impl Into<SharedString>) -> Section {
-    Section { title: title.into(), description: None, action: None, children: Vec::new() }
+    Section {
+        title: title.into(),
+        description: None,
+        action: None,
+        children: Vec::new(),
+    }
 }
 
 #[derive(IntoElement)]
@@ -199,28 +216,38 @@ impl RenderOnce for PageFrame {
                 .mb_4()
                 .text_size(px(14.))
                 .text_color(t.ink_2)
-                .children(self.crumbs.into_iter().enumerate().map(move |(i, (label, page))| {
-                    let last = i + 1 == n_crumbs;
-                    let mut el = div()
-                        .id(SharedString::from(format!("crumb-{i}")))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.))
-                        .when(i > 0, |d| d.child(icon("chevron-right").size(px(13.)).text_color(t.ink_3)))
-                        .child(
-                            div()
-                                .when(last, |d| d.text_color(t.ink).font_weight(gpui::FontWeight::MEDIUM))
-                                .child(label),
-                        );
-                    if let Some(page) = page.filter(|_| !last) {
-                        el = el
-                            .cursor_pointer()
-                            .hover(move |s| s.text_color(t.ink))
-                            .on_click(move |_, _, cx| navigate(page.clone(), cx));
-                    }
-                    el
-                }))
+                .children(
+                    self.crumbs
+                        .into_iter()
+                        .enumerate()
+                        .map(move |(i, (label, page))| {
+                            let last = i + 1 == n_crumbs;
+                            let mut el = div()
+                                .id(SharedString::from(format!("crumb-{i}")))
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(6.))
+                                .when(i > 0, |d| {
+                                    d.child(icon("chevron-right").size(px(13.)).text_color(t.ink_3))
+                                })
+                                .child(
+                                    div()
+                                        .when(last, |d| {
+                                            d.text_color(t.ink)
+                                                .font_weight(gpui::FontWeight::MEDIUM)
+                                        })
+                                        .child(label),
+                                );
+                            if let Some(page) = page.filter(|_| !last) {
+                                el = el
+                                    .cursor_pointer()
+                                    .hover(move |s| s.text_color(t.ink))
+                                    .on_click(move |_, _, cx| navigate(page.clone(), cx));
+                            }
+                            el
+                        }),
+                )
         });
 
         // Web PageHeader: big title, description, actions bottom-aligned, rule.
@@ -288,7 +315,14 @@ impl RenderOnce for PageFrame {
             .flex_col()
             .children(crumbs)
             .child(header)
-            .child(div().pt_8().flex().flex_col().gap_8().children(self.children));
+            .child(
+                div()
+                    .pt_8()
+                    .flex()
+                    .flex_col()
+                    .gap_8()
+                    .children(self.children),
+            );
 
         let body_inner = div()
             .w_full()
@@ -307,7 +341,12 @@ impl RenderOnce for PageFrame {
                 .child(body_inner)
                 .into_any_element()
         } else {
-            div().id(self.id).flex_1().min_h_0().child(body_inner).into_any_element()
+            div()
+                .id(self.id)
+                .flex_1()
+                .min_h_0()
+                .child(body_inner)
+                .into_any_element()
         };
 
         let footer = self.footer.map(|f| {

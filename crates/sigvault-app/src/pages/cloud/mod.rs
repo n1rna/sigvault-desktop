@@ -6,6 +6,6 @@ pub mod devices;
 mod psbt_summary;
 pub mod register;
 pub mod session_details;
-pub mod settings;
 pub mod sessions;
+pub mod settings;
 pub mod signing;

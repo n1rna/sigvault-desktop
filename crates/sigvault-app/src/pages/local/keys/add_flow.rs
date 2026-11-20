@@ -81,7 +81,10 @@ enum Material {
     /// Account-level private key with a fixed origin.
     Account { secret: HotSecret, key: SlotKey },
     /// Public key only (hardware wallet, pasted xpub).
-    Public { key: SlotKey, device: Option<String> },
+    Public {
+        key: SlotKey,
+        device: Option<String>,
+    },
 }
 
 impl Material {
@@ -139,9 +142,15 @@ impl AddKeyFlow {
     pub fn new(network: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let network_locked = network.is_some();
         let network = network.unwrap_or_else(|| "regtest".into());
-        let path = cx.new(|cx| TextInput::new(window, cx).mono().with_text(default_path(&network)));
+        let path = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .mono()
+                .with_text(default_path(&network))
+        });
         let label = cx.new(|cx| {
-            TextInput::new(window, cx).max_len(60).placeholder("e.g. Laptop key, Trezor (Alice), Backup seed")
+            TextInput::new(window, cx)
+                .max_len(60)
+                .placeholder("e.g. Laptop key, Trezor (Alice), Backup seed")
         });
         let mnemonic = cx.new(|cx| MnemonicInput::new(24, window, cx));
         let bip39_passphrase = cx.new(|cx| TextInput::new(window, cx).masked().mono());
@@ -151,11 +160,17 @@ impl AddKeyFlow {
                 .multiline(3)
                 .placeholder("tprv…   or   [fingerprint/48'/1'/0'/2']tprv…")
         });
-        let key_file_password =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Password used when the file was saved"));
+        let key_file_password = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Password used when the file was saved")
+        });
         let devices = cx.new(|_| DevicePicker::new(default_path(&network)));
         let xpub = cx.new(|cx| {
-            TextInput::new(window, cx).mono().multiline(3).placeholder("[fingerprint/48'/1'/0'/2']tpub…")
+            TextInput::new(window, cx)
+                .mono()
+                .multiline(3)
+                .placeholder("[fingerprint/48'/1'/0'/2']tpub…")
         });
 
         let subs = vec![
@@ -192,13 +207,16 @@ impl AddKeyFlow {
                 this.error = None;
                 cx.notify();
             }),
-            cx.subscribe(&key_file_password, |this, _, ev: &InputEvent, cx| match ev {
-                InputEvent::Submit => this.submit_key(cx),
-                InputEvent::Changed => {
-                    this.error = None;
-                    cx.notify();
-                }
-            }),
+            cx.subscribe(
+                &key_file_password,
+                |this, _, ev: &InputEvent, cx| match ev {
+                    InputEvent::Submit => this.submit_key(cx),
+                    InputEvent::Changed => {
+                        this.error = None;
+                        cx.notify();
+                    }
+                },
+            ),
             cx.subscribe(&devices, |this, _, ev: &DevicePickerEvent, cx| match ev {
                 DevicePickerEvent::Picked(info) => {
                     let key = SlotKey {
@@ -211,7 +229,13 @@ impl AddKeyFlow {
                         let l = device.clone();
                         this.label.update(cx, |i, cx| i.set_text(l, cx));
                     }
-                    this.go_details(Material::Public { key, device: Some(device) }, cx);
+                    this.go_details(
+                        Material::Public {
+                            key,
+                            device: Some(device),
+                        },
+                        cx,
+                    );
                 }
             }),
             cx.subscribe(&xpub, |this, _, _: &InputEvent, cx| {
@@ -298,7 +322,8 @@ impl AddKeyFlow {
     }
 
     fn load_default_network(&mut self, cx: &mut Context<Self>) {
-        let task = backend(cx).call(|app, st| async move { cmd_local_get_settings(app, State::new(&st)).await });
+        let task = backend(cx)
+            .call(|app, st| async move { cmd_local_get_settings(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             let Ok(settings) = task.await else { return };
             this.update(cx, |this, cx| {
@@ -397,7 +422,9 @@ impl AddKeyFlow {
                         self.go_details(Material::Public { key, device: None }, cx);
                     }
                 }
-                PastedKey::Invalid(reason) if !reason.is_empty() => self.error = Some(reason.into()),
+                PastedKey::Invalid(reason) if !reason.is_empty() => {
+                    self.error = Some(reason.into())
+                }
                 _ => {}
             },
             _ => {}
@@ -428,8 +455,13 @@ impl AddKeyFlow {
             Some(_) => {
                 // Account key: the origin fixes the path; derive once to
                 // validate it and learn the xpub. Drop any `/<0;1>/*` tail.
-                let origin = text.find(']').map(|i| text[..=i].to_string()).unwrap_or_default();
-                let secret = HotSecret::Xprv { xprv: format!("{origin}{bare}") };
+                let origin = text
+                    .find(']')
+                    .map(|i| text[..=i].to_string())
+                    .unwrap_or_default();
+                let secret = HotSecret::Xprv {
+                    xprv: format!("{origin}{bare}"),
+                };
                 self.busy = true;
                 let task = api::derive_key(
                     cx,
@@ -521,14 +553,17 @@ impl AddKeyFlow {
                                 this.path.update(cx, |i, cx| i.set_text(p, cx));
                                 Material::Derivable(secret)
                             }
-                            HotSecret::Xprv { .. } if extended_key_depth(&strip_origin(&secret)) == Some(0) => {
+                            HotSecret::Xprv { .. }
+                                if extended_key_depth(&strip_origin(&secret)) == Some(0) =>
+                            {
                                 let p = key.derivation_path.clone();
                                 this.path.update(cx, |i, cx| i.set_text(p, cx));
                                 Material::Derivable(secret)
                             }
-                            HotSecret::Xprv { .. } => {
-                                Material::Account { secret: with_origin(secret, &key), key }
-                            }
+                            HotSecret::Xprv { .. } => Material::Account {
+                                secret: with_origin(secret, &key),
+                                key,
+                            },
                         };
                         this.go_details(material, cx);
                     }
@@ -561,7 +596,10 @@ impl AddKeyFlow {
                             cx,
                             DeriveInput {
                                 network,
-                                secret: HotSecret::Mnemonic { mnemonic: words.join(" "), bip39_passphrase: String::new() },
+                                secret: HotSecret::Mnemonic {
+                                    mnemonic: words.join(" "),
+                                    bip39_passphrase: String::new(),
+                                },
                                 derivation_path: path,
                                 origin_fingerprint: None,
                                 origin_path: None,
@@ -589,23 +627,36 @@ impl AddKeyFlow {
         .detach();
     }
 
-    fn show_backup(&mut self, words: Vec<String>, derived: DerivedKey, window: &mut Window, cx: &mut Context<Self>) {
-        let secret = HotSecret::Mnemonic { mnemonic: words.join(" "), bip39_passphrase: String::new() };
+    fn show_backup(
+        &mut self,
+        words: Vec<String>,
+        derived: DerivedKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let secret = HotSecret::Mnemonic {
+            mnemonic: words.join(" "),
+            bip39_passphrase: String::new(),
+        };
         let backup = cx.new(|cx| KeyBackup::for_library(words, derived, window, cx));
-        self._subs.push(cx.subscribe(&backup, move |this, _, ev: &KeyBackupEvent, cx| match ev {
-            KeyBackupEvent::Discard => {
-                this.backup = None;
-                cx.notify();
-            }
-            KeyBackupEvent::Done => this.go_details(Material::Derivable(secret.clone()), cx),
-        }));
+        self._subs.push(
+            cx.subscribe(&backup, move |this, _, ev: &KeyBackupEvent, cx| match ev {
+                KeyBackupEvent::Discard => {
+                    this.backup = None;
+                    cx.notify();
+                }
+                KeyBackupEvent::Done => this.go_details(Material::Derivable(secret.clone()), cx),
+            }),
+        );
         self.backup = Some(backup);
     }
 
     // ── step 3: details ──
 
     fn rederive(&mut self, cx: &mut Context<Self>) {
-        let Some(material) = self.material.clone() else { return };
+        let Some(material) = self.material.clone() else {
+            return;
+        };
         self.derive_epoch += 1;
         let epoch = self.derive_epoch;
         self.preview_error = None;
@@ -614,7 +665,8 @@ impl AddKeyFlow {
             Material::Public { key, .. } => {
                 self.deriving = false;
                 if !is_test_network_key(&key.xpub) {
-                    self.preview_error = Some("This is a mainnet key; it can't be used on a test network.".into());
+                    self.preview_error =
+                        Some("This is a mainnet key; it can't be used on a test network.".into());
                 }
                 self.preview = Some(key);
                 cx.notify();
@@ -686,9 +738,20 @@ impl AddKeyFlow {
         if !self.can_save(cx) {
             return;
         }
-        let Some(key) = self.preview.clone() else { return };
-        if let Some(existing) = keychain(cx).read(cx).find_match(Some(&key.fingerprint), &key.xpub) {
-            self.error = Some(format!("This key is already in your library as “{}”.", existing.label).into());
+        let Some(key) = self.preview.clone() else {
+            return;
+        };
+        if let Some(existing) = keychain(cx)
+            .read(cx)
+            .find_match(Some(&key.fingerprint), &key.xpub)
+        {
+            self.error = Some(
+                format!(
+                    "This key is already in your library as “{}”.",
+                    existing.label
+                )
+                .into(),
+            );
             cx.notify();
             return;
         }
@@ -696,13 +759,14 @@ impl AddKeyFlow {
         if is_secret && !keychain(cx).read(cx).is_unlocked() {
             let Some(window) = window else { return };
             let unlock = cx.new(|cx| KeychainUnlock::new("to store this key", window, cx));
-            self._subs.push(cx.subscribe(&unlock, |this, _, ev: &UnlockEvent, cx| {
-                this.unlock = None;
-                if matches!(ev, UnlockEvent::Unlocked) {
-                    this.commit(cx);
-                }
-                cx.notify();
-            }));
+            self._subs
+                .push(cx.subscribe(&unlock, |this, _, ev: &UnlockEvent, cx| {
+                    this.unlock = None;
+                    if matches!(ev, UnlockEvent::Unlocked) {
+                        this.commit(cx);
+                    }
+                    cx.notify();
+                }));
             self.unlock = Some(unlock);
             cx.notify();
             return;
@@ -711,7 +775,8 @@ impl AddKeyFlow {
     }
 
     fn commit(&mut self, cx: &mut Context<Self>) {
-        let (Some(key), Some(material), Some(source)) = (self.preview.clone(), self.material.clone(), self.source)
+        let (Some(key), Some(material), Some(source)) =
+            (self.preview.clone(), self.material.clone(), self.source)
         else {
             return;
         };
@@ -803,20 +868,28 @@ impl AddKeyFlow {
                             .on_click(cx.listener(|this, _, window, cx| this.generate(window, cx)))
                             .into_any_element(),
                     ),
-                    Some(KeySource::Seed) => {
-                        right.push(continue_btn("Continue", self.mnemonic.read(cx).is_valid(cx)))
-                    }
+                    Some(KeySource::Seed) => right.push(continue_btn(
+                        "Continue",
+                        self.mnemonic.read(cx).is_valid(cx),
+                    )),
                     Some(KeySource::Xprv) => right.push(continue_btn(
                         "Continue",
-                        matches!(classify_pasted_key(self.xprv.read(cx).text()), PastedKey::Private(_)),
+                        matches!(
+                            classify_pasted_key(self.xprv.read(cx).text()),
+                            PastedKey::Private(_)
+                        ),
                     )),
                     Some(KeySource::KeyFile) => right.push(continue_btn(
                         "Decrypt and continue",
-                        self.key_file.is_some() && !self.key_file_password.read(cx).text().is_empty(),
+                        self.key_file.is_some()
+                            && !self.key_file_password.read(cx).text().is_empty(),
                     )),
                     Some(KeySource::Xpub) => right.push(continue_btn(
                         "Continue",
-                        matches!(classify_pasted_key(self.xpub.read(cx).text()), PastedKey::Public(_)),
+                        matches!(
+                            classify_pasted_key(self.xpub.read(cx).text()),
+                            PastedKey::Public(_)
+                        ),
                     )),
                     _ => {}
                 }
@@ -855,81 +928,115 @@ impl AddKeyFlow {
     fn render_source_step(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = theme();
         let source_card = |s: KeySource, cx: &mut Context<Self>| {
-            div().flex_1().flex_basis(px(0.)).min_w_0().flex().child(choice_card(SharedString::from(format!("src-{}", s.id())), false)
-                .w_full()
-                .on_click(cx.listener(move |this, _, window, cx| this.choose(s, window, cx)))
+            div()
+                .flex_1()
+                .flex_basis(px(0.))
+                .min_w_0()
+                .flex()
                 .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_start()
-                        .gap_3()
-                        .child(icon_tile(s.icon(), 36., Some(if s.is_public() { t.muted_foreground } else { t.primary })))
+                    choice_card(SharedString::from(format!("src-{}", s.id())), false)
+                        .w_full()
+                        .on_click(
+                            cx.listener(move |this, _, window, cx| this.choose(s, window, cx)),
+                        )
                         .child(
                             div()
-                                .flex_1()
-                                .min_w_0()
                                 .flex()
-                                .flex_col()
-                                .gap_1()
+                                .flex_row()
+                                .items_start()
+                                .gap_3()
+                                .child(icon_tile(
+                                    s.icon(),
+                                    36.,
+                                    Some(if s.is_public() {
+                                        t.muted_foreground
+                                    } else {
+                                        t.primary
+                                    }),
+                                ))
                                 .child(
                                     div()
+                                        .flex_1()
+                                        .min_w_0()
                                         .flex()
-                                        .flex_row()
-                                        .items_center()
-                                        .gap_2()
+                                        .flex_col()
+                                        .gap_1()
                                         .child(
                                             div()
-                                                .text_size(px(13.))
-                                                .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(t.foreground)
-                                                .child(s.title()),
+                                                .flex()
+                                                .flex_row()
+                                                .items_center()
+                                                .gap_2()
+                                                .child(
+                                                    div()
+                                                        .text_size(px(13.))
+                                                        .font_weight(FontWeight::SEMIBOLD)
+                                                        .text_color(t.foreground)
+                                                        .child(s.title()),
+                                                )
+                                                .when(s.is_public(), |d| {
+                                                    d.child(badge("Public key", Tone::Secondary))
+                                                }),
                                         )
-                                        .when(s.is_public(), |d| d.child(badge("Public key", Tone::Secondary))),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(12.))
-                                        .line_height(px(17.))
-                                        .text_color(t.muted_foreground)
-                                        .child(s.description()),
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .line_height(px(17.))
+                                                .text_color(t.muted_foreground)
+                                                .child(s.description()),
+                                        ),
                                 ),
                         ),
-                ))
+                )
                 .into_any_element()
         };
-        let group = |title: &'static str, desc: &'static str, cards: Vec<AnyElement>, cols: usize| {
-            let filler = cols.saturating_sub(cards.len());
-            div()
-                .flex()
-                .flex_col()
-                .gap_3()
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.))
-                        .child(
-                            div()
-                                .text_size(px(13.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(t.foreground)
-                                .child(title),
-                        )
-                        .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(desc)),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .gap_3()
-                        .children(cards)
-                        .children((0..filler).map(|_| div().flex_1().flex_basis(px(0.)))),
-                )
-        };
-        let create: Vec<_> = KeySource::CREATE.iter().map(|s| source_card(*s, cx)).collect();
-        let private: Vec<_> = KeySource::IMPORT_PRIVATE.iter().map(|s| source_card(*s, cx)).collect();
-        let public: Vec<_> = KeySource::IMPORT_PUBLIC.iter().map(|s| source_card(*s, cx)).collect();
+        let group =
+            |title: &'static str, desc: &'static str, cards: Vec<AnyElement>, cols: usize| {
+                let filler = cols.saturating_sub(cards.len());
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(t.foreground)
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child(desc),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .gap_3()
+                            .children(cards)
+                            .children((0..filler).map(|_| div().flex_1().flex_basis(px(0.)))),
+                    )
+            };
+        let create: Vec<_> = KeySource::CREATE
+            .iter()
+            .map(|s| source_card(*s, cx))
+            .collect();
+        let private: Vec<_> = KeySource::IMPORT_PRIVATE
+            .iter()
+            .map(|s| source_card(*s, cx))
+            .collect();
+        let public: Vec<_> = KeySource::IMPORT_PUBLIC
+            .iter()
+            .map(|s| source_card(*s, cx))
+            .collect();
         div()
             .flex()
             .flex_col()
@@ -962,7 +1069,15 @@ impl AddKeyFlow {
             .flex_row()
             .items_center()
             .gap_3()
-            .child(icon_tile(s.icon(), 36., Some(if s.is_public() { t.muted_foreground } else { t.primary })))
+            .child(icon_tile(
+                s.icon(),
+                36.,
+                Some(if s.is_public() {
+                    t.muted_foreground
+                } else {
+                    t.primary
+                }),
+            ))
             .child(
                 div()
                     .flex_1()
@@ -983,7 +1098,9 @@ impl AddKeyFlow {
                                     .text_color(t.foreground)
                                     .child(s.title()),
                             )
-                            .when(s.is_public(), |d| d.child(badge("Watch-only", Tone::Secondary))),
+                            .when(s.is_public(), |d| {
+                                d.child(badge("Watch-only", Tone::Secondary))
+                            }),
                     )
                     .child(
                         div()
@@ -1025,7 +1142,12 @@ impl AddKeyFlow {
                         .flex()
                         .flex_col()
                         .gap(px(2.))
-                        .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(title))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(title),
+                        )
                         .child(
                             div()
                                 .text_size(px(12.))
@@ -1038,10 +1160,26 @@ impl AddKeyFlow {
         card()
             .p_5()
             .gap_4()
-            .child(step("1", "Generate", "24 random words are created on this computer. Nothing is sent anywhere."))
-            .child(step("2", "Write the words down", "On paper, in order. They're the only way to restore this key."))
-            .child(step("3", "Confirm three words", "A short quiz makes sure your copy is right before the key is saved."))
-            .child(step("4", "Name and save", "The key is stored encrypted in your library, ready to use in any wallet."))
+            .child(step(
+                "1",
+                "Generate",
+                "24 random words are created on this computer. Nothing is sent anywhere.",
+            ))
+            .child(step(
+                "2",
+                "Write the words down",
+                "On paper, in order. They're the only way to restore this key.",
+            ))
+            .child(step(
+                "3",
+                "Confirm three words",
+                "A short quiz makes sure your copy is right before the key is saved.",
+            ))
+            .child(step(
+                "4",
+                "Name and save",
+                "The key is stored encrypted in your library, ready to use in any wallet.",
+            ))
             .into_any_element()
     }
 
@@ -1094,41 +1232,47 @@ impl AddKeyFlow {
             .flex()
             .flex_col()
             .gap_4()
-            .child(
-                field(
-                    "Key file",
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_3()
-                        .child(
-                            button(
-                                "choose-key-file",
-                                if self.key_file.is_some() { "Choose another file" } else { "Choose .sigvault-key file" },
-                            )
-                            .outline()
-                            .small()
-                            .icon("file-key")
-                            .on_click(cx.listener(|this, _, _, cx| this.pick_key_file(cx))),
+            .child(field(
+                "Key file",
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        button(
+                            "choose-key-file",
+                            if self.key_file.is_some() {
+                                "Choose another file"
+                            } else {
+                                "Choose .sigvault-key file"
+                            },
                         )
-                        .child(
-                            div()
-                                .min_w_0()
-                                .truncate()
-                                .font_family(FONT_MONO)
-                                .text_size(px(12.))
-                                .text_color(if self.key_file.is_some() { t.foreground } else { t.muted_foreground })
-                                .child(
-                                    self.key_file
-                                        .as_ref()
-                                        .map(|f| f.name.clone())
-                                        .unwrap_or_else(|| "No file chosen".into()),
-                                ),
-                        ),
-                    None,
-                ),
-            )
+                        .outline()
+                        .small()
+                        .icon("file-key")
+                        .on_click(cx.listener(|this, _, _, cx| this.pick_key_file(cx))),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .font_family(FONT_MONO)
+                            .text_size(px(12.))
+                            .text_color(if self.key_file.is_some() {
+                                t.foreground
+                            } else {
+                                t.muted_foreground
+                            })
+                            .child(
+                                self.key_file
+                                    .as_ref()
+                                    .map(|f| f.name.clone())
+                                    .unwrap_or_else(|| "No file chosen".into()),
+                            ),
+                    ),
+                None,
+            ))
             .when(self.key_file.is_some(), |d| {
                 d.child(field("File password", self.key_file_password.clone(), None))
             })
@@ -1191,7 +1335,9 @@ impl AddKeyFlow {
     }
 
     fn render_key_step(&self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(source) = self.source else { return div().into_any_element() };
+        let Some(source) = self.source else {
+            return div().into_any_element();
+        };
         let body = match source {
             KeySource::Generate => self.render_generate(),
             KeySource::Seed => self.render_seed(cx),
@@ -1263,7 +1409,9 @@ impl AddKeyFlow {
 
     fn render_details_step(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = theme();
-        let Some(source) = self.source else { return div().into_any_element() };
+        let Some(source) = self.source else {
+            return div().into_any_element();
+        };
         let material = self.material.clone();
         let derivable = matches!(material, Some(Material::Derivable(_)));
         let is_secret = material.as_ref().is_some_and(|m| m.secret().is_some());
@@ -1273,7 +1421,15 @@ impl AddKeyFlow {
             .flex_row()
             .items_center()
             .gap_3()
-            .child(icon_tile(source.icon(), 36., Some(if is_secret { t.primary } else { t.muted_foreground })))
+            .child(icon_tile(
+                source.icon(),
+                36.,
+                Some(if is_secret {
+                    t.primary
+                } else {
+                    t.muted_foreground
+                }),
+            ))
             .child(
                 div()
                     .flex_1()
@@ -1287,13 +1443,18 @@ impl AddKeyFlow {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(source.title()),
                     )
-                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(if is_secret {
-                        "The private key will be stored encrypted on this computer."
-                    } else if source == KeySource::Hardware {
-                        "Watch-only: the private key stays on the hardware wallet."
-                    } else {
-                        "Watch-only: signing happens wherever the private key lives."
-                    })),
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(if is_secret {
+                                "The private key will be stored encrypted on this computer."
+                            } else if source == KeySource::Hardware {
+                                "Watch-only: the private key stays on the hardware wallet."
+                            } else {
+                                "Watch-only: signing happens wherever the private key lives."
+                            }),
+                    ),
             )
             .child(if is_secret {
                 badge("Private key", Tone::Success)
@@ -1320,10 +1481,15 @@ impl AddKeyFlow {
             segmented(
                 "akf-network",
                 &self.network,
-                NETWORKS.iter().map(|(id, label)| seg(*id, *label)).collect(),
+                NETWORKS
+                    .iter()
+                    .map(|(id, label)| seg(*id, *label))
+                    .collect(),
                 false,
                 move |v: SharedString, _, cx| {
-                    entity.update(cx, |this, cx| this.set_network(v.to_string(), true, cx)).ok();
+                    entity
+                        .update(cx, |this, cx| this.set_network(v.to_string(), true, cx))
+                        .ok();
                 },
             )
             .into_any_element()
@@ -1375,7 +1541,12 @@ impl AddKeyFlow {
                 .items_center()
                 .gap_2()
                 .child(spinner(px(14.)))
-                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Deriving public key…"))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child("Deriving public key…"),
+                )
                 .into_any_element()
         };
 
@@ -1400,8 +1571,12 @@ impl AddKeyFlow {
                         cx.notify();
                     }))
                     .child(
-                        icon(if self.show_advanced { "chevron-down" } else { "chevron-right" })
-                            .size(px(14.)),
+                        icon(if self.show_advanced {
+                            "chevron-down"
+                        } else {
+                            "chevron-right"
+                        })
+                        .size(px(14.)),
                     )
                     .child("Advanced: derivation path"),
             )
@@ -1471,7 +1646,9 @@ fn strip_origin(secret: &HotSecret) -> String {
 /// Make the core's error strings read like UI copy.
 fn friendly(e: &str) -> String {
     let e = e.trim();
-    if (e.contains("Network") && e.contains("xprv")) || (e.contains("network") && e.contains("does not match")) {
+    if (e.contains("Network") && e.contains("xprv"))
+        || (e.contains("network") && e.contains("does not match"))
+    {
         return "This key belongs to a different network.".into();
     }
     if e.to_lowercase().contains("decrypt") || e.to_lowercase().contains("password") {
@@ -1502,6 +1679,12 @@ impl Render for AddKeyFlow {
             .flex_col()
             .gap_5()
             .child(body)
-            .children(footer.map(|f| div().pt_4().border_t_1().border_color(alpha(t.border, 0.7)).child(f)))
+            .children(footer.map(|f| {
+                div()
+                    .pt_4()
+                    .border_t_1()
+                    .border_color(alpha(t.border, 0.7))
+                    .child(f)
+            }))
     }
 }

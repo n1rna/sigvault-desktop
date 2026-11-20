@@ -10,13 +10,13 @@
 // token), but it does protect against offline theft of the storage file
 // alone — decrypting it requires the machine's identifier.
 
+use crate::host::AppHandle;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use crate::host::AppHandle;
 
 use crate::app_mode::AppMode;
 use crate::kdf;

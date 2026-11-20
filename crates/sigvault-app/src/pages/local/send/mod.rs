@@ -27,7 +27,8 @@ use sigvault_core::local_wallet::commands::{
     cmd_local_broadcast_psbt, cmd_local_build_psbt, cmd_local_get_balance,
     cmd_local_get_wallet_details, cmd_local_list_spending_paths, cmd_local_list_wallets,
     cmd_local_sign_psbt_hardware, cmd_local_sign_psbt_software, BroadcastPsbtRequest,
-    BroadcastPsbtResponse, BuildPsbtRequest, PsbtRecipient, SignPsbtHardwareRequest, SignPsbtSoftwareRequest,
+    BroadcastPsbtResponse, BuildPsbtRequest, PsbtRecipient, SignPsbtHardwareRequest,
+    SignPsbtSoftwareRequest,
 };
 use sigvault_core::State;
 
@@ -142,7 +143,12 @@ impl SendPage {
     pub fn new(wallet_id: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let recipient = cx.new(|cx| TextInput::new(window, cx).mono().placeholder("bcrt1q…"));
         let amount = cx.new(|cx| TextInput::new(window, cx).mono().placeholder("0.001"));
-        let fee_rate = cx.new(|cx| TextInput::new(window, cx).mono().placeholder("2").with_text("2"));
+        let fee_rate = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .mono()
+                .placeholder("2")
+                .with_text("2")
+        });
         let passphrase = cx.new(|cx| TextInput::new(window, cx).masked());
 
         for input in [&recipient, &amount, &fee_rate] {
@@ -202,13 +208,17 @@ impl SendPage {
             let s = State::new(&st);
             let wallets = cmd_local_list_wallets(app.clone(), s).await?;
             let bal = cmd_local_get_balance(app.clone(), State::new(&st), id.clone()).await?;
-            let sp = cmd_local_list_spending_paths(app.clone(), State::new(&st), id.clone()).await?;
+            let sp =
+                cmd_local_list_spending_paths(app.clone(), State::new(&st), id.clone()).await?;
             let dt = cmd_local_get_wallet_details(app, State::new(&st), id.clone()).await?;
-            let wallet = wallets.into_iter().find(|w| w.id.as_str() == id).map(|w| WalletInfo {
-                name: w.name,
-                network: w.network,
-                has_hot_keys: w.has_hot_keys,
-            });
+            let wallet = wallets
+                .into_iter()
+                .find(|w| w.id.as_str() == id)
+                .map(|w| WalletInfo {
+                    name: w.name,
+                    network: w.network,
+                    has_hot_keys: w.has_hot_keys,
+                });
             let paths: Vec<SpendingPath> = sp
                 .into_iter()
                 .map(|p| SpendingPath {
@@ -227,7 +237,9 @@ impl SendPage {
             Ok((wallet, bal.confirmed_sat, paths, details))
         });
         cx.spawn(async move |this, cx| {
-            let Ok((wallet, confirmed, paths, details)) = task.await else { return };
+            let Ok((wallet, confirmed, paths, details)) = task.await else {
+                return;
+            };
             this.update(cx, |this, cx| {
                 this.wallet = wallet;
                 this.balance_confirmed = Some(confirmed);
@@ -301,7 +313,11 @@ impl SendPage {
             self.step = Step::Path;
             cx.notify();
         } else {
-            let pp = self.paths.as_ref().and_then(|p| p.first()).and_then(|p| p.policy_path.clone());
+            let pp = self
+                .paths
+                .as_ref()
+                .and_then(|p| p.first())
+                .and_then(|p| p.policy_path.clone());
             self.build_psbt_and_advance(pp, cx);
         }
     }
@@ -310,7 +326,10 @@ impl SendPage {
         let chosen = self
             .paths
             .as_ref()
-            .and_then(|ps| ps.iter().find(|p| Some(&p.id) == self.selected_path_id.as_ref()))
+            .and_then(|ps| {
+                ps.iter()
+                    .find(|p| Some(&p.id) == self.selected_path_id.as_ref())
+            })
             .cloned();
         match chosen {
             Some(p) => self.build_psbt_and_advance(p.policy_path, cx),
@@ -318,8 +337,14 @@ impl SendPage {
         }
     }
 
-    fn build_psbt_and_advance(&mut self, policy_path: Option<BTreeMap<String, Vec<u32>>>, cx: &mut Context<Self>) {
-        let Some((sat, fee_rate)) = self.validate_compose(cx) else { return };
+    fn build_psbt_and_advance(
+        &mut self,
+        policy_path: Option<BTreeMap<String, Vec<u32>>>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((sat, fee_rate)) = self.validate_compose(cx) else {
+            return;
+        };
         self.busy = true;
         cx.notify();
         let request = BuildPsbtRequest {
@@ -369,7 +394,10 @@ impl SendPage {
         if self.device_picker.is_some() {
             return;
         }
-        let network = self.wallet.as_ref().map_or("regtest".to_string(), |w| w.network.clone());
+        let network = self
+            .wallet
+            .as_ref()
+            .map_or("regtest".to_string(), |w| w.network.clone());
         let cfg = self.wallet_config();
         let picker = cx.new(|_| DevicePicker::new(cfg, primary_derivation_path(&network)));
         cx.subscribe(&picker, |this, _, ev: &DeviceSelected, cx| {
@@ -390,7 +418,11 @@ impl SendPage {
     }
 
     fn back_from_confirm(&mut self, cx: &mut Context<Self>) {
-        self.step = if self.show_path_step() { Step::Path } else { Step::Compose };
+        self.step = if self.show_path_step() {
+            Step::Path
+        } else {
+            Step::Compose
+        };
         self.psbt_base64 = None;
         self.passphrase.update(cx, |p, cx| p.clear(cx));
         self.device_picker = None;
@@ -430,7 +462,9 @@ impl SendPage {
 
     fn sign_and_broadcast(&mut self, cx: &mut Context<Self>) {
         let passphrase = self.passphrase.read(cx).text().to_string();
-        let Some(psbt) = self.psbt_base64.clone() else { return };
+        let Some(psbt) = self.psbt_base64.clone() else {
+            return;
+        };
         if passphrase.is_empty() {
             return;
         }
@@ -441,11 +475,15 @@ impl SendPage {
             passphrase,
         };
         let task = backend(cx).call(move |app, st| async move {
-            let signed = cmd_local_sign_psbt_software(app.clone(), State::new(&st), request).await?;
+            let signed =
+                cmd_local_sign_psbt_software(app.clone(), State::new(&st), request).await?;
             cmd_local_broadcast_psbt(
                 app,
                 State::new(&st),
-                BroadcastPsbtRequest { wallet_id, psbt_base64: signed.psbt_base64 },
+                BroadcastPsbtRequest {
+                    wallet_id,
+                    psbt_base64: signed.psbt_base64,
+                },
             )
             .await
         });
@@ -453,7 +491,9 @@ impl SendPage {
     }
 
     fn sign_and_broadcast_hardware(&mut self, device_id: String, cx: &mut Context<Self>) {
-        let Some(psbt) = self.psbt_base64.clone() else { return };
+        let Some(psbt) = self.psbt_base64.clone() else {
+            return;
+        };
         let wallet_id = self.wallet_id.clone();
         let request = SignPsbtHardwareRequest {
             wallet_id: wallet_id.clone(),
@@ -461,11 +501,15 @@ impl SendPage {
             device_id,
         };
         let task = backend(cx).call(move |app, st| async move {
-            let signed = cmd_local_sign_psbt_hardware(app.clone(), State::new(&st), request).await?;
+            let signed =
+                cmd_local_sign_psbt_hardware(app.clone(), State::new(&st), request).await?;
             cmd_local_broadcast_psbt(
                 app,
                 State::new(&st),
-                BroadcastPsbtRequest { wallet_id, psbt_base64: signed.psbt_base64 },
+                BroadcastPsbtRequest {
+                    wallet_id,
+                    psbt_base64: signed.psbt_base64,
+                },
             )
             .await
         });
@@ -479,7 +523,10 @@ impl SendPage {
             cmd_local_broadcast_psbt(
                 app,
                 State::new(&st),
-                BroadcastPsbtRequest { wallet_id, psbt_base64: signed },
+                BroadcastPsbtRequest {
+                    wallet_id,
+                    psbt_base64: signed,
+                },
             )
             .await
         });
@@ -494,17 +541,29 @@ impl SendPage {
     /// Export the in-memory PSBT to a binary `.psbt` file for an
     /// air-gapped signer (Coldcard, SeedSigner, Krux, Passport, …).
     fn export_psbt_to_file(&mut self, cx: &mut Context<Self>) {
-        let Some(psbt) = self.psbt_base64.clone() else { return };
+        let Some(psbt) = self.psbt_base64.clone() else {
+            return;
+        };
         self.error = None;
         cx.notify();
         let short: String = self.wallet_id.chars().take(8).collect();
-        let name = format!("sigvault-{}.psbt", if short.is_empty() { "wallet".into() } else { short });
+        let name = format!(
+            "sigvault-{}.psbt",
+            if short.is_empty() {
+                "wallet".into()
+            } else {
+                short
+            }
+        );
         let rx = cx.prompt_for_new_path(&super::widgets::default_save_dir(), Some(&name));
         cx.spawn(async move |this, cx| {
             let path = match rx.await {
                 Ok(Ok(Some(p))) => p,
                 Ok(Err(e)) => {
-                    this.update(cx, |this, cx| this.set_error(format!("Failed to save PSBT: {e}"), cx)).ok();
+                    this.update(cx, |this, cx| {
+                        this.set_error(format!("Failed to save PSBT: {e}"), cx)
+                    })
+                    .ok();
                     return;
                 }
                 _ => return,
@@ -556,7 +615,10 @@ impl SendPage {
                 .ok();
                 return;
             };
-            let res = cx.background_executor().spawn(async move { read_psbt_file(&path) }).await;
+            let res = cx
+                .background_executor()
+                .spawn(async move { read_psbt_file(&path) })
+                .await;
             this.update(cx, |this, cx| match res {
                 Ok(signed) => this.broadcast_signed_psbt(signed, cx),
                 Err(e) => {
@@ -585,11 +647,17 @@ impl SendPage {
 }
 
 fn non_empty(e: String, fallback: &str) -> SharedString {
-    if e.trim().is_empty() { fallback.to_string().into() } else { e.into() }
+    if e.trim().is_empty() {
+        fallback.to_string().into()
+    } else {
+        e.into()
+    }
 }
 
 fn file_name(p: &std::path::Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 // ───────────────────────── rendering ─────────────────────────
@@ -641,7 +709,14 @@ fn review_row(label: &'static str, value: impl IntoElement) -> gpui::Div {
                 .text_color(theme().muted_foreground)
                 .child(label),
         )
-        .child(div().flex_1().min_w_0().text_size(px(13.)).line_height(px(18.)).child(value))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_size(px(13.))
+                .line_height(px(18.))
+                .child(value),
+        )
 }
 
 /// Small sub-heading inside a step body.
@@ -683,7 +758,11 @@ impl SendPage {
             .items_center()
             .justify_between()
             .text_size(px(12.))
-            .text_color(if exceeds { t.destructive } else { t.muted_foreground })
+            .text_color(if exceeds {
+                t.destructive
+            } else {
+                t.muted_foreground
+            })
             .child(if exceeds {
                 "Amount exceeds confirmed balance".to_string()
             } else {
@@ -773,7 +852,11 @@ impl SendPage {
                                             .child(if p.fingerprints.is_empty() {
                                                 "—".to_string()
                                             } else {
-                                                format!("{}-of-{}", p.threshold, p.fingerprints.len())
+                                                format!(
+                                                    "{}-of-{}",
+                                                    p.threshold,
+                                                    p.fingerprints.len()
+                                                )
                                             }),
                                     ),
                             )
@@ -825,7 +908,10 @@ impl SendPage {
             .then(|| {
                 self.paths
                     .as_ref()
-                    .and_then(|ps| ps.iter().find(|p| Some(&p.id) == self.selected_path_id.as_ref()))
+                    .and_then(|ps| {
+                        ps.iter()
+                            .find(|p| Some(&p.id) == self.selected_path_id.as_ref())
+                    })
                     .map(|p| p.label.clone())
             })
             .flatten();
@@ -847,19 +933,36 @@ impl SendPage {
                     .flex_wrap()
                     .items_baseline()
                     .gap_2()
-                    .child(div().font_family(FONT_MONO).text_color(t.foreground).child(format_btc(sat)))
-                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(format_sat(sat))),
+                    .child(
+                        div()
+                            .font_family(FONT_MONO)
+                            .text_color(t.foreground)
+                            .child(format_btc(sat)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(format_sat(sat)),
+                    ),
             ))
             .child(divider())
             .child(review_row(
                 "Fee rate",
-                div().font_family(FONT_MONO).text_size(px(12.)).child(format!("{fee} sat/vB")),
+                div()
+                    .font_family(FONT_MONO)
+                    .text_size(px(12.))
+                    .child(format!("{fee} sat/vB")),
             ))
             .children(path_label.map(|l| {
-                div().child(divider()).child(review_row("Path", div().child(l)))
+                div()
+                    .child(divider())
+                    .child(review_row("Path", div().child(l)))
             }))
             .children(self.wallet.as_ref().map(|w| {
-                div().child(divider()).child(review_row("From", div().child(w.name.clone())))
+                div()
+                    .child(divider())
+                    .child(review_row("From", div().child(w.name.clone())))
             }))
     }
 
@@ -1022,16 +1125,19 @@ impl SendPage {
                 vec![],
                 vec![
                     cancel,
-                    button("compose-continue", if busy { "Building…" } else { "Continue" })
-                        .loading(busy)
-                        .disabled(!self.compose_ready(cx))
-                        .when(!busy, |b| b.icon_right("arrow-right"))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            if this.compose_ready(cx) && !this.busy {
-                                this.advance_from_compose(cx);
-                            }
-                        }))
-                        .into_any_element(),
+                    button(
+                        "compose-continue",
+                        if busy { "Building…" } else { "Continue" },
+                    )
+                    .loading(busy)
+                    .disabled(!self.compose_ready(cx))
+                    .when(!busy, |b| b.icon_right("arrow-right"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if this.compose_ready(cx) && !this.busy {
+                            this.advance_from_compose(cx);
+                        }
+                    }))
+                    .into_any_element(),
                 ],
             ),
             Step::Path => footer_bar(
@@ -1044,12 +1150,19 @@ impl SendPage {
                     .into_any_element()],
                 vec![
                     cancel,
-                    button("path-build", if busy { "Building…" } else { "Build transaction" })
-                        .loading(busy)
-                        .disabled(self.selected_path_id.is_none())
-                        .when(!busy, |b| b.icon_right("arrow-right"))
-                        .on_click(cx.listener(|this, _, _, cx| this.submit_path(cx)))
-                        .into_any_element(),
+                    button(
+                        "path-build",
+                        if busy {
+                            "Building…"
+                        } else {
+                            "Build transaction"
+                        },
+                    )
+                    .loading(busy)
+                    .disabled(self.selected_path_id.is_none())
+                    .when(!busy, |b| b.icon_right("arrow-right"))
+                    .on_click(cx.listener(|this, _, _, cx| this.submit_path(cx)))
+                    .into_any_element(),
                 ],
             ),
             Step::Confirm => {
@@ -1078,16 +1191,23 @@ impl SendPage {
                     let has_pass = !self.passphrase.read(cx).text().is_empty();
                     vec![
                         cancel,
-                        button("sign-broadcast", if busy { "Signing & broadcasting…" } else { "Sign & broadcast" })
-                            .loading(busy)
-                            .disabled(!has_pass)
-                            .icon("arrow-up-right")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                if !this.busy {
-                                    this.sign_and_broadcast(cx);
-                                }
-                            }))
-                            .into_any_element(),
+                        button(
+                            "sign-broadcast",
+                            if busy {
+                                "Signing & broadcasting…"
+                            } else {
+                                "Sign & broadcast"
+                            },
+                        )
+                        .loading(busy)
+                        .disabled(!has_pass)
+                        .icon("arrow-up-right")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if !this.busy {
+                                this.sign_and_broadcast(cx);
+                            }
+                        }))
+                        .into_any_element(),
                     ]
                 };
                 footer_bar(left, right)
@@ -1114,7 +1234,9 @@ fn radio(selected: bool) -> impl IntoElement {
         .rounded_full()
         .border_1()
         .border_color(if selected { t.primary } else { t.border })
-        .when(selected, |d| d.child(div().size(px(6.)).rounded_full().bg(t.primary)))
+        .when(selected, |d| {
+            d.child(div().size(px(6.)).rounded_full().bg(t.primary))
+        })
 }
 
 impl Render for SendPage {
@@ -1133,7 +1255,11 @@ impl Render for SendPage {
             Step::Done if self.txid.is_some() => self.render_done(cx).into_any_element(),
             Step::Done => div().into_any_element(),
         };
-        let name = self.wallet.as_ref().map(|w| w.name.clone()).unwrap_or_else(|| "Wallet".into());
+        let name = self
+            .wallet
+            .as_ref()
+            .map(|w| w.name.clone())
+            .unwrap_or_else(|| "Wallet".into());
         let subtitle = match self.balance_confirmed {
             Some(b) => format!("From {name} · {} available", format_btc(b as i64)),
             None => format!("From {name}"),

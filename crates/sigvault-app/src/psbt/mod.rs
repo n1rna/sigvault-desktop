@@ -22,7 +22,8 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 pub const PSBT_MAGIC: &[u8] = b"psbt\xff";
 
 pub fn base64_to_bytes(b64: &str) -> Result<Vec<u8>, String> {
-    B64.decode(b64.trim()).map_err(|e| format!("invalid base64 PSBT: {e}"))
+    B64.decode(b64.trim())
+        .map_err(|e| format!("invalid base64 PSBT: {e}"))
 }
 
 pub fn bytes_to_base64(bytes: &[u8]) -> String {

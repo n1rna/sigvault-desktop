@@ -3,7 +3,9 @@
 
 use gpui::{div, prelude::*, px, AnyElement, Context, FontWeight, SharedString, Window};
 use sigvault_core::app_mode::AppMode;
-use sigvault_core::commands::{cmd_get_current_user, cmd_list_environments, cmd_logout, cmd_navigate};
+use sigvault_core::commands::{
+    cmd_get_current_user, cmd_list_environments, cmd_logout, cmd_navigate,
+};
 use sigvault_core::env_config::EnvConfig;
 use sigvault_core::State;
 
@@ -32,10 +34,16 @@ pub struct CloudSettingsPage {
 impl CloudSettingsPage {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&store(cx), |_, _, cx| cx.notify()).detach();
-        let user = backend(cx).call(|_app, st| async move { cmd_get_current_user(State::new(&st)).await });
-        let envs = backend(cx).call(|app, st| async move { cmd_list_environments(app, State::new(&st)).await });
+        let user =
+            backend(cx).call(|_app, st| async move { cmd_get_current_user(State::new(&st)).await });
+        let envs = backend(cx)
+            .call(|app, st| async move { cmd_list_environments(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
-            let account = user.await.ok().map(|u| Account { name: u.name, email: u.email, username: u.username });
+            let account = user.await.ok().map(|u| Account {
+                name: u.name,
+                email: u.email,
+                username: u.username,
+            });
             let env = envs.await.ok().and_then(|r| {
                 let id = r.selected_id?;
                 r.environments.into_iter().find(|e| e.id == id)
@@ -49,14 +57,22 @@ impl CloudSettingsPage {
             .ok();
         })
         .detach();
-        Self { account: None, env: None, env_loaded: false, signing_out: false, changing_env: false, error: None }
+        Self {
+            account: None,
+            env: None,
+            env_loaded: false,
+            signing_out: false,
+            changing_env: false,
+            error: None,
+        }
     }
 
     fn sign_out(&mut self, cx: &mut Context<Self>) {
         self.signing_out = true;
         self.error = None;
         cx.notify();
-        let task = backend(cx).call(|app, st| async move { cmd_logout(app, State::new(&st)).await });
+        let task =
+            backend(cx).call(|app, st| async move { cmd_logout(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
@@ -96,7 +112,11 @@ impl CloudSettingsPage {
         .detach();
     }
 
-    fn setting_row(title: &'static str, body: impl Into<SharedString>, action: Option<AnyElement>) -> gpui::Div {
+    fn setting_row(
+        title: &'static str,
+        body: impl Into<SharedString>,
+        action: Option<AnyElement>,
+    ) -> gpui::Div {
         let t = theme();
         div()
             .flex()
@@ -112,7 +132,12 @@ impl CloudSettingsPage {
                     .flex()
                     .flex_col()
                     .gap(px(2.))
-                    .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(title))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(title),
+                    )
                     .child(
                         div()
                             .text_size(px(12.))
@@ -132,9 +157,19 @@ impl CloudSettingsPage {
             .clone()
             .or_else(|| a.username.clone())
             .or_else(|| a.email.clone())
-            .unwrap_or_else(|| if authenticated { "Signed in".into() } else { "Not signed in".into() });
+            .unwrap_or_else(|| {
+                if authenticated {
+                    "Signed in".into()
+                } else {
+                    "Not signed in".into()
+                }
+            });
         let secondary = a.email.clone().filter(|e| Some(e) != Some(&primary));
-        let initial = primary.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default();
+        let initial = primary
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_default();
         card()
             .flex_row()
             .items_center()
@@ -162,7 +197,13 @@ impl CloudSettingsPage {
                     .flex()
                     .flex_col()
                     .gap(px(2.))
-                    .child(div().truncate().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(primary))
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(primary),
+                    )
                     .child(
                         div()
                             .truncate()
@@ -173,12 +214,19 @@ impl CloudSettingsPage {
             )
             .when(authenticated, |c| {
                 c.child(
-                    button("sign-out", if self.signing_out { "Signing out…" } else { "Sign out" })
-                        .outline()
-                        .small()
-                        .icon("log-out")
-                        .loading(self.signing_out)
-                        .on_click(cx.listener(|this, _, _, cx| this.sign_out(cx))),
+                    button(
+                        "sign-out",
+                        if self.signing_out {
+                            "Signing out…"
+                        } else {
+                            "Sign out"
+                        },
+                    )
+                    .outline()
+                    .small()
+                    .icon("log-out")
+                    .loading(self.signing_out)
+                    .on_click(cx.listener(|this, _, _, cx| this.sign_out(cx))),
                 )
             })
             .into_any_element()
@@ -202,15 +250,32 @@ impl CloudSettingsPage {
                     .flex_col()
                     .gap(px(2.))
                     .child(
-                        div().flex().flex_row().items_center().gap_2().child(
-                            div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(
+                                        self.env.as_ref().map(|e| e.name.clone()).unwrap_or_else(
+                                            || {
+                                                if self.env_loaded {
+                                                    "No network selected".into()
+                                                } else {
+                                                    "Loading…".into()
+                                                }
+                                            },
+                                        ),
+                                    ),
+                            )
+                            .children(
                                 self.env
                                     .as_ref()
-                                    .map(|e| e.name.clone())
-                                    .unwrap_or_else(|| if self.env_loaded { "No network selected".into() } else { "Loading…".into() }),
+                                    .and_then(|e| network_badge_unless_named(&e.name, &e.network)),
                             ),
-                        )
-                        .children(self.env.as_ref().and_then(|e| network_badge_unless_named(&e.name, &e.network))),
                     )
                     .children(self.env.as_ref().map(|e| {
                         div()
@@ -218,7 +283,12 @@ impl CloudSettingsPage {
                             .font_family(FONT_MONO)
                             .text_size(px(12.))
                             .text_color(t.muted_foreground)
-                            .child(e.api_base_url.trim_start_matches("https://").trim_start_matches("http://").to_string())
+                            .child(
+                                e.api_base_url
+                                    .trim_start_matches("https://")
+                                    .trim_start_matches("http://")
+                                    .to_string(),
+                            )
                     })),
             );
         card()

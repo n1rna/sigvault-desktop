@@ -98,17 +98,19 @@ fn apply(kind: &str, cx: &mut App) {
         // The debug software signer's fingerprint, if active.
         let e2e = std::env::var("SIGVAULT_E2E_SIGNER_MNEMONIC").is_ok();
         let fp = match app.get_webview_window("main").filter(|_| e2e) {
-            Some(window) => cmd_discover_hardware_wallets(app.clone(), window, State::new(&st), None)
-                .await
-                .ok()
-                .and_then(|r| r.data)
-                .and_then(|d| serde_json::from_value::<Vec<DiscoveredDevice>>(d).ok())
-                .and_then(|ds| {
-                    ds.into_iter().find_map(|d| match d.state {
-                        DeviceState::Supported { fingerprint, .. } => Some(fingerprint),
-                        _ => None,
+            Some(window) => {
+                cmd_discover_hardware_wallets(app.clone(), window, State::new(&st), None)
+                    .await
+                    .ok()
+                    .and_then(|r| r.data)
+                    .and_then(|d| serde_json::from_value::<Vec<DiscoveredDevice>>(d).ok())
+                    .and_then(|ds| {
+                        ds.into_iter().find_map(|d| match d.state {
+                            DeviceState::Supported { fingerprint, .. } => Some(fingerprint),
+                            _ => None,
+                        })
                     })
-                }),
+            }
             None => None,
         };
         Ok::<_, String>(fp)
@@ -124,10 +126,30 @@ fn apply(kind: &str, cx: &mut App) {
 fn inject(kind: &str, session: Option<&'static str>, signer_fp: Option<String>, cx: &mut App) {
     let ago = |mins: i64| (chrono::Utc::now() - chrono::Duration::minutes(mins)).to_rfc3339();
     let sessions = vec![
-        rs("4f1c9a2e-7b3d-4e8a-9c21-5d6e7f8a9b0c", "ACTIVE", "TRANSACTION_SIGNING", Some(ago(4))),
-        rs("a83e51d0-2c47-4b9f-8e13-0f2a6b7c8d9e", "ACTIVE", "DEVICE_REGISTRATION", Some(ago(52))),
-        rs("c2d7e9f1-5a3b-4c6d-8e0f-1a2b3c4d5e6f", "COMPLETED", "TRANSACTION_SIGNING", Some(ago(60 * 26))),
-        rs("e5f6a7b8-9c0d-4e1f-a2b3-c4d5e6f7a8b9", "EXPIRED", "DEVICE_REGISTRATION", Some(ago(60 * 24 * 9))),
+        rs(
+            "4f1c9a2e-7b3d-4e8a-9c21-5d6e7f8a9b0c",
+            "ACTIVE",
+            "TRANSACTION_SIGNING",
+            Some(ago(4)),
+        ),
+        rs(
+            "a83e51d0-2c47-4b9f-8e13-0f2a6b7c8d9e",
+            "ACTIVE",
+            "DEVICE_REGISTRATION",
+            Some(ago(52)),
+        ),
+        rs(
+            "c2d7e9f1-5a3b-4c6d-8e0f-1a2b3c4d5e6f",
+            "COMPLETED",
+            "TRANSACTION_SIGNING",
+            Some(ago(60 * 26)),
+        ),
+        rs(
+            "e5f6a7b8-9c0d-4e1f-a2b3-c4d5e6f7a8b9",
+            "EXPIRED",
+            "DEVICE_REGISTRATION",
+            Some(ago(60 * 24 * 9)),
+        ),
     ];
     let route = if session.is_some() {
         WindowApplicationRoute::SessionDetails
@@ -159,19 +181,31 @@ fn inject(kind: &str, session: Option<&'static str>, signer_fp: Option<String>, 
         .ok()
         .and_then(|p| Page::from_path(&p))
         .filter(Page::is_cloud)
-        .unwrap_or(if session.is_some() { Page::SessionDetails } else { Page::Sessions });
+        .unwrap_or(if session.is_some() {
+            Page::SessionDetails
+        } else {
+            Page::Sessions
+        });
     log::info!("{ENV}={kind}: showing {}", page.path());
     crate::shell::navigate(page, cx);
 }
 
 fn rs(id: &str, status: &str, ty: &str, created_at: Option<String>) -> RemoteSession {
-    RemoteSession { id: id.into(), status: status.into(), session_type: ty.into(), created_at }
+    RemoteSession {
+        id: id.into(),
+        status: status.into(),
+        session_type: ty.into(),
+        created_at,
+    }
 }
 
 /// `session_state` as folded from a coordinator workflow message.
 fn session_state(ty: &str, signer_fp: Option<String>) -> SessionState {
     let (requirements, data): (Value, Option<Value>) = match ty {
-        "DEVICE_REGISTRATION" => (json!({ "network": "testnet", "derivation_path": "m/48'/1'/0'/2'" }), None),
+        "DEVICE_REGISTRATION" => (
+            json!({ "network": "testnet", "derivation_path": "m/48'/1'/0'/2'" }),
+            None,
+        ),
         _ => (
             json!({ "network": "testnet" }),
             Some(json!({
@@ -234,7 +268,10 @@ fn txout(value: u64, script: &[u8]) -> Vec<u8> {
 
 fn fixture_psbt() -> String {
     let inputs = [(0x11u8, 50_000_000u64), (0x22, 49_500_000)];
-    let outputs = [(p2wsh(0x5a), 25_000_000u64, false), (p2wsh(0x7c), 74_490_000, true)];
+    let outputs = [
+        (p2wsh(0x5a), 25_000_000u64, false),
+        (p2wsh(0x7c), 74_490_000, true),
+    ];
 
     let mut tx = 2u32.to_le_bytes().to_vec();
     varint(&mut tx, inputs.len());
@@ -259,7 +296,14 @@ fn fixture_psbt() -> String {
     }
     // Generator point: a valid compressed pubkey for the change derivation.
     let pk: Vec<u8> = (0..33)
-        .map(|i| u8::from_str_radix(&"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"[i * 2..i * 2 + 2], 16).unwrap())
+        .map(|i| {
+            u8::from_str_radix(
+                &"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+                    [i * 2..i * 2 + 2],
+                16,
+            )
+            .unwrap()
+        })
         .collect();
     for (_, _, change) in &outputs {
         if *change {

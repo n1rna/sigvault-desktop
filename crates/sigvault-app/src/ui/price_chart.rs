@@ -84,13 +84,30 @@ impl PriceChart {
                 .build()
                 .ok()?;
             let spot = async {
-                client.get(SPOT_URL).send().await.ok()?.json::<Spot>().await.ok()
+                client
+                    .get(SPOT_URL)
+                    .send()
+                    .await
+                    .ok()?
+                    .json::<Spot>()
+                    .await
+                    .ok()
             };
             let hist = async {
-                client.get(HISTORY_URL).send().await.ok()?.json::<History>().await.ok()
+                client
+                    .get(HISTORY_URL)
+                    .send()
+                    .await
+                    .ok()?
+                    .json::<History>()
+                    .await
+                    .ok()
             };
             let (spot, hist) = futures::join!(spot, hist);
-            Some((spot.map(|s| s.usd), hist.map(|h| h.prices).unwrap_or_default()))
+            Some((
+                spot.map(|s| s.usd),
+                hist.map(|h| h.prices).unwrap_or_default(),
+            ))
         });
         cx.spawn(async move |this, cx| {
             let res = task.await.flatten();
@@ -99,7 +116,11 @@ impl PriceChart {
                 match res {
                     Some((spot, mut hist)) => {
                         hist.sort_by_key(|p| p.time);
-                        this.history = hist.into_iter().filter(|p| p.usd > 0.).map(|p| (p.time, p.usd)).collect();
+                        this.history = hist
+                            .into_iter()
+                            .filter(|p| p.usd > 0.)
+                            .map(|p| (p.time, p.usd))
+                            .collect();
                         this.spot = spot.or_else(|| this.history.last().map(|p| p.1));
                         this.failed = this.spot.is_none();
                     }
@@ -110,13 +131,26 @@ impl PriceChart {
             .ok();
         })
         .detach();
-        Self { range: Range::M1, spot: None, history: Vec::new(), loading: true, failed: false }
+        Self {
+            range: Range::M1,
+            spot: None,
+            history: Vec::new(),
+            loading: true,
+            failed: false,
+        }
     }
 
     fn series(&self) -> Vec<(i64, f64)> {
-        let Some(last) = self.history.last().map(|p| p.0) else { return Vec::new() };
+        let Some(last) = self.history.last().map(|p| p.0) else {
+            return Vec::new();
+        };
         let from = last - self.range.secs();
-        let mut pts: Vec<(i64, f64)> = self.history.iter().copied().filter(|p| p.0 >= from).collect();
+        let mut pts: Vec<(i64, f64)> = self
+            .history
+            .iter()
+            .copied()
+            .filter(|p| p.0 >= from)
+            .collect();
         if let (Some(spot), Some(&(t, _))) = (self.spot, pts.last()) {
             pts.push((t.max(chrono::Utc::now().timestamp()), spot));
         }
@@ -129,7 +163,7 @@ fn fmt_usd(v: f64) -> String {
     let s = n.abs().to_string();
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
@@ -154,7 +188,9 @@ impl Render for PriceChart {
             (Some(a), Some(b)) if a.1 > 0. => Some((b.1 - a.1) / a.1 * 100.),
             _ => None,
         };
-        let (lo, hi) = series.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
+        let (lo, hi) = series.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+            (lo.min(p.1), hi.max(p.1))
+        });
         // Nice y-axis bounds: pad 5% and round to 4 ticks.
         // Round ticks: step from {1, 2, 2.5, 5} × 10^k, ~4 intervals.
         let (y0, y1, step) = if series.is_empty() {
@@ -162,14 +198,20 @@ impl Render for PriceChart {
         } else {
             let raw = ((hi - lo).max(hi * 0.01)) / 4.;
             let mag = 10f64.powf(raw.log10().floor());
-            let step = [1., 2., 2.5, 5., 10.].iter().map(|m| m * mag).find(|s| *s >= raw).unwrap_or(10. * mag);
+            let step = [1., 2., 2.5, 5., 10.]
+                .iter()
+                .map(|m| m * mag)
+                .find(|s| *s >= raw)
+                .unwrap_or(10. * mag);
             ((lo / step).floor() * step, (hi / step).ceil() * step, step)
         };
         let n_ticks = (((y1 - y0) / step).round() as usize).max(1);
         let ticks: Vec<f64> = (0..=n_ticks).rev().map(|i| y0 + step * i as f64).collect();
         let x_labels: Vec<String> = if series.len() > 1 {
             let (a, b) = (series[0].0, series[series.len() - 1].0);
-            (0..=6).map(|i| fmt_day(a + (b - a) * i / 6, self.range)).collect()
+            (0..=6)
+                .map(|i| fmt_day(a + (b - a) * i / 6, self.range))
+                .collect()
         } else {
             Vec::new()
         };
@@ -189,7 +231,13 @@ impl Render for PriceChart {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(div().font_family(FONT_MONO).text_size(px(10.)).text_color(t.ink_2).child("BITCOIN PRICE"))
+                    .child(
+                        div()
+                            .font_family(FONT_MONO)
+                            .text_size(px(10.))
+                            .text_color(t.ink_2)
+                            .child("BITCOIN PRICE"),
+                    )
                     .child(
                         div()
                             .flex()
@@ -216,8 +264,21 @@ impl Render for PriceChart {
                                     .gap_1()
                                     .text_size(px(14.))
                                     .text_color(color)
-                                    .child(icon(if c >= 0. { "trending-up" } else { "trending-down" }).size(px(15.)).text_color(color))
-                                    .child(format!("{}{:.1}% ({})", if c >= 0. { "+" } else { "" }, c, self.range.label()))
+                                    .child(
+                                        icon(if c >= 0. {
+                                            "trending-up"
+                                        } else {
+                                            "trending-down"
+                                        })
+                                        .size(px(15.))
+                                        .text_color(color),
+                                    )
+                                    .child(format!(
+                                        "{}{:.1}% ({})",
+                                        if c >= 0. { "+" } else { "" },
+                                        c,
+                                        self.range.label()
+                                    ))
                             })),
                     ),
             )

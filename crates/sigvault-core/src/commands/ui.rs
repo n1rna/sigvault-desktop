@@ -1,7 +1,7 @@
 // UI-related commands
 
-use serde::Serialize;
 use crate::host::{State, WebviewWindow};
+use serde::Serialize;
 
 use crate::state::ApplicationState;
 

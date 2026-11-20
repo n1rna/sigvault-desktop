@@ -16,7 +16,8 @@ pub fn write_psbt_file(path: &Path, psbt_base64: &str) -> Result<(), String> {
 
 /// Read a `.psbt` file (binary, base64 or hex) and return it as base64.
 pub fn read_psbt_file(path: &Path) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
     if is_psbt(&bytes) {
         return Ok(bytes_to_base64(&bytes));
     }
@@ -39,7 +40,7 @@ pub fn decode_psbt_text(text: &str) -> Option<Vec<u8>> {
             return Some(raw);
         }
     }
-    if compact.len() % 2 == 0 && compact.chars().all(|c| c.is_ascii_hexdigit()) {
+    if compact.len().is_multiple_of(2) && compact.chars().all(|c| c.is_ascii_hexdigit()) {
         let raw: Option<Vec<u8>> = (0..compact.len())
             .step_by(2)
             .map(|i| u8::from_str_radix(&compact[i..i + 2], 16).ok())

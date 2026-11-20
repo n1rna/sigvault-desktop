@@ -62,29 +62,41 @@ pub struct LocalWalletListPage {
 
 impl LocalWalletListPage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let unlock_pass =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Wallet passphrase"));
+        let unlock_pass = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Wallet passphrase")
+        });
         let delete_name = cx.new(|cx| TextInput::new(window, cx));
-        let delete_pass =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Wallet passphrase"));
+        let delete_pass = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Wallet passphrase")
+        });
 
         let mut subs = Vec::new();
-        subs.push(cx.subscribe(&unlock_pass, |this, _, ev: &InputEvent, cx| match ev {
-            InputEvent::Changed => cx.notify(),
-            InputEvent::Submit => this.submit_unlock(cx),
-        }));
-        for input in [&delete_name, &delete_pass] {
-            subs.push(cx.subscribe(input, |this, _, ev: &InputEvent, cx| match ev {
+        subs.push(
+            cx.subscribe(&unlock_pass, |this, _, ev: &InputEvent, cx| match ev {
                 InputEvent::Changed => cx.notify(),
-                InputEvent::Submit => this.submit_delete(cx),
-            }));
+                InputEvent::Submit => this.submit_unlock(cx),
+            }),
+        );
+        for input in [&delete_name, &delete_pass] {
+            subs.push(
+                cx.subscribe(input, |this, _, ev: &InputEvent, cx| match ev {
+                    InputEvent::Changed => cx.notify(),
+                    InputEvent::Submit => this.submit_delete(cx),
+                }),
+            );
         }
         // Auto refresh: wallet data changed elsewhere, or a sync finished.
-        subs.push(cx.subscribe(&store(cx), |this, _, ev: &StoreEvent, cx| match ev {
-            StoreEvent::LocalDataChanged => this.load_wallets(cx),
-            StoreEvent::SyncProgress(p) if p.phase == "complete" => this.load_wallets(cx),
-            _ => {}
-        }));
+        subs.push(
+            cx.subscribe(&store(cx), |this, _, ev: &StoreEvent, cx| match ev {
+                StoreEvent::LocalDataChanged => this.load_wallets(cx),
+                StoreEvent::SyncProgress(p) if p.phase == "complete" => this.load_wallets(cx),
+                _ => {}
+            }),
+        );
 
         let mut this = Self {
             wallets: Vec::new(),
@@ -104,12 +116,13 @@ impl LocalWalletListPage {
     fn load_wallets(&mut self, cx: &mut Context<Self>) {
         let task = backend(cx).call(|app, st| async move {
             let mut list = cmd_local_list_wallets(app.clone(), State::new(&st)).await?;
-            list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            list.sort_by_key(|a| a.name.to_lowercase());
             // Balances are an in-memory read on unlocked wallets — cheap.
             let mut balances = HashMap::new();
             for w in list.iter().filter(|w| !w.locked) {
                 let id = w.id.as_str().to_string();
-                if let Ok(b) = cmd_local_get_balance(app.clone(), State::new(&st), id.clone()).await {
+                if let Ok(b) = cmd_local_get_balance(app.clone(), State::new(&st), id.clone()).await
+                {
                     balances.insert(id, b.confirmed_sat + b.unconfirmed_sat);
                 }
             }
@@ -140,8 +153,12 @@ impl LocalWalletListPage {
             // Hot wallets need the passphrase to decrypt seed.enc.
             self.unlock_pass.update(cx, |i, cx| i.clear(cx));
             self.unlock_pass.read(cx).focus(window);
-            self.modal =
-                Some(ModalState { kind: ModalKind::Unlock, wallet, submitting: false, error: None });
+            self.modal = Some(ModalState {
+                kind: ModalKind::Unlock,
+                wallet,
+                submitting: false,
+                error: None,
+            });
             cx.notify();
             return;
         }
@@ -156,7 +173,10 @@ impl LocalWalletListPage {
             cmd_local_unlock_wallet(
                 app,
                 State::new(&st),
-                UnlockWalletRequest { wallet_id, passphrase: String::new() },
+                UnlockWalletRequest {
+                    wallet_id,
+                    passphrase: String::new(),
+                },
             )
             .await
         });
@@ -203,8 +223,12 @@ impl LocalWalletListPage {
         });
         self.delete_pass.update(cx, |i, cx| i.clear(cx));
         self.delete_name.read(cx).focus(window);
-        self.modal =
-            Some(ModalState { kind: ModalKind::Delete, wallet, submitting: false, error: None });
+        self.modal = Some(ModalState {
+            kind: ModalKind::Delete,
+            wallet,
+            submitting: false,
+            error: None,
+        });
         cx.notify();
     }
 
@@ -228,8 +252,15 @@ impl LocalWalletListPage {
         cx.notify();
         let wallet_id = id.clone();
         let task = backend(cx).call(move |app, st| async move {
-            cmd_local_unlock_wallet(app, State::new(&st), UnlockWalletRequest { wallet_id, passphrase })
-                .await
+            cmd_local_unlock_wallet(
+                app,
+                State::new(&st),
+                UnlockWalletRequest {
+                    wallet_id,
+                    passphrase,
+                },
+            )
+            .await
         });
         cx.spawn(async move |this, cx| {
             let res = task.await;
@@ -255,7 +286,9 @@ impl LocalWalletListPage {
     }
 
     fn delete_ready(&self, cx: &Context<Self>) -> bool {
-        let Some(m) = self.modal.as_ref() else { return false };
+        let Some(m) = self.modal.as_ref() else {
+            return false;
+        };
         let name_ok = self.delete_name.read(cx).text() == m.wallet.name;
         let pass_ok = !m.wallet.has_hot_keys || !self.delete_pass.read(cx).text().is_empty();
         name_ok && pass_ok
@@ -345,7 +378,11 @@ impl LocalWalletListPage {
     fn render_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let col = |w: f32, text: &'static str, right: bool| {
-            div().w(px(w)).flex_none().when(right, |d| d.flex().justify_end()).child(text)
+            div()
+                .w(px(w))
+                .flex_none()
+                .when(right, |d| d.flex().justify_end())
+                .child(text)
         };
         let header = list_header(vec![
             div().w(px(32.)).flex_none().into_any_element(),
@@ -363,22 +400,17 @@ impl LocalWalletListPage {
             list = list.child(self.render_row(ix, w, cx));
         }
         let unlocked = self.wallets.iter().filter(|w| !w.locked).count();
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(list)
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(t.muted_foreground)
-                    .child(format!(
-                        "{} wallet{} · {} unlocked",
-                        self.wallets.len(),
-                        if self.wallets.len() == 1 { "" } else { "s" },
-                        unlocked
-                    )),
-            )
+        div().flex().flex_col().gap_2().child(list).child(
+            div()
+                .text_size(px(12.))
+                .text_color(t.muted_foreground)
+                .child(format!(
+                    "{} wallet{} · {} unlocked",
+                    self.wallets.len(),
+                    if self.wallets.len() == 1 { "" } else { "s" },
+                    unlocked
+                )),
+        )
     }
 
     fn render_row(&self, ix: usize, w: &WalletSummary, cx: &mut Context<Self>) -> impl IntoElement {
@@ -407,17 +439,17 @@ impl LocalWalletListPage {
         if !w.fingerprints.is_empty() {
             let shown: Vec<&str> = w.fingerprints.iter().take(2).map(String::as_str).collect();
             let more = w.fingerprints.len().saturating_sub(2);
-            meta = meta.child(sep_dot()).child(
-                div()
-                    .font_family(FONT_MONO)
-                    .child(shown.join(" ")),
-            );
+            meta = meta
+                .child(sep_dot())
+                .child(div().font_family(FONT_MONO).child(shown.join(" ")));
             if more > 0 {
                 meta = meta.child(format!("+{more}"));
             }
         }
         if w.recovery_only {
-            meta = meta.child(sep_dot()).child(div().text_color(t.warning).child("Recovery-only"));
+            meta = meta
+                .child(sep_dot())
+                .child(div().text_color(t.warning).child("Recovery-only"));
         }
 
         let balance = if w.locked {
@@ -444,7 +476,12 @@ impl LocalWalletListPage {
                             .text_color(t.foreground)
                             .child(btc_amount(*sat as i64)),
                     )
-                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("BTC"))
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child("BTC"),
+                    )
                     .into_any_element(),
                 None => div()
                     .text_size(px(12.))
@@ -463,21 +500,23 @@ impl LocalWalletListPage {
             .group_hover(group.clone(), |s| s.opacity(1.));
         if !w.locked {
             let lock_id = id.clone();
-            actions = actions.child(hover_action(("wallet-lock", ix), "lock", "Lock wallet", false).on_click(
-                cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.lock_wallet(lock_id.clone(), cx);
-                }),
-            ));
+            actions = actions.child(
+                hover_action(("wallet-lock", ix), "lock", "Lock wallet", false).on_click(
+                    cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.lock_wallet(lock_id.clone(), cx);
+                    }),
+                ),
+            );
         }
         let del_wallet = w.clone();
         actions = actions.child(
-            hover_action(("wallet-delete", ix), "trash", "Delete wallet…", true).on_click(cx.listener(
-                move |this, _: &ClickEvent, window, cx| {
+            hover_action(("wallet-delete", ix), "trash", "Delete wallet…", true).on_click(
+                cx.listener(move |this, _: &ClickEvent, window, cx| {
                     cx.stop_propagation();
                     this.open_delete(del_wallet.clone(), window, cx);
-                },
-            )),
+                }),
+            ),
         );
 
         let open_wallet = w.clone();
@@ -505,7 +544,13 @@ impl LocalWalletListPage {
                     )
                     .child(meta),
             )
-            .child(div().w(px(COL_NETWORK)).flex_none().flex().child(network_badge(&w.network)))
+            .child(
+                div()
+                    .w(px(COL_NETWORK))
+                    .flex_none()
+                    .flex()
+                    .child(network_badge(&w.network)),
+            )
             .child(
                 div()
                     .w(px(COL_CREATED))
@@ -514,7 +559,14 @@ impl LocalWalletListPage {
                     .text_color(t.muted_foreground)
                     .child(format_date(w.created_at)),
             )
-            .child(div().w(px(COL_BALANCE)).flex_none().flex().justify_end().child(balance))
+            .child(
+                div()
+                    .w(px(COL_BALANCE))
+                    .flex_none()
+                    .flex()
+                    .justify_end()
+                    .child(balance),
+            )
             .child(
                 div()
                     .w(px(COL_ACTIONS))
@@ -597,7 +649,9 @@ impl LocalWalletListPage {
 }
 
 fn icon_chevron() -> impl IntoElement {
-    crate::ui::icon("chevron-right").size(px(14.)).text_color(alpha(theme().muted_foreground, 0.7))
+    crate::ui::icon("chevron-right")
+        .size(px(14.))
+        .text_color(alpha(theme().muted_foreground, 0.7))
 }
 
 impl Render for LocalWalletListPage {

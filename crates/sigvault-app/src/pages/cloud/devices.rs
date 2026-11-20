@@ -36,16 +36,18 @@ pub fn fingerprint(d: &DiscoveredDevice) -> Option<String> {
 
 pub fn pairing_code(d: &DiscoveredDevice) -> Option<String> {
     match &d.state {
-        DeviceState::Locked { pairing_code: Some(c) } if !c.is_empty() => Some(c.clone()),
+        DeviceState::Locked {
+            pairing_code: Some(c),
+        } if !c.is_empty() => Some(c.clone()),
         _ => None,
     }
 }
 
 fn unsupported_reason_text(reason: &UnsupportedReason) -> String {
     match reason {
-        UnsupportedReason::Version { minimal_supported_version } => format!(
-            "Firmware version too old. Minimum required: {minimal_supported_version}"
-        ),
+        UnsupportedReason::Version {
+            minimal_supported_version,
+        } => format!("Firmware version too old. Minimum required: {minimal_supported_version}"),
         UnsupportedReason::Method(m) => format!("Device doesn't support required feature: {m}"),
         UnsupportedReason::NotPartOfWallet { fingerprint } => {
             format!("Device fingerprint {fingerprint} is not part of this wallet")
@@ -75,7 +77,10 @@ pub struct DeviceListProps<'a> {
 }
 
 /// `DeviceList.tsx`: one bordered card, a row per discovered device.
-pub fn device_list<V: DeviceListHost>(props: DeviceListProps<'_>, cx: &mut Context<V>) -> AnyElement {
+pub fn device_list<V: DeviceListHost>(
+    props: DeviceListProps<'_>,
+    cx: &mut Context<V>,
+) -> AnyElement {
     let t = theme();
     if props.devices.is_empty() {
         return card()
@@ -94,7 +99,9 @@ pub fn device_list<V: DeviceListHost>(props: DeviceListProps<'_>, cx: &mut Conte
                 div()
                     .text_size(px(12.))
                     .text_color(t.muted_foreground)
-                    .child("Connect and unlock your device, open the Bitcoin app, then scan again."),
+                    .child(
+                        "Connect and unlock your device, open the Bitcoin app, then scan again.",
+                    ),
             )
             .into_any_element();
     }
@@ -140,7 +147,11 @@ struct DeviceRowProps<'a> {
 /// `DeviceCard.tsx` as a list row: radio, device, fingerprint, status,
 /// action; pairing code / unlock progress / unsupported reason expand
 /// below the row.
-fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Context<V>) -> AnyElement {
+fn device_row<V: DeviceListHost>(
+    ix: usize,
+    p: DeviceRowProps<'_>,
+    cx: &mut Context<V>,
+) -> AnyElement {
     let t = theme();
     let device = p.device;
     let locked = is_locked(device);
@@ -174,7 +185,11 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
     };
 
     let (version, registered) = match &device.state {
-        DeviceState::Supported { version, registered, .. } => (version.clone(), *registered),
+        DeviceState::Supported {
+            version,
+            registered,
+            ..
+        } => (version.clone(), *registered),
         _ => (None, None),
     };
 
@@ -198,7 +213,11 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
                 .items_center()
                 .gap(px(5.))
                 .child(dot(if reg { t.success } else { t.warning }))
-                .child(if reg { "Wallet registered" } else { "Wallet not registered" }),
+                .child(if reg {
+                    "Wallet registered"
+                } else {
+                    "Wallet not registered"
+                }),
         );
     }
 
@@ -212,17 +231,26 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
         .border_1()
         .border_color(if p.is_selected { t.primary } else { t.border })
         .when(!selectable, |d| d.opacity(0.4))
-        .when(p.is_selected, |d| d.child(div().size(px(8.)).rounded_full().bg(t.primary)));
+        .when(p.is_selected, |d| {
+            d.child(div().size(px(8.)).rounded_full().bg(t.primary))
+        });
 
     let action: Option<AnyElement> = if locked && p.can_unlock {
         Some(
-            button(("unlock", ix), if p.is_unlocking { "Unlocking…" } else { "Unlock" })
-                .small()
-                .outline()
-                .icon("unlock")
-                .loading(p.is_unlocking)
-                .on_click(unlock)
-                .into_any_element(),
+            button(
+                ("unlock", ix),
+                if p.is_unlocking {
+                    "Unlocking…"
+                } else {
+                    "Unlock"
+                },
+            )
+            .small()
+            .outline()
+            .icon("unlock")
+            .loading(p.is_unlocking)
+            .on_click(unlock)
+            .into_any_element(),
         )
     } else {
         None
@@ -237,13 +265,19 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
         .h(px(60.))
         .px_4()
         .when(selectable, |d| {
-            d.cursor_pointer().hover(move |s| s.bg(alpha(t.muted, 0.5))).on_click(select)
+            d.cursor_pointer()
+                .hover(move |s| s.bg(alpha(t.muted, 0.5)))
+                .on_click(select)
         })
         .child(radio)
         .child(icon_tile(
             "hw-device",
             32.,
-            Some(if p.is_selected { t.primary } else { t.muted_foreground }),
+            Some(if p.is_selected {
+                t.primary
+            } else {
+                t.muted_foreground
+            }),
         ))
         .child(
             div()
@@ -268,7 +302,11 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
                 .flex_none()
                 .font_family(FONT_MONO)
                 .text_size(px(12.))
-                .text_color(if fp.is_some() { t.foreground } else { t.muted_foreground })
+                .text_color(if fp.is_some() {
+                    t.foreground
+                } else {
+                    t.muted_foreground
+                })
                 .child(fp.unwrap_or_else(|| "—".into())),
         )
         .child(
@@ -279,7 +317,9 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
                 .flex_row()
                 .justify_end()
                 .gap_2()
-                .when(p.is_non_signer, |d| d.child(badge("Not a signer", Tone::Destructive)))
+                .when(p.is_non_signer, |d| {
+                    d.child(badge("Not a signer", Tone::Destructive))
+                })
                 .child(badge(status_label, status_tone))
                 .children(action),
         );
@@ -315,7 +355,12 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
                     .flex()
                     .flex_col()
                     .gap(px(2.))
-                    .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Pairing code"))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child("Pairing code"),
+                    )
                     .child(
                         div()
                             .text_size(px(12.))
@@ -333,17 +378,21 @@ fn device_row<V: DeviceListHost>(ix: usize, p: DeviceRowProps<'_>, cx: &mut Cont
             )
     });
 
-    let status_msg_el = p.unlock_status_message.clone().filter(|_| p.is_unlocking).map(|msg| {
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_2()
-            .text_size(px(12.))
-            .text_color(t.muted_foreground)
-            .child(spinner(px(12.)))
-            .child(msg)
-    });
+    let status_msg_el = p
+        .unlock_status_message
+        .clone()
+        .filter(|_| p.is_unlocking)
+        .map(|msg| {
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .text_size(px(12.))
+                .text_color(t.muted_foreground)
+                .child(spinner(px(12.)))
+                .child(msg)
+        });
 
     let unsupported_el = match &device.state {
         DeviceState::Unsupported { reason, .. } if unsupported => {

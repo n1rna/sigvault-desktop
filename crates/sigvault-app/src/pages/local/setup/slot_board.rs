@@ -92,7 +92,7 @@ fn format_thousands(n: u32) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
@@ -108,9 +108,10 @@ pub fn slot_board<H: SlotBoardHost>(
 ) -> Div {
     let t = theme();
     let state_of = |id: &str| states.get(id).cloned().unwrap_or(SlotState::Empty);
-    let exposed = paths_spendable_by(layout, |s: &Slot| {
-        matches!(states.get(&s.id), Some(SlotState::Assigned(k)) if k.hot)
-    });
+    let exposed = paths_spendable_by(
+        layout,
+        |s: &Slot| matches!(states.get(&s.id), Some(SlotState::Assigned(k)) if k.hot),
+    );
 
     let sections: Vec<AnyElement> = layout
         .paths
@@ -123,7 +124,9 @@ pub fn slot_board<H: SlotBoardHost>(
                 .count();
             let mut rows: Vec<AnyElement> = Vec::new();
             for (i, id) in path.slot_ids.iter().enumerate() {
-                let Some(slot) = layout.slot(id) else { continue };
+                let Some(slot) = layout.slot(id) else {
+                    continue;
+                };
                 if i > 0 {
                     rows.push(divider().into_any_element());
                 }
@@ -134,7 +137,10 @@ pub fn slot_board<H: SlotBoardHost>(
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .children(path.timelock_blocks.map(|b| badge(format!("{} blocks", format_thousands(b)), Tone::Secondary)))
+                .children(
+                    path.timelock_blocks
+                        .map(|b| badge(format!("{} blocks", format_thousands(b)), Tone::Secondary)),
+                )
                 .child(
                     div()
                         .font_family(FONT_MONO)
@@ -175,8 +181,15 @@ pub fn meta_line(fp: &str, path: &str) -> Div {
         .gap(px(6.))
         .text_size(px(12.))
         .text_color(t.muted_foreground)
-        .child(div().font_family(FONT_MONO).child(if fp.is_empty() { "no origin".to_string() } else { fp.to_lowercase() }))
-        .when(!path.is_empty(), |d| d.child("·").child(div().font_family(FONT_MONO).child(path.to_string())))
+        .child(div().font_family(FONT_MONO).child(if fp.is_empty() {
+            "no origin".to_string()
+        } else {
+            fp.to_lowercase()
+        }))
+        .when(!path.is_empty(), |d| {
+            d.child("·")
+                .child(div().font_family(FONT_MONO).child(path.to_string()))
+        })
 }
 
 fn key_cell(k: &BoardKey, dim: bool) -> Div {
@@ -198,7 +211,11 @@ fn key_cell(k: &BoardKey, dim: bool) -> Div {
                 .justify_center()
                 .rounded_md()
                 .bg(t.muted)
-                .child(icon(source_icon(&k.source)).size(px(15.)).text_color(t.foreground)),
+                .child(
+                    icon(source_icon(&k.source))
+                        .size(px(15.))
+                        .text_color(t.foreground),
+                ),
         )
         .child(
             div()
@@ -263,30 +280,40 @@ fn slot_row<H: SlotBoardHost>(
                 button(SharedString::from(format!("remove-{key}")), "Remove")
                     .ghost()
                     .small()
-                    .on_click(cx.listener(move |this, _, w, cx| this.clear_slot(id2.clone(), w, cx)))
+                    .on_click(
+                        cx.listener(move |this, _, w, cx| this.clear_slot(id2.clone(), w, cx)),
+                    )
                     .into_any_element(),
             ],
         ),
         (SlotState::Assigned(k), BoardMode::Restore) => (
             key_cell(k, false).into_any_element(),
-            vec![button(SharedString::from(format!("skip-{key}")), "Keep watch-only")
-                .ghost()
-                .small()
-                .on_click(cx.listener(move |this, _, w, cx| this.clear_slot(id2.clone(), w, cx)))
-                .into_any_element()],
+            vec![
+                button(SharedString::from(format!("skip-{key}")), "Keep watch-only")
+                    .ghost()
+                    .small()
+                    .on_click(
+                        cx.listener(move |this, _, w, cx| this.clear_slot(id2.clone(), w, cx)),
+                    )
+                    .into_any_element(),
+            ],
         ),
         (SlotState::WatchOnly { skipped: Some(k) }, _) => (
             key_cell(k, true).into_any_element(),
-            vec![button(SharedString::from(format!("use-{key}")), "Use this key")
-                .outline()
-                .small()
-                .on_click(cx.listener(move |this, _, w, cx| this.pick_key(id1.clone(), w, cx)))
-                .into_any_element()],
+            vec![
+                button(SharedString::from(format!("use-{key}")), "Use this key")
+                    .outline()
+                    .small()
+                    .on_click(cx.listener(move |this, _, w, cx| this.pick_key(id1.clone(), w, cx)))
+                    .into_any_element(),
+            ],
         ),
         (SlotState::WatchOnly { skipped: None }, _) => {
             let e = slot.expected.as_ref();
             let fp = e.and_then(|e| e.fingerprint.clone()).unwrap_or_default();
-            let dp = e.and_then(|e| e.derivation_path.clone()).unwrap_or_default();
+            let dp = e
+                .and_then(|e| e.derivation_path.clone())
+                .unwrap_or_default();
             (
                 div()
                     .flex()
@@ -352,13 +379,20 @@ fn slot_row<H: SlotBoardHost>(
                         .border_dashed()
                         .border_color(t.border),
                 )
-                .child(div().text_size(px(13.)).text_color(t.muted_foreground).child("No key chosen"))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(t.muted_foreground)
+                        .child("No key chosen"),
+                )
                 .into_any_element(),
-            vec![button(SharedString::from(format!("choose-{key}")), "Choose key")
-                .outline()
-                .small()
-                .on_click(cx.listener(move |this, _, w, cx| this.pick_key(id1.clone(), w, cx)))
-                .into_any_element()],
+            vec![
+                button(SharedString::from(format!("choose-{key}")), "Choose key")
+                    .outline()
+                    .small()
+                    .on_click(cx.listener(move |this, _, w, cx| this.pick_key(id1.clone(), w, cx)))
+                    .into_any_element(),
+            ],
         ),
     };
 
@@ -387,5 +421,13 @@ fn slot_row<H: SlotBoardHost>(
                 ),
         )
         .child(div().flex_1().min_w_0().child(body))
-        .child(div().flex_none().flex().flex_row().items_center().gap_1().children(actions))
+        .child(
+            div()
+                .flex_none()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_1()
+                .children(actions),
+        )
 }

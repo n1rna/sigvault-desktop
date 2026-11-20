@@ -58,8 +58,12 @@ impl SendPage {
     }
 
     fn set_qr_format(&mut self, format: QrFormat, cx: &mut Context<Self>) {
-        let Some(psbt) = self.psbt_base64.clone() else { return };
-        let Some(q) = self.show_qr.as_mut() else { return };
+        let Some(psbt) = self.psbt_base64.clone() else {
+            return;
+        };
+        let Some(q) = self.show_qr.as_mut() else {
+            return;
+        };
         q.format = format;
         q.error = None;
         q.frame_idx = 0;
@@ -108,8 +112,16 @@ impl SendPage {
         let current = q.frames.get(q.frame_idx).cloned().unwrap_or_default();
         // UR is case-insensitive; uppercase lets the QR use alphanumeric
         // mode (denser, easier to scan), as Sparrow/Passport emit it.
-        let current = if format == QrFormat::Ur { current.to_uppercase() } else { current };
-        let display_idx = if q.total_parts > 0 { q.frame_idx % q.total_parts + 1 } else { 1 };
+        let current = if format == QrFormat::Ur {
+            current.to_uppercase()
+        } else {
+            current
+        };
+        let display_idx = if q.total_parts > 0 {
+            q.frame_idx % q.total_parts + 1
+        } else {
+            1
+        };
 
         Some(
             modal("show-qr-modal", 480.)
@@ -187,7 +199,8 @@ impl SendPage {
                 .multiline(4)
                 .placeholder("Base64 PSBT, or UR / BBQr parts (one per line)")
         });
-        cx.subscribe(&paste, |_, _, _: &InputEvent, cx| cx.notify()).detach();
+        cx.subscribe(&paste, |_, _, _: &InputEvent, cx| cx.notify())
+            .detach();
         self.scan_qr = Some(QrImport {
             assembler: PsbtQrAssembler::new(),
             seen: HashSet::new(),
@@ -220,7 +233,9 @@ impl SendPage {
     /// Feed decoded frame strings into the assembler. On completion the
     /// dialog closes and the signed PSBT goes to broadcast.
     fn push_frames(&mut self, frames: Vec<String>, cx: &mut Context<Self>) {
-        let Some(s) = self.scan_qr.as_mut() else { return };
+        let Some(s) = self.scan_qr.as_mut() else {
+            return;
+        };
         let mut done = None;
         for f in frames {
             let f = f.trim().to_string();
@@ -255,7 +270,9 @@ impl SendPage {
             prompt: Some("Choose QR images".into()),
         });
         cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = rx.await else { return };
+            let Ok(Ok(Some(paths))) = rx.await else {
+                return;
+            };
             if paths.is_empty() {
                 return;
             }
@@ -272,7 +289,9 @@ impl SendPage {
                 .spawn(async move { decode_images(paths) })
                 .await;
             this.update(cx, |this, cx| {
-                let Some(s) = this.scan_qr.as_mut() else { return };
+                let Some(s) = this.scan_qr.as_mut() else {
+                    return;
+                };
                 s.decoding = false;
                 let mut frames = Vec::new();
                 let mut errors = Vec::new();
@@ -293,14 +312,19 @@ impl SendPage {
     }
 
     fn decode_pasted(&mut self, cx: &mut Context<Self>) {
-        let Some(s) = self.scan_qr.as_mut() else { return };
+        let Some(s) = self.scan_qr.as_mut() else {
+            return;
+        };
         let text = s.paste.read(cx).text().trim().to_string();
         if text.is_empty() {
             return;
         }
         s.error = None;
         let first = text.split_whitespace().next().unwrap_or_default();
-        let is_frames = first.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("ur:")) || first.starts_with("B$");
+        let is_frames = first
+            .get(..3)
+            .is_some_and(|p| p.eq_ignore_ascii_case("ur:"))
+            || first.starts_with("B$");
         if is_frames {
             let frames: Vec<String> = text.split_whitespace().map(str::to_string).collect();
             s.paste.update(cx, |p, cx| p.clear(cx));
@@ -479,7 +503,8 @@ pub(super) fn segmented(
                 if active {
                     d.bg(t.primary).text_color(t.primary_foreground)
                 } else {
-                    d.text_color(t.muted_foreground).hover(move |s| s.text_color(t.foreground))
+                    d.text_color(t.muted_foreground)
+                        .hover(move |s| s.text_color(t.foreground))
                 }
             })
             .child(label)

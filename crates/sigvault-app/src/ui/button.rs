@@ -1,6 +1,4 @@
-use gpui::{
-    div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, SharedString, Window,
-};
+use gpui::{div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, SharedString, Window};
 
 use super::common::{icon, spinner_with};
 use crate::theme::{alpha, theme, RADIUS_CHIP, RADIUS_CONTROL};
@@ -135,11 +133,26 @@ impl RenderOnce for Button {
         let inert = self.disabled || self.loading;
         // Web `button.tsx`: rounded-control, shadow-btn ring (= 1px line-strong).
         let (bg, fg, hover_bg, border) = match self.variant {
-            ButtonVariant::Primary => (Some(t.brand), t.brand_contrast, Some(alpha(t.brand, 0.9)), None),
-            ButtonVariant::Secondary => (Some(t.inset), t.ink, Some(t.hover_strong), Some(t.line_strong)),
+            ButtonVariant::Primary => (
+                Some(t.brand),
+                t.brand_contrast,
+                Some(alpha(t.brand, 0.9)),
+                None,
+            ),
+            ButtonVariant::Secondary => (
+                Some(t.inset),
+                t.ink,
+                Some(t.hover_strong),
+                Some(t.line_strong),
+            ),
             ButtonVariant::Outline => (Some(t.surface), t.ink, Some(t.inset), Some(t.line_strong)),
             ButtonVariant::Ghost => (None, t.ink_2, Some(t.hover_strong), None),
-            ButtonVariant::Destructive => (Some(t.destructive), t.destructive_foreground, Some(alpha(t.destructive, 0.9)), None),
+            ButtonVariant::Destructive => (
+                Some(t.destructive),
+                t.destructive_foreground,
+                Some(alpha(t.destructive, 0.9)),
+                None,
+            ),
             ButtonVariant::Link => (None, t.brand_ink, None, None),
         };
         let (h, px_, text, icon_size, radius) = match self.size {
@@ -183,7 +196,11 @@ impl RenderOnce for Button {
                 let is_ghost = self.variant == ButtonVariant::Ghost;
                 el = el.hover(move |s| {
                     let s = s.bg(hbg);
-                    if is_ghost { s.text_color(t.ink) } else { s }
+                    if is_ghost {
+                        s.text_color(t.ink)
+                    } else {
+                        s
+                    }
                 });
             } else {
                 el = el.hover(|s| s.underline());
@@ -196,11 +213,13 @@ impl RenderOnce for Button {
         let leading: Option<AnyElement> = if self.loading {
             Some(spinner_with(icon_size, fg).into_any_element())
         } else {
-            self.icon.map(|n| icon(n).size(icon_size).text_color(fg).into_any_element())
+            self.icon
+                .map(|n| icon(n).size(icon_size).text_color(fg).into_any_element())
         };
 
-        el.children(leading)
-            .children(self.label)
-            .children(self.icon_right.map(|n| icon(n).size(icon_size).text_color(fg)))
+        el.children(leading).children(self.label).children(
+            self.icon_right
+                .map(|n| icon(n).size(icon_size).text_color(fg)),
+        )
     }
 }

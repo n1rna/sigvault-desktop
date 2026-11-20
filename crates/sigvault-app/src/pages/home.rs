@@ -25,7 +25,8 @@ pub struct HomePage {
 
 impl HomePage {
     pub fn new(mode: AppMode, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()).detach();
+        cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify())
+            .detach();
         cx.subscribe(&store(cx), |this, _, ev: &StoreEvent, cx| {
             if matches!(ev, StoreEvent::LocalDataChanged) {
                 this.load(cx);
@@ -33,7 +34,11 @@ impl HomePage {
         })
         .detach();
         cx.observe(&store(cx), |_, _, cx| cx.notify()).detach();
-        let mut this = Self { mode, wallets: None, chart: cx.new(PriceChart::new) };
+        let mut this = Self {
+            mode,
+            wallets: None,
+            chart: cx.new(PriceChart::new),
+        };
         this.load(cx);
         this
     }
@@ -42,9 +47,8 @@ impl HomePage {
         if self.mode != AppMode::Local {
             return;
         }
-        let task = backend(cx).call(|app, st| async move {
-            cmd_local_list_wallets(app, State::new(&st)).await
-        });
+        let task = backend(cx)
+            .call(|app, st| async move { cmd_local_list_wallets(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             if let Ok(list) = task.await {
                 let unlocked = list.iter().filter(|w| !w.locked).count();
@@ -117,8 +121,22 @@ fn tiles(tips: Vec<Tip>) -> impl IntoElement {
                                 )
                                 .child(tip.n),
                         )
-                        .child(div().mt_5().text_size(px(17.)).font_weight(gpui::FontWeight::MEDIUM).text_color(t.ink).child(tip.title))
-                        .child(div().mt_2().text_size(px(13.5)).line_height(px(20.)).text_color(t.ink_2).child(tip.body)),
+                        .child(
+                            div()
+                                .mt_5()
+                                .text_size(px(17.))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(t.ink)
+                                .child(tip.title),
+                        )
+                        .child(
+                            div()
+                                .mt_2()
+                                .text_size(px(13.5))
+                                .line_height(px(20.))
+                                .text_color(t.ink_2)
+                                .child(tip.body),
+                        ),
                 )
                 .child(
                     div()
@@ -148,7 +166,13 @@ impl Render for HomePage {
                 let keys = kc.keys().len();
                 let hot = kc.hot_count();
                 let (total, unlocked) = self.wallets.unwrap_or((0, 0));
-                let dash = |v: usize| if self.wallets.is_some() { v.to_string() } else { "…".into() };
+                let dash = |v: usize| {
+                    if self.wallets.is_some() {
+                        v.to_string()
+                    } else {
+                        "…".into()
+                    }
+                };
                 (
                     "Your wallets, your keys, your signatures — on this computer.",
                     vec![
@@ -167,7 +191,11 @@ impl Render for HomePage {
             AppMode::Cloud => {
                 let st = store(cx).read(cx);
                 let total = st.remote_sessions.len();
-                let active = st.remote_sessions.iter().filter(|r| r.status.eq_ignore_ascii_case("active")).count();
+                let active = st
+                    .remote_sessions
+                    .iter()
+                    .filter(|r| r.status.eq_ignore_ascii_case("active"))
+                    .count();
                 let live = if st.active_session.is_connected { 1 } else { 0 };
                 (
                     "Your team's vaults, coordinated — SigVault never holds your keys.",
@@ -193,11 +221,22 @@ impl Render for HomePage {
             .subtitle(subtitle)
             .action(
                 button("home-cta", cta_label)
-                    .icon(if self.mode == AppMode::Local { "plus" } else { "arrow-right" })
+                    .icon(if self.mode == AppMode::Local {
+                        "plus"
+                    } else {
+                        "arrow-right"
+                    })
                     .on_click(move |_, _, cx| navigate(cta_page.clone(), cx)),
             )
             .child(stat_grid(stats))
             .child(self.chart.clone())
-            .child(div().flex().flex_col().gap_4().child(section_head("Getting started", None)).child(tiles(tips)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .child(section_head("Getting started", None))
+                    .child(tiles(tips)),
+            )
     }
 }

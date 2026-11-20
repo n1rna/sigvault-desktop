@@ -13,10 +13,14 @@ pub fn decode_qr_image(path: &Path) -> Result<Vec<String>, String> {
         .map_err(|e| format!("Couldn't open {}: {e}", file_name(path)))?
         .to_luma8();
     let (w, h) = img.dimensions();
-    let mut found = scan(w as usize, h as usize, |x, y| img.get_pixel(x as u32, y as u32).0[0]);
+    let mut found = scan(w as usize, h as usize, |x, y| {
+        img.get_pixel(x as u32, y as u32).0[0]
+    });
     if found.is_empty() {
         // Light-on-dark QR (e.g. dark-mode screenshots): retry inverted.
-        found = scan(w as usize, h as usize, |x, y| 255 - img.get_pixel(x as u32, y as u32).0[0]);
+        found = scan(w as usize, h as usize, |x, y| {
+            255 - img.get_pixel(x as u32, y as u32).0[0]
+        });
     }
     if found.is_empty() {
         return Err(format!("No QR code found in {}", file_name(path)));
@@ -56,11 +60,16 @@ mod tests {
         let (dark, light) = if invert { (255u8, 0u8) } else { (0u8, 255u8) };
         let img = ::image::GrayImage::from_fn(side, side, |x, y| {
             let (mx, my) = (x / scale, y / scale);
-            if mx < quiet || my < quiet || mx >= quiet + width as u32 || my >= quiet + width as u32 {
+            if mx < quiet || my < quiet || mx >= quiet + width as u32 || my >= quiet + width as u32
+            {
                 return ::image::Luma([light]);
             }
             let i = ((my - quiet) as usize) * width + (mx - quiet) as usize;
-            ::image::Luma([if colors[i] == qrcode::Color::Dark { dark } else { light }])
+            ::image::Luma([if colors[i] == qrcode::Color::Dark {
+                dark
+            } else {
+                light
+            }])
         });
         img.save(path).unwrap();
     }
@@ -89,7 +98,9 @@ mod tests {
     #[test]
     fn missing_qr_is_an_error() {
         let p = std::env::temp_dir().join(format!("sigvault-qr-blank-{}.png", std::process::id()));
-        ::image::GrayImage::from_pixel(64, 64, ::image::Luma([255])).save(&p).unwrap();
+        ::image::GrayImage::from_pixel(64, 64, ::image::Luma([255]))
+            .save(&p)
+            .unwrap();
         assert!(decode_qr_image(&p).unwrap_err().contains("No QR code"));
         std::fs::remove_file(p).ok();
     }

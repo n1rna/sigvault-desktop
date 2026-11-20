@@ -14,11 +14,11 @@
 use std::ops::Range;
 
 use gpui::{
-    actions, div, fill, point, prelude::*, px, relative, size, App, Bounds, ClipboardItem,
-    Context, CursorStyle, ElementId, ElementInputHandler, Entity, EntityInputHandler,
-    EventEmitter, FocusHandle, Focusable, GlobalElementId, KeyBinding, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine,
-    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine,
+    actions, div, fill, point, prelude::*, px, relative, size, App, Bounds, ClipboardItem, Context,
+    CursorStyle, ElementId, ElementInputHandler, Entity, EntityInputHandler, EventEmitter,
+    FocusHandle, Focusable, GlobalElementId, KeyBinding, LayoutId, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Style,
+    TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -93,6 +93,9 @@ pub enum InputEvent {
     Submit,
 }
 
+// One layout lives per input and is rebuilt every frame; boxing the single
+// line would just add an allocation.
+#[allow(clippy::large_enum_variant)]
 enum Layout {
     Single(ShapedLine),
     Multi(Vec<(usize, WrappedLine)>), // (byte offset of hard line start, layout)
@@ -392,7 +395,12 @@ impl TextInput {
         }
     }
 
-    fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.is_selecting = true;
         let ix = self.index_for_mouse_position(event.position, window);
         if event.modifiers.shift {
@@ -409,7 +417,12 @@ impl TextInput {
         self.is_selecting = false;
     }
 
-    fn on_mouse_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.is_selecting {
             let ix = self.index_for_mouse_position(event.position, window);
             self.select_to(ix, cx);
@@ -447,7 +460,10 @@ impl TextInput {
     /// Content byte offset → offset into the displayed (possibly masked) text.
     fn display_offset(&self, offset: usize) -> usize {
         if self.is_masking() {
-            self.content[..offset.min(self.content.len())].chars().count() * MASK_CHAR.len_utf8()
+            self.content[..offset.min(self.content.len())]
+                .chars()
+                .count()
+                * MASK_CHAR.len_utf8()
         } else {
             offset
         }
@@ -469,7 +485,9 @@ impl TextInput {
 
     fn position_for_offset(&self, offset: usize, line_height: Pixels) -> Option<Point<Pixels>> {
         match self.last_layout.as_ref()? {
-            Layout::Single(line) => Some(point(line.x_for_index(self.display_offset(offset)), px(0.))),
+            Layout::Single(line) => {
+                Some(point(line.x_for_index(self.display_offset(offset)), px(0.)))
+            }
             Layout::Multi(lines) => {
                 let mut y = px(0.);
                 for (i, (start, line)) in lines.iter().enumerate() {
@@ -603,8 +621,14 @@ impl EntityInputHandler for TextInput {
         })
     }
 
-    fn marked_text_range(&self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<Range<usize>> {
-        self.marked_range.as_ref().map(|range| self.range_to_utf16(range))
+    fn marked_text_range(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Range<usize>> {
+        self.marked_range
+            .as_ref()
+            .map(|range| self.range_to_utf16(range))
     }
 
     fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
@@ -633,12 +657,15 @@ impl EntityInputHandler for TextInput {
             new_text.replace('\n', "")
         };
         if let Some(max) = self.max_len {
-            let remaining = max.saturating_sub(self.content.chars().count() - self.content[range.clone()].chars().count());
+            let remaining = max.saturating_sub(
+                self.content.chars().count() - self.content[range.clone()].chars().count(),
+            );
             new_text = new_text.chars().take(remaining).collect();
         }
 
         self.content =
-            (self.content[0..range.start].to_owned() + &new_text + &self.content[range.end..]).into();
+            (self.content[0..range.start].to_owned() + &new_text + &self.content[range.end..])
+                .into();
         self.selected_range = range.start + new_text.len()..range.start + new_text.len();
         self.marked_range.take();
         cx.emit(InputEvent::Changed);
@@ -663,7 +690,8 @@ impl EntityInputHandler for TextInput {
             .unwrap_or(self.selected_range.clone());
 
         self.content =
-            (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..]).into();
+            (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
+                .into();
         if !new_text.is_empty() {
             self.marked_range = Some(range.start..range.start + new_text.len());
         } else {
@@ -775,7 +803,10 @@ impl Element for TextElement {
         let (display_text, text_color): (SharedString, _) = if content.is_empty() {
             (input.placeholder.clone(), t.ink_3)
         } else if input.is_masking() {
-            (MASK_CHAR.to_string().repeat(content.chars().count()).into(), style.color)
+            (
+                MASK_CHAR.to_string().repeat(content.chars().count()).into(),
+                style.color,
+            )
         } else {
             (content.clone(), style.color)
         };
@@ -788,11 +819,18 @@ impl Element for TextElement {
             underline: None,
             strikethrough: None,
         };
-        let marked = if content.is_empty() { None } else { input.marked_range.clone() };
+        let marked = if content.is_empty() {
+            None
+        } else {
+            input.marked_range.clone()
+        };
         let runs: Vec<TextRun> = if let Some(m) = marked.as_ref() {
             let (ms, me) = (input.display_offset(m.start), input.display_offset(m.end));
             vec![
-                TextRun { len: ms, ..run.clone() },
+                TextRun {
+                    len: ms,
+                    ..run.clone()
+                },
                 TextRun {
                     len: me - ms,
                     underline: Some(UnderlineStyle {
@@ -802,7 +840,10 @@ impl Element for TextElement {
                     }),
                     ..run.clone()
                 },
-                TextRun { len: display_text.len() - me, ..run },
+                TextRun {
+                    len: display_text.len() - me,
+                    ..run
+                },
             ]
             .into_iter()
             .filter(|run| run.len > 0)
@@ -817,15 +858,26 @@ impl Element for TextElement {
         let cursor_ix = input.cursor_offset();
 
         if input.multiline.is_none() {
-            let line = window.text_system().shape_line(display_text, font_size, &runs, None);
+            let line = window
+                .text_system()
+                .shape_line(display_text, font_size, &runs, None);
             let (selections, cursor) = if content.is_empty() {
-                (vec![], Some(fill(Bounds::new(bounds.origin, size(px(1.5), line_height)), cursor_color)))
+                (
+                    vec![],
+                    Some(fill(
+                        Bounds::new(bounds.origin, size(px(1.5), line_height)),
+                        cursor_color,
+                    )),
+                )
             } else if sel.is_empty() {
                 let x = line.x_for_index(input.display_offset(cursor_ix));
                 (
                     vec![],
                     Some(fill(
-                        Bounds::new(point(bounds.left() + x, bounds.top()), size(px(1.5), line_height)),
+                        Bounds::new(
+                            point(bounds.left() + x, bounds.top()),
+                            size(px(1.5), line_height),
+                        ),
                         cursor_color,
                     )),
                 )
@@ -854,7 +906,13 @@ impl Element for TextElement {
         // Multi-line: shape each hard line with soft wrapping at the bounds width.
         let wrapped = window
             .text_system()
-            .shape_text(display_text.clone(), font_size, &runs, Some(bounds.size.width), None)
+            .shape_text(
+                display_text.clone(),
+                font_size,
+                &runs,
+                Some(bounds.size.width),
+                None,
+            )
             .unwrap_or_default();
         let mut lines = Vec::with_capacity(wrapped.len());
         let mut offset = 0usize;
@@ -883,11 +941,17 @@ impl Element for TextElement {
         let mut selections = Vec::new();
         let mut cursor = None;
         if content.is_empty() {
-            cursor = Some(fill(Bounds::new(bounds.origin, size(px(1.5), line_height)), cursor_color));
+            cursor = Some(fill(
+                Bounds::new(bounds.origin, size(px(1.5), line_height)),
+                cursor_color,
+            ));
         } else if sel.is_empty() {
             if let Some(p) = pos(cursor_ix) {
                 cursor = Some(fill(
-                    Bounds::new(point(bounds.left() + p.x, bounds.top() + p.y), size(px(1.5), line_height)),
+                    Bounds::new(
+                        point(bounds.left() + p.x, bounds.top() + p.y),
+                        size(px(1.5), line_height),
+                    ),
                     cursor_color,
                 ));
             }
@@ -946,7 +1010,11 @@ impl Element for TextElement {
         cx: &mut App,
     ) {
         let focus_handle = self.input.read(cx).focus_handle.clone();
-        window.handle_input(&focus_handle, ElementInputHandler::new(bounds, self.input.clone()), cx);
+        window.handle_input(
+            &focus_handle,
+            ElementInputHandler::new(bounds, self.input.clone()),
+            cx,
+        );
         for s in prepaint.selections.drain(..) {
             window.paint_quad(s);
         }
@@ -1038,7 +1106,11 @@ impl Render for TextInput {
             .text_size(px(14.))
             .line_height(px(20.))
             .text_color(t.foreground);
-        root = if self.multiline.is_some() { root.py_2() } else { root.py(px(7.)) };
+        root = if self.multiline.is_some() {
+            root.py_2()
+        } else {
+            root.py(px(7.))
+        };
         if self.mono {
             root = root.font_family(FONT_MONO).text_size(px(12.5));
         }

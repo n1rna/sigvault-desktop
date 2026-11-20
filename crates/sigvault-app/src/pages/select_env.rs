@@ -10,7 +10,9 @@ use super::cloud::common::{icon_tile, list_row, network_badge_unless_named, skel
 use crate::runtime::backend;
 use crate::state::store;
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, badge, button, card, divider, footer_bar, icon, page_frame, section, Tone, FORM_WIDTH};
+use crate::ui::{
+    alert, badge, button, card, divider, footer_bar, icon, page_frame, section, Tone, FORM_WIDTH,
+};
 
 pub struct SelectEnvPage {
     environments: Vec<EnvConfig>,
@@ -37,15 +39,18 @@ impl SelectEnvPage {
         self.loading = true;
         self.error = None;
         cx.notify();
-        let task = backend(cx).call(|app, st| async move {
-            cmd_list_environments(app, State::new(&st)).await
-        });
+        let task = backend(cx)
+            .call(|app, st| async move { cmd_list_environments(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
                 match res {
                     Ok(resp) => {
-                        let first = resp.environments.iter().find(|e| !e.coming_soon).map(|e| e.id.clone());
+                        let first = resp
+                            .environments
+                            .iter()
+                            .find(|e| !e.coming_soon)
+                            .map(|e| e.id.clone());
                         this.selected_id = resp.selected_id.or(first);
                         this.environments = resp.environments;
                     }
@@ -87,7 +92,10 @@ impl SelectEnvPage {
 }
 
 fn host_of(url: &str) -> String {
-    url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string()
+    url.trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .to_string()
 }
 
 impl SelectEnvPage {
@@ -101,7 +109,12 @@ impl SelectEnvPage {
                 .items_center()
                 .gap_1()
                 .py_10()
-                .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("No networks available"))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child("No networks available"),
+                )
                 .child(
                     div()
                         .text_size(px(12.))
@@ -127,7 +140,9 @@ impl SelectEnvPage {
                 .rounded_full()
                 .border_1()
                 .border_color(if selected { t.primary } else { t.border })
-                .when(selected, |d| d.child(div().size(px(8.)).rounded_full().bg(t.primary)));
+                .when(selected, |d| {
+                    d.child(div().size(px(8.)).rounded_full().bg(t.primary))
+                });
             list = list.child(
                 list_row(("env", ix))
                     .h(px(60.))
@@ -135,13 +150,22 @@ impl SelectEnvPage {
                     .when(selected, |d| d.bg(alpha(t.primary, 0.06)))
                     .when(disabled, |d| d.opacity(0.55))
                     .when(!disabled, |d| {
-                        d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
-                            this.selected_id = Some(id.clone());
-                            cx.notify();
-                        }))
+                        d.cursor_pointer()
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.selected_id = Some(id.clone());
+                                cx.notify();
+                            }))
                     })
                     .child(radio)
-                    .child(icon_tile("globe", 32., Some(if selected { t.primary } else { t.muted_foreground })))
+                    .child(icon_tile(
+                        "globe",
+                        32.,
+                        Some(if selected {
+                            t.primary
+                        } else {
+                            t.muted_foreground
+                        }),
+                    ))
                     .child(
                         div()
                             .flex_1()
@@ -199,12 +223,19 @@ impl Render for SelectEnvPage {
                     None => "Choose a network to continue.".into(),
                 })
                 .into_any_element()],
-            vec![button("env-continue", if self.submitting { "Applying…" } else { "Continue" })
-                .loading(self.submitting)
-                .when(!self.submitting, |b| b.icon_right("arrow-right"))
-                .disabled(self.selected_id.is_none() || self.loading || authenticated)
-                .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
-                .into_any_element()],
+            vec![button(
+                "env-continue",
+                if self.submitting {
+                    "Applying…"
+                } else {
+                    "Continue"
+                },
+            )
+            .loading(self.submitting)
+            .when(!self.submitting, |b| b.icon_right("arrow-right"))
+            .disabled(self.selected_id.is_none() || self.loading || authenticated)
+            .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
+            .into_any_element()],
         );
 
         page_frame("select-env")

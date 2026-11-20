@@ -5,7 +5,9 @@
 
 use gpui::{div, prelude::*, px, Context, EventEmitter, FontWeight, SharedString, Window};
 use sigvault_core::commands::hwi::WalletConfigInput;
-use sigvault_core::commands::{cmd_discover_hardware_wallets, cmd_get_device_xpub, cmd_unlock_device};
+use sigvault_core::commands::{
+    cmd_discover_hardware_wallets, cmd_get_device_xpub, cmd_unlock_device,
+};
 use sigvault_core::hwi::{DeviceInfo, DeviceState, DiscoveredDevice, UnsupportedReason};
 use sigvault_core::State;
 
@@ -52,7 +54,9 @@ fn fingerprint_of(d: &DiscoveredDevice) -> Option<String> {
 
 fn unsupported_reason_text(reason: &UnsupportedReason) -> String {
     match reason {
-        UnsupportedReason::Version { minimal_supported_version } => {
+        UnsupportedReason::Version {
+            minimal_supported_version,
+        } => {
             format!("Firmware version too old. Minimum required: {minimal_supported_version}")
         }
         UnsupportedReason::Method(m) => format!("Device doesn't support required feature: {m}"),
@@ -98,7 +102,9 @@ impl DevicePicker {
             this.update(cx, |this, cx| {
                 match res {
                     Ok(r) if r.success && r.data.is_some() => {
-                        match serde_json::from_value::<Vec<DiscoveredDevice>>(r.data.unwrap_or_default()) {
+                        match serde_json::from_value::<Vec<DiscoveredDevice>>(
+                            r.data.unwrap_or_default(),
+                        ) {
                             Ok(devices) => {
                                 if let Some(sel) = &this.selected {
                                     if !devices.iter().any(|d| d.id == sel.id) {
@@ -150,7 +156,8 @@ impl DevicePicker {
             this.update(cx, |this, cx| {
                 match res {
                     Ok(r) if r.success && r.data.is_some() => {
-                        match serde_json::from_value::<DiscoveredDevice>(r.data.unwrap_or_default()) {
+                        match serde_json::from_value::<DiscoveredDevice>(r.data.unwrap_or_default())
+                        {
                             Ok(dev) => {
                                 for d in this.devices.iter_mut() {
                                     if d.id == device_id {
@@ -223,7 +230,12 @@ impl DevicePicker {
         .detach();
     }
 
-    fn render_card(&self, ix: usize, device: &DiscoveredDevice, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_card(
+        &self,
+        ix: usize,
+        device: &DiscoveredDevice,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let t = theme();
         let locked = is_locked(device);
         let supported = is_supported(device);
@@ -254,7 +266,11 @@ impl DevicePicker {
         } else if locked {
             ("Locked", Tone::Default, t.primary)
         } else {
-            ("Unsupported", Tone::Secondary, alpha(t.muted_foreground, 0.4))
+            (
+                "Unsupported",
+                Tone::Secondary,
+                alpha(t.muted_foreground, 0.4),
+            )
         };
 
         let meta_row = |k: &'static str, v: gpui::AnyElement| {
@@ -267,11 +283,21 @@ impl DevicePicker {
                 .bg(t.card)
                 .px(px(14.))
                 .py_2()
-                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(k))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(k),
+                )
                 .child(v)
         };
         let mut meta: Vec<gpui::AnyElement> = Vec::new();
-        if let DeviceState::Supported { fingerprint, version, registered } = &device.state {
+        if let DeviceState::Supported {
+            fingerprint,
+            version,
+            registered,
+        } = &device.state
+        {
             meta.push(
                 meta_row(
                     "Fingerprint",
@@ -320,7 +346,9 @@ impl DevicePicker {
         }
 
         let pairing = match &device.state {
-            DeviceState::Locked { pairing_code: Some(c) } if unlocking && !c.is_empty() => Some(c.clone()),
+            DeviceState::Locked {
+                pairing_code: Some(c),
+            } if unlocking && !c.is_empty() => Some(c.clone()),
             _ => None,
         };
         let reason = match &device.state {
@@ -330,8 +358,16 @@ impl DevicePicker {
 
         let action: gpui::AnyElement = if supported {
             let dev = device.clone();
-            let b = button(("dev-select", ix), if selected { "Selected" } else { "Select" }).small();
-            let b = if selected { b.secondary().icon("check") } else { b.icon_right("arrow-right") };
+            let b = button(
+                ("dev-select", ix),
+                if selected { "Selected" } else { "Select" },
+            )
+            .small();
+            let b = if selected {
+                b.secondary().icon("check")
+            } else {
+                b.icon_right("arrow-right")
+            };
             b.on_click(cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
                 this.select(dev.clone(), cx);
@@ -339,17 +375,20 @@ impl DevicePicker {
             .into_any_element()
         } else if locked {
             let id = device.id.clone();
-            button(("dev-unlock", ix), if unlocking { "Unlocking" } else { "Unlock" })
-                .small()
-                .icon("lock")
-                .loading(unlocking)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    if this.unlocking_id.is_none() {
-                        this.unlock(id.clone(), cx);
-                    }
-                }))
-                .into_any_element()
+            button(
+                ("dev-unlock", ix),
+                if unlocking { "Unlocking" } else { "Unlock" },
+            )
+            .small()
+            .icon("lock")
+            .loading(unlocking)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                if this.unlocking_id.is_none() {
+                    this.unlock(id.clone(), cx);
+                }
+            }))
+            .into_any_element()
         } else {
             div()
                 .h(px(32.))
@@ -377,10 +416,22 @@ impl DevicePicker {
             .bg(bg)
             .when(unsupported, |d| d.opacity(0.8))
             .when(supported, |d| d.cursor_pointer())
-            .when(locked && !selected, |d| d.hover(move |s| s.border_color(alpha(t.primary, 0.6))))
-            .when(supported && !selected, |d| d.hover(move |s| s.border_color(alpha(t.primary, 0.4))))
+            .when(locked && !selected, |d| {
+                d.hover(move |s| s.border_color(alpha(t.primary, 0.6)))
+            })
+            .when(supported && !selected, |d| {
+                d.hover(move |s| s.border_color(alpha(t.primary, 0.4)))
+            })
             .on_click(cx.listener(move |this, _, _, cx| this.select(dev.clone(), cx)))
-            .child(div().absolute().top_0().bottom_0().left_0().w(px(3.)).bg(rail))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(3.))
+                    .bg(rail),
+            )
             .child(
                 div()
                     .flex()
@@ -562,27 +613,39 @@ impl Render for DevicePicker {
                             ),
                     )
                     .child(
-                        button("discover", if self.discovering { "Scanning…" } else { "Discover devices" })
-                            .outline()
-                            .small()
-                            .icon("usb")
-                            .loading(self.discovering)
-                            .on_click(cx.listener(|this, _, _, cx| this.discover(cx))),
+                        button(
+                            "discover",
+                            if self.discovering {
+                                "Scanning…"
+                            } else {
+                                "Discover devices"
+                            },
+                        )
+                        .outline()
+                        .small()
+                        .icon("usb")
+                        .loading(self.discovering)
+                        .on_click(cx.listener(|this, _, _, cx| this.discover(cx))),
                     ),
             )
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
             .when(!self.devices.is_empty(), |d| {
-                d.child(div().flex().flex_col().gap_3().children(cards)).when(can_extract, |d| {
-                    d.child(
-                        button(
-                            "extract",
-                            if self.extracting { "Extracting device info…" } else { "Continue with selected device" },
+                d.child(div().flex().flex_col().gap_3().children(cards))
+                    .when(can_extract, |d| {
+                        d.child(
+                            button(
+                                "extract",
+                                if self.extracting {
+                                    "Extracting device info…"
+                                } else {
+                                    "Continue with selected device"
+                                },
+                            )
+                            .full_width()
+                            .loading(self.extracting)
+                            .on_click(cx.listener(|this, _, _, cx| this.extract_info(cx))),
                         )
-                        .full_width()
-                        .loading(self.extracting)
-                        .on_click(cx.listener(|this, _, _, cx| this.extract_info(cx))),
-                    )
-                })
+                    })
             })
     }
 }

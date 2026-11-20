@@ -28,7 +28,6 @@ use crate::ui::{
     FORM_WIDTH,
 };
 
-
 /// `constants/networks.ts` — `SUPPORTED_NETWORKS`.
 struct NetworkOption {
     id: &'static str,
@@ -37,9 +36,21 @@ struct NetworkOption {
 }
 
 const SUPPORTED_NETWORKS: [NetworkOption; 3] = [
-    NetworkOption { id: "regtest", label: "Regtest", hint: "Local dev / integration" },
-    NetworkOption { id: "signet", label: "Signet", hint: "Public test network" },
-    NetworkOption { id: "testnet4", label: "Testnet 4", hint: "Newer public testnet" },
+    NetworkOption {
+        id: "regtest",
+        label: "Regtest",
+        hint: "Local dev / integration",
+    },
+    NetworkOption {
+        id: "signet",
+        label: "Signet",
+        hint: "Public test network",
+    },
+    NetworkOption {
+        id: "testnet4",
+        label: "Testnet 4",
+        hint: "Newer public testnet",
+    },
 ];
 
 /// Mirror of `validate_electrs_url` in `local_wallet/settings.rs`. Empty
@@ -53,15 +64,14 @@ fn validate_url(url: &str) -> Option<String> {
         .or_else(|| url.strip_prefix("ssl://"))
         .unwrap_or(url);
     let last_colon = stripped.rfind(':');
-    let last_colon = match last_colon {
-        Some(i) if i > 0 && i != stripped.len() - 1 => i,
-        _ => {
-            return Some(
+    let last_colon =
+        match last_colon {
+            Some(i) if i > 0 && i != stripped.len() - 1 => i,
+            _ => return Some(
                 "URL must include host:port — use tcp://host:port, ssl://host:port, or host:port"
                     .into(),
-            )
-        }
-    };
+            ),
+        };
     let host = &stripped[..last_colon];
     let port_str = &stripped[last_colon + 1..];
     if host.is_empty() {
@@ -80,7 +90,6 @@ fn validate_url(url: &str) -> Option<String> {
     }
     None
 }
-
 
 pub struct LocalSettingsPage {
     /// Edited copy.
@@ -107,20 +116,21 @@ impl LocalSettingsPage {
             };
             let input = cx.new(|cx| TextInput::new(window, cx).mono().placeholder(placeholder));
             let network = n.id;
-            subs.push(cx.subscribe(&input, move |this, input, ev: &InputEvent, cx| match ev {
-                InputEvent::Changed => {
-                    let url = input.read(cx).text().to_string();
-                    this.update_url(network, url, cx);
-                }
-                InputEvent::Submit => this.save(cx),
-            }));
+            subs.push(
+                cx.subscribe(&input, move |this, input, ev: &InputEvent, cx| match ev {
+                    InputEvent::Changed => {
+                        let url = input.read(cx).text().to_string();
+                        this.update_url(network, url, cx);
+                    }
+                    InputEvent::Submit => this.save(cx),
+                }),
+            );
             inputs.push(input);
         }
         subs.push(cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()));
 
-        let task = backend(cx).call(|app, st| async move {
-            cmd_local_get_settings(app, State::new(&st)).await
-        });
+        let task = backend(cx)
+            .call(|app, st| async move { cmd_local_get_settings(app, State::new(&st)).await });
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
@@ -164,7 +174,9 @@ impl LocalSettingsPage {
     }
 
     fn update_url(&mut self, network: &str, url: String, cx: &mut Context<Self>) {
-        let Some(settings) = self.settings.as_mut() else { return };
+        let Some(settings) = self.settings.as_mut() else {
+            return;
+        };
         let invalid = validate_url(&url).is_some();
         // An absent entry and an empty one mean the same thing; keep the
         // map shape stable so the dirty check doesn't flag no-op edits.
@@ -179,7 +191,9 @@ impl LocalSettingsPage {
     }
 
     fn set_default_network(&mut self, network: &str, cx: &mut Context<Self>) {
-        let Some(settings) = self.settings.as_mut() else { return };
+        let Some(settings) = self.settings.as_mut() else {
+            return;
+        };
         settings.default_network = network.to_string();
         cx.notify();
     }
@@ -208,7 +222,9 @@ impl LocalSettingsPage {
 
     fn save(&mut self, cx: &mut Context<Self>) {
         let has_errors = self.field_errors().iter().any(Option::is_some);
-        let Some(settings) = self.settings.clone() else { return };
+        let Some(settings) = self.settings.clone() else {
+            return;
+        };
         if has_errors || self.saving || !self.dirty() {
             return;
         }
@@ -257,7 +273,10 @@ impl LocalSettingsPage {
                 .px_3()
                 .py(px(10.))
                 .cursor_pointer()
-                .when(selected, |d| d.border_color(alpha(t.primary, 0.7)).bg(alpha(t.primary, 0.06)))
+                .when(selected, |d| {
+                    d.border_color(alpha(t.primary, 0.7))
+                        .bg(alpha(t.primary, 0.06))
+                })
                 .when(!selected, |d| {
                     d.border_color(t.border)
                         .bg(t.card)
@@ -282,7 +301,12 @@ impl LocalSettingsPage {
                                 .child(div().size(px(6.)).rounded_full().bg(network_color(n.id)))
                                 .child(n.label),
                         )
-                        .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(n.hint)),
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(t.muted_foreground)
+                                .child(n.hint),
+                        ),
                 )
         });
         section("Default network")
@@ -294,7 +318,12 @@ impl LocalSettingsPage {
         let t = theme();
         let errors = self.field_errors();
         let mut c = card();
-        for (i, ((n, input), err)) in SUPPORTED_NETWORKS.iter().zip(self.inputs.iter()).zip(errors).enumerate() {
+        for (i, ((n, input), err)) in SUPPORTED_NETWORKS
+            .iter()
+            .zip(self.inputs.iter())
+            .zip(errors)
+            .enumerate()
+        {
             if i > 0 {
                 c = c.child(divider());
             }
@@ -358,18 +387,25 @@ impl LocalSettingsPage {
                 "unlock",
                 t.success,
                 "Keychain unlocked",
-                format!("{hot} private key{} available for signing until you lock it.", if hot == 1 { "" } else { "s" }),
+                format!(
+                    "{hot} private key{} available for signing until you lock it.",
+                    if hot == 1 { "" } else { "s" }
+                ),
             )
         } else {
             (
                 "lock",
                 t.muted_foreground,
                 "Keychain locked",
-                "Private keys are encrypted. You'll be asked for the password when one is needed.".into(),
+                "Private keys are encrypted. You'll be asked for the password when one is needed."
+                    .into(),
             )
         };
         section("Keychain")
-            .description(format!("{n} key{} in your Key library.", if n == 1 { "" } else { "s" }))
+            .description(format!(
+                "{n} key{} in your Key library.",
+                if n == 1 { "" } else { "s" }
+            ))
             .action(
                 button("open-keys", "Key library")
                     .ghost()
@@ -395,8 +431,18 @@ impl LocalSettingsPage {
                                 .flex()
                                 .flex_col()
                                 .gap(px(2.))
-                                .child(div().text_size(px(13.)).font_weight(gpui::FontWeight::MEDIUM).child(title))
-                                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(body)),
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .child(title),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(t.muted_foreground)
+                                        .child(body),
+                                ),
                         )
                         .when(unlocked, |d| {
                             d.child(
@@ -425,7 +471,14 @@ impl LocalSettingsPage {
                 .min_h(px(48.))
                 .px_4()
                 .py_2()
-                .child(div().w(px(110.)).flex_none().text_size(px(12.)).text_color(t.muted_foreground).child(k))
+                .child(
+                    div()
+                        .w(px(110.))
+                        .flex_none()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(k),
+                )
                 .child(div().flex_1().min_w_0().text_size(px(13.)).child(v))
         };
         let dir = self.data_dir.clone();
@@ -455,13 +508,26 @@ impl LocalSettingsPage {
                     )
                     .into_any_element()
             }
-            None => div().text_color(t.muted_foreground).child("Unavailable").into_any_element(),
+            None => div()
+                .text_color(t.muted_foreground)
+                .child("Unavailable")
+                .into_any_element(),
         };
         section("About").child(
             card()
-                .child(row("Version", div().child(format!("SigVault {}", env!("CARGO_PKG_VERSION"))).into_any_element()))
+                .child(row(
+                    "Version",
+                    div()
+                        .child(format!("SigVault {}", env!("CARGO_PKG_VERSION")))
+                        .into_any_element(),
+                ))
                 .child(divider())
-                .child(row("Mode", div().child("Local — wallets live on this computer").into_any_element()))
+                .child(row(
+                    "Mode",
+                    div()
+                        .child("Local — wallets live on this computer")
+                        .into_any_element(),
+                ))
                 .child(divider())
                 .child(row("Data folder", dir_el)),
         )
@@ -490,7 +556,9 @@ fn radio(selected: bool) -> impl IntoElement {
         .rounded_full()
         .border_1()
         .border_color(if selected { t.primary } else { t.border })
-        .when(selected, |d| d.child(div().size(px(6.)).rounded_full().bg(t.primary)))
+        .when(selected, |d| {
+            d.child(div().size(px(6.)).rounded_full().bg(t.primary))
+        })
 }
 
 impl Render for LocalSettingsPage {
@@ -504,8 +572,16 @@ impl Render for LocalSettingsPage {
             frame = frame.footer(footer_bar(
                 vec![div()
                     .text_size(px(12.))
-                    .text_color(if has_errors { theme().destructive } else { theme().muted_foreground })
-                    .child(if has_errors { "Fix the highlighted server URLs to save" } else { "You have unsaved changes" })
+                    .text_color(if has_errors {
+                        theme().destructive
+                    } else {
+                        theme().muted_foreground
+                    })
+                    .child(if has_errors {
+                        "Fix the highlighted server URLs to save"
+                    } else {
+                        "You have unsaved changes"
+                    })
                     .into_any_element()],
                 vec![
                     button("revert", "Revert")
@@ -523,12 +599,18 @@ impl Render for LocalSettingsPage {
         }
         let column = div().w_full().max_w(FORM_WIDTH).flex().flex_col().gap_8();
         let column = match self.settings.clone() {
-            Some(s) => column.child(self.render_network(&s, cx)).child(self.render_servers()),
+            Some(s) => column
+                .child(self.render_network(&s, cx))
+                .child(self.render_servers()),
             None if self.loading => column.child(loading_card("Loading settings…")),
             None => column,
         };
         frame
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
-            .child(column.child(self.render_keychain(cx)).child(self.render_about()))
+            .child(
+                column
+                    .child(self.render_keychain(cx))
+                    .child(self.render_about()),
+            )
     }
 }

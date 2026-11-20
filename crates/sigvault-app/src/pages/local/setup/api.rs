@@ -10,6 +10,7 @@ use gpui::App;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sigvault_core::commands::types::CommandResult;
 use sigvault_core::commands::{
     cmd_discover_hardware_wallets, cmd_get_device_xpub, cmd_unlock_device,
 };
@@ -19,7 +20,6 @@ use sigvault_core::local_wallet::commands::{
     cmd_local_export_wallet_backup, cmd_local_generate_mnemonic, cmd_local_unlock_wallet,
     GenerateMnemonicRequest,
 };
-use sigvault_core::commands::types::CommandResult;
 use sigvault_core::State;
 
 use crate::runtime::backend;
@@ -42,7 +42,10 @@ impl From<&sigvault_core::local_wallet::storage::HotSecret> for HotSecret {
     fn from(s: &sigvault_core::local_wallet::storage::HotSecret) -> Self {
         use sigvault_core::local_wallet::storage::HotSecret as Core;
         match s {
-            Core::Mnemonic { mnemonic, bip39_passphrase } => HotSecret::Mnemonic {
+            Core::Mnemonic {
+                mnemonic,
+                bip39_passphrase,
+            } => HotSecret::Mnemonic {
                 mnemonic: mnemonic.clone(),
                 bip39_passphrase: bip39_passphrase.clone(),
             },
@@ -95,7 +98,6 @@ impl SlotSource {
     pub fn from_key_source(s: &str) -> Option<Self> {
         serde_json::from_value(Value::String(s.to_string())).ok()
     }
-
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -343,7 +345,9 @@ impl UnsupportedReason {
             UnsupportedReason::NotPartOfWallet { fingerprint } => {
                 format!("Device fingerprint {fingerprint} is not part of this wallet")
             }
-            UnsupportedReason::WrongNetwork => "Device is configured for a different network".into(),
+            UnsupportedReason::WrongNetwork => {
+                "Device is configured for a different network".into()
+            }
             UnsupportedReason::AppNotOpen => "Bitcoin app not open on device".into(),
             UnsupportedReason::InitializationError(e) => format!("Initialization error: {e}"),
         }
@@ -404,11 +408,19 @@ pub struct DeviceInfo {
 /// failed without a message.
 fn command_data<T: DeserializeOwned>(r: CommandResult, fallback: &str) -> Result<T, String> {
     if !r.success {
-        return Err(if r.message.is_empty() { fallback.to_string() } else { r.message });
+        return Err(if r.message.is_empty() {
+            fallback.to_string()
+        } else {
+            r.message
+        });
     }
     match r.data {
         Some(d) => serde_json::from_value(d).map_err(|e| e.to_string()),
-        None => Err(if r.message.is_empty() { fallback.to_string() } else { r.message }),
+        None => Err(if r.message.is_empty() {
+            fallback.to_string()
+        } else {
+            r.message
+        }),
     }
 }
 
@@ -483,7 +495,9 @@ mod tests {
         req::<DeriveKeyRequest>(
             serde_json::to_value(DeriveInput {
                 network: "regtest".into(),
-                secret: HotSecret::Xprv { xprv: "tprv".into() },
+                secret: HotSecret::Xprv {
+                    xprv: "tprv".into(),
+                },
                 derivation_path: "m/84'/1'/0'".into(),
                 origin_fingerprint: None,
                 origin_path: None,
@@ -509,7 +523,10 @@ mod tests {
         for (s, _) in crate::keychain::SOURCES {
             assert!(SlotSource::from_key_source(s).is_some(), "{s}");
         }
-        assert_eq!(SlotSource::from_key_source("key_file"), Some(SlotSource::KeyFile));
+        assert_eq!(
+            SlotSource::from_key_source("key_file"),
+            Some(SlotSource::KeyFile)
+        );
         assert_eq!(SlotSource::from_key_source("nope"), None);
     }
 

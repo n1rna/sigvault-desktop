@@ -64,7 +64,9 @@ fn dev_source() -> Option<KeySource> {
     if !cfg!(debug_assertions) {
         return None;
     }
-    std::env::var("SIGVAULT_DEV_KEY_SOURCE").ok().and_then(|s| KeySource::from_id(&s))
+    std::env::var("SIGVAULT_DEV_KEY_SOURCE")
+        .ok()
+        .and_then(|s| KeySource::from_id(&s))
 }
 
 impl Render for AddKeyPage {

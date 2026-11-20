@@ -17,7 +17,7 @@ use super::keys::add_flow::{AddKeyEvent, AddKeyFlow};
 use super::setup::api::HotSecret;
 use super::setup::finish::network_label;
 use super::setup::slot_board::{custody_badge, meta_line, source_icon};
-use crate::keychain::{keychain, source_label, KeychainEvent, KeyRecord};
+use crate::keychain::{keychain, source_label, KeyRecord, KeychainEvent};
 use crate::theme::{alpha, theme};
 use crate::ui::{button, card, divider, icon, InputEvent, TextInput};
 
@@ -77,7 +77,9 @@ impl KeyPicker {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search = cx.new(|cx| TextInput::new(window, cx).placeholder("Search by name, fingerprint or type"));
+        let search = cx.new(|cx| {
+            TextInput::new(window, cx).placeholder("Search by name, fingerprint or type")
+        });
         let subs = vec![
             cx.subscribe(&search, |_, _, _: &InputEvent, cx| cx.notify()),
             cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()),
@@ -94,7 +96,12 @@ impl KeyPicker {
             _add_sub: None,
         };
         // Nothing to pick from yet: go straight to adding one.
-        if keychain(cx).read(cx).keys_for_network(&this.network).next().is_none() {
+        if keychain(cx)
+            .read(cx)
+            .keys_for_network(&this.network)
+            .next()
+            .is_none()
+        {
             this.start_adding(window, cx);
         }
         this
@@ -112,19 +119,28 @@ impl KeyPicker {
     fn start_adding(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let network = self.network.clone();
         let flow = cx.new(|cx| AddKeyFlow::new(Some(network), window, cx));
-        self._add_sub = Some(cx.subscribe_in(&flow, window, |this, _, ev: &AddKeyEvent, window, cx| match ev {
-            AddKeyEvent::Added(id) => cx.emit(KeyPickerEvent::Picked(id.clone())),
-            AddKeyEvent::Cancelled => {
-                this.adding = None;
-                this._add_sub = None;
-                if keychain(cx).read(cx).keys_for_network(&this.network).next().is_none() {
-                    cx.emit(KeyPickerEvent::Cancelled);
-                } else {
-                    this.search.read(cx).focus(window);
+        self._add_sub = Some(cx.subscribe_in(
+            &flow,
+            window,
+            |this, _, ev: &AddKeyEvent, window, cx| match ev {
+                AddKeyEvent::Added(id) => cx.emit(KeyPickerEvent::Picked(id.clone())),
+                AddKeyEvent::Cancelled => {
+                    this.adding = None;
+                    this._add_sub = None;
+                    if keychain(cx)
+                        .read(cx)
+                        .keys_for_network(&this.network)
+                        .next()
+                        .is_none()
+                    {
+                        cx.emit(KeyPickerEvent::Cancelled);
+                    } else {
+                        this.search.read(cx).focus(window);
+                    }
+                    cx.notify();
                 }
-                cx.notify();
-            }
-        }));
+            },
+        ));
         self.adding = Some(flow);
         cx.notify();
     }
@@ -137,12 +153,17 @@ impl KeyPicker {
         k.label.to_lowercase().contains(&q)
             || k.fingerprint.contains(&q)
             || source_label(&k.source).to_lowercase().contains(&q)
-            || k.device.as_deref().is_some_and(|d| d.to_lowercase().contains(&q))
+            || k.device
+                .as_deref()
+                .is_some_and(|d| d.to_lowercase().contains(&q))
     }
 
     fn key_row(&self, k: &KeyRecord, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
-        let used_by = self.used.get(&key_identity(&k.fingerprint, &k.xpub)).cloned();
+        let used_by = self
+            .used
+            .get(&key_identity(&k.fingerprint, &k.xpub))
+            .cloned();
         let selected = self.current.as_deref() == Some(k.id.as_str());
         let disabled = used_by.is_some();
         let id = k.id.clone();
@@ -160,7 +181,9 @@ impl KeyPicker {
             .when(!disabled, |d| {
                 d.cursor_pointer()
                     .hover(move |s| s.bg(alpha(t.muted, 0.5)))
-                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(KeyPickerEvent::Picked(id.clone()))))
+                    .on_click(
+                        cx.listener(move |_, _, _, cx| cx.emit(KeyPickerEvent::Picked(id.clone()))),
+                    )
             })
             .child(
                 div()
@@ -171,7 +194,11 @@ impl KeyPicker {
                     .justify_center()
                     .rounded_md()
                     .bg(t.muted)
-                    .child(icon(source_icon(&k.source)).size(px(15.)).text_color(t.foreground)),
+                    .child(
+                        icon(source_icon(&k.source))
+                            .size(px(15.))
+                            .text_color(t.foreground),
+                    ),
             )
             .child(
                 div()
@@ -230,16 +257,29 @@ impl KeyPicker {
 impl Render for KeyPicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(flow) = &self.adding {
-            return div().flex().flex_col().gap_4().child(flow.clone()).into_any_element();
+            return div()
+                .flex()
+                .flex_col()
+                .gap_4()
+                .child(flow.clone())
+                .into_any_element();
         }
         let t = theme();
         let q = self.search.read(cx).text().trim().to_string();
         let kc = keychain(cx).read(cx);
         let all: Vec<KeyRecord> = kc.keys_for_network(&self.network).cloned().collect();
-        let mut shown: Vec<KeyRecord> = all.iter().filter(|k| Self::matches(k, &q)).cloned().collect();
+        let mut shown: Vec<KeyRecord> = all
+            .iter()
+            .filter(|k| Self::matches(k, &q))
+            .cloned()
+            .collect();
         // Available keys first, then ones used elsewhere; newest first.
         shown.sort_by_key(|k| {
-            (self.used.contains_key(&key_identity(&k.fingerprint, &k.xpub)), -k.created_at)
+            (
+                self.used
+                    .contains_key(&key_identity(&k.fingerprint, &k.xpub)),
+                -k.created_at,
+            )
         });
         let net = network_label(&self.network);
 
@@ -250,8 +290,18 @@ impl Render for KeyPicker {
                 .flex_col()
                 .items_center()
                 .gap_1()
-                .child(div().text_size(px(13.)).text_color(t.foreground).child(format!("No keys match “{q}”")))
-                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Try another name or fingerprint."))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(t.foreground)
+                        .child(format!("No keys match “{q}”")),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child("Try another name or fingerprint."),
+                )
                 .into_any_element()
         } else {
             let n = shown.len();
@@ -315,4 +365,3 @@ impl Render for KeyPicker {
             .into_any_element()
     }
 }
-

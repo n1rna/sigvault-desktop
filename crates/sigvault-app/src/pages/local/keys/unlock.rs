@@ -28,14 +28,26 @@ impl EventEmitter<UnlockEvent> for KeychainUnlock {}
 
 impl KeychainUnlock {
     /// `reason` explains why the password is needed ("to store this key").
-    pub fn new(reason: impl Into<SharedString>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        reason: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let creating = !keychain(cx).read(cx).has_password();
         let password = cx.new(|cx| {
             TextInput::new(window, cx)
                 .masked()
-                .placeholder(if creating { "At least 8 characters" } else { "Keychain password" })
+                .placeholder(if creating {
+                    "At least 8 characters"
+                } else {
+                    "Keychain password"
+                })
         });
-        let confirm = cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Repeat password"));
+        let confirm = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Repeat password")
+        });
         for input in [&password, &confirm] {
             cx.subscribe(input, |this, _, ev: &InputEvent, cx| match ev {
                 InputEvent::Submit => this.submit(cx),
@@ -47,7 +59,14 @@ impl KeychainUnlock {
             .detach();
         }
         password.read(cx).focus(window);
-        Self { password, confirm, creating, reason: reason.into(), busy: false, error: None }
+        Self {
+            password,
+            confirm,
+            creating,
+            reason: reason.into(),
+            busy: false,
+            error: None,
+        }
     }
 
     fn submit(&mut self, cx: &mut Context<Self>) {
@@ -107,7 +126,12 @@ impl Render for KeychainUnlock {
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .child(div().text_size(px(16.)).font_weight(gpui::FontWeight::SEMIBOLD).child(title))
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(title),
+                    )
                     .child(
                         div()
                             .text_size(px(13.))
@@ -121,7 +145,9 @@ impl Render for KeychainUnlock {
                     ),
             )
             .child(field("Password", self.password.clone(), None))
-            .when(self.creating, |d| d.child(field("Confirm password", self.confirm.clone(), None)))
+            .when(self.creating, |d| {
+                d.child(field("Confirm password", self.confirm.clone(), None))
+            })
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
             .child(
                 div()
@@ -135,10 +161,17 @@ impl Render for KeychainUnlock {
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(UnlockEvent::Cancelled))),
                     )
                     .child(
-                        button("unlock-submit", if self.creating { "Create password" } else { "Unlock" })
-                            .icon("unlock")
-                            .loading(self.busy)
-                            .on_click(cx.listener(|this, _, _, cx| this.submit(cx))),
+                        button(
+                            "unlock-submit",
+                            if self.creating {
+                                "Create password"
+                            } else {
+                                "Unlock"
+                            },
+                        )
+                        .icon("unlock")
+                        .loading(self.busy)
+                        .on_click(cx.listener(|this, _, _, cx| this.submit(cx))),
                     ),
             )
     }

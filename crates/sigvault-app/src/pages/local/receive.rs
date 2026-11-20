@@ -35,7 +35,9 @@ impl ReceivePage {
                 cmd_local_get_receive_address(app.clone(), state, id.clone()),
                 cmd_local_list_wallets(app, state),
             );
-            let wallet = wallets.ok().and_then(|ws| ws.into_iter().find(|w| w.id.as_str() == id));
+            let wallet = wallets
+                .ok()
+                .and_then(|ws| ws.into_iter().find(|w| w.id.as_str() == id));
             Ok((addr, wallet))
         });
         cx.spawn(async move |this, cx| {
@@ -57,11 +59,19 @@ impl ReceivePage {
             .ok();
         })
         .detach();
-        Self { wallet_id, address: None, wallet: None, error: None, loading: true }
+        Self {
+            wallet_id,
+            address: None,
+            wallet: None,
+            error: None,
+            loading: true,
+        }
     }
 
     fn copy_address(&mut self, cx: &mut Context<Self>) {
-        let Some(addr) = self.address.as_ref() else { return };
+        let Some(addr) = self.address.as_ref() else {
+            return;
+        };
         cx.write_to_clipboard(ClipboardItem::new_string(addr.address.clone()));
         toast(cx, "Address copied");
     }
@@ -153,13 +163,24 @@ impl ReceivePage {
                     ),
             );
 
-        div().flex().flex_row().flex_wrap().items_start().gap_4().child(qr).child(details)
+        div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .items_start()
+            .gap_4()
+            .child(qr)
+            .child(details)
     }
 }
 
 impl Render for ReceivePage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let name = self.wallet.as_ref().map(|w| w.name.clone()).unwrap_or_else(|| "Wallet".into());
+        let name = self
+            .wallet
+            .as_ref()
+            .map(|w| w.name.clone())
+            .unwrap_or_else(|| "Wallet".into());
         let wallet_page = Page::LocalWallet(self.wallet_id.clone());
         let back = wallet_page.clone();
         page_frame("receive")
@@ -167,7 +188,9 @@ impl Render for ReceivePage {
             .crumb(name.clone(), Some(wallet_page))
             .crumb("Receive", None)
             .title("Receive")
-            .subtitle(format!("Share this address to receive bitcoin into {name}."))
+            .subtitle(format!(
+                "Share this address to receive bitcoin into {name}."
+            ))
             .action(
                 button("done", "Done")
                     .outline()

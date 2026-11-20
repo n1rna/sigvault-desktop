@@ -1,5 +1,6 @@
 // WebSocket connection handler
 
+use crate::host::WebviewWindow;
 use futures::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -8,7 +9,6 @@ use log::{debug, error, info};
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
-use crate::host::WebviewWindow;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_tungstenite::{

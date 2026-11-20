@@ -4,7 +4,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use gpui::{div, prelude::*, px, AnyElement, ClipboardItem, Context, FontWeight, SharedString, Window};
+use gpui::{
+    div, prelude::*, px, AnyElement, ClipboardItem, Context, FontWeight, SharedString, Window,
+};
 use serde::Deserialize;
 use sigvault_core::commands::hwi::WalletConfigInput;
 use sigvault_core::commands::{
@@ -19,7 +21,9 @@ use super::devices::{device_list, fingerprint, is_supported, DeviceListHost, Dev
 use super::psbt_summary::{hrp_for, summarize, PsbtSummary};
 use crate::runtime::backend;
 use crate::theme::{alpha, theme, FONT_MONO};
-use crate::ui::{alert, badge, button, card, divider, format_btc, format_sat, section, spinner, Tone};
+use crate::ui::{
+    alert, badge, button, card, divider, format_btc, format_sat, section, spinner, Tone,
+};
 
 /// Stepper labels for the signing flow.
 pub const STEPS: [&str; 3] = ["Review", "Sign on device", "Done"];
@@ -136,12 +140,21 @@ impl TransactionSigning {
     }
 
     fn signing_fingerprints(&self) -> HashSet<String> {
-        self.data.signature_slots.iter().map(|s| s.fingerprint.clone()).collect()
+        self.data
+            .signature_slots
+            .iter()
+            .map(|s| s.fingerprint.clone())
+            .collect()
     }
 
     fn can_sign(&self, device: &DiscoveredDevice) -> bool {
         is_supported(device)
-            && fingerprint(device).is_some_and(|fp| self.data.signature_slots.iter().any(|s| s.fingerprint == fp))
+            && fingerprint(device).is_some_and(|fp| {
+                self.data
+                    .signature_slots
+                    .iter()
+                    .any(|s| s.fingerprint == fp)
+            })
     }
 
     fn discover(&mut self, cx: &mut Context<Self>) {
@@ -158,10 +171,15 @@ impl TransactionSigning {
             this.update(cx, |this, cx| {
                 match res {
                     Ok(r) if r.success && r.data.is_some() => {
-                        match serde_json::from_value::<Vec<DiscoveredDevice>>(r.data.unwrap_or_default()) {
+                        match serde_json::from_value::<Vec<DiscoveredDevice>>(
+                            r.data.unwrap_or_default(),
+                        ) {
                             Ok(devices) => {
-                                let matching: Vec<_> =
-                                    devices.iter().filter(|d| this.can_sign(d)).cloned().collect();
+                                let matching: Vec<_> = devices
+                                    .iter()
+                                    .filter(|d| this.can_sign(d))
+                                    .cloned()
+                                    .collect();
                                 if matching.len() == 1 {
                                     this.selected = matching.into_iter().next();
                                 }
@@ -170,7 +188,9 @@ impl TransactionSigning {
                             Err(e) => this.error = Some(e.to_string().into()),
                         }
                     }
-                    Ok(r) => this.error = Some(non_empty(r.message, "Failed to discover devices").into()),
+                    Ok(r) => {
+                        this.error = Some(non_empty(r.message, "Failed to discover devices").into())
+                    }
                     Err(e) => this.error = Some(e.into()),
                 }
                 this.discovering = false;
@@ -188,7 +208,13 @@ impl TransactionSigning {
         let Some(fp) = fingerprint(&selected) else {
             return;
         };
-        let Some(slot) = self.data.signature_slots.iter().find(|s| s.fingerprint == fp).cloned() else {
+        let Some(slot) = self
+            .data
+            .signature_slots
+            .iter()
+            .find(|s| s.fingerprint == fp)
+            .cloned()
+        else {
             self.error = Some("Selected device is not authorized to sign this transaction".into());
             cx.notify();
             return;
@@ -223,7 +249,8 @@ impl TransactionSigning {
                     match serde_json::from_value::<SignedPsbt>(r.data.unwrap_or_default()) {
                         Ok(s) => s,
                         Err(e) => {
-                            this.update(cx, |this, cx| finish(this, Some(e.to_string()), cx)).ok();
+                            this.update(cx, |this, cx| finish(this, Some(e.to_string()), cx))
+                                .ok();
                             return;
                         }
                     }
@@ -249,7 +276,8 @@ impl TransactionSigning {
                     if let Ok(window) = main_window(&app) {
                         if let Ok(r) = cmd_get_ledger_hmacs(window, State::new(&st)).await {
                             if r.success {
-                                if let Some(m) = r.data.and_then(|d| serde_json::from_value(d).ok()) {
+                                if let Some(m) = r.data.and_then(|d| serde_json::from_value(d).ok())
+                                {
                                     hmacs = m;
                                 }
                             }
@@ -285,7 +313,6 @@ impl TransactionSigning {
         })
         .detach();
     }
-
 }
 
 impl DeviceListHost for TransactionSigning {
@@ -314,7 +341,8 @@ impl DeviceListHost for TransactionSigning {
             this.update(cx, |this, cx| {
                 match res {
                     Ok(r) if r.success && r.data.is_some() => {
-                        match serde_json::from_value::<DiscoveredDevice>(r.data.unwrap_or_default()) {
+                        match serde_json::from_value::<DiscoveredDevice>(r.data.unwrap_or_default())
+                        {
                             Ok(dev) => {
                                 for x in this.devices.iter_mut() {
                                     if x.id == device_id {
@@ -328,7 +356,9 @@ impl DeviceListHost for TransactionSigning {
                             Err(e) => this.error = Some(e.to_string().into()),
                         }
                     }
-                    Ok(r) => this.error = Some(non_empty(r.message, "Failed to unlock device").into()),
+                    Ok(r) => {
+                        this.error = Some(non_empty(r.message, "Failed to unlock device").into())
+                    }
                     Err(e) => this.error = Some(e.into()),
                 }
                 this.unlocking_id = None;
@@ -364,8 +394,19 @@ fn amount(sat: u64) -> gpui::Div {
         .flex_wrap()
         .items_baseline()
         .gap_2()
-        .child(div().font_family(FONT_MONO).text_size(px(12.)).text_color(t.foreground).child(format_btc(sat as i64)))
-        .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(format_sat(sat as i64)))
+        .child(
+            div()
+                .font_family(FONT_MONO)
+                .text_size(px(12.))
+                .text_color(t.foreground)
+                .child(format_btc(sat as i64)),
+        )
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(t.muted_foreground)
+                .child(format_sat(sat as i64)),
+        )
 }
 
 impl TransactionSigning {
@@ -418,7 +459,10 @@ impl TransactionSigning {
                     vec![div()
                         .text_size(px(12.))
                         .text_color(t.muted_foreground)
-                        .child(format!("{n} authorized {}", if n == 1 { "signer" } else { "signers" }))
+                        .child(format!(
+                            "{n} authorized {}",
+                            if n == 1 { "signer" } else { "signers" }
+                        ))
                         .into_any_element()],
                     vec![button("to-sign", "Continue to signing")
                         .icon_right("arrow-right")
@@ -468,7 +512,12 @@ impl TransactionSigning {
         let tx = &self.data.transaction;
         let mut c = card();
         if let Some(name) = tx.wallet_name.clone().filter(|n| !n.is_empty()) {
-            c = c.child(review_row("Wallet", div().font_weight(FontWeight::MEDIUM).child(name))).child(divider());
+            c = c
+                .child(review_row(
+                    "Wallet",
+                    div().font_weight(FontWeight::MEDIUM).child(name),
+                ))
+                .child(divider());
         }
         if let Some(s) = &self.summary {
             c = c
@@ -487,7 +536,11 @@ impl TransactionSigning {
                 .child(divider())
                 .child(review_row(
                     "Inputs",
-                    div().child(format!("{} {}", s.input_count, if s.input_count == 1 { "coin" } else { "coins" })),
+                    div().child(format!(
+                        "{} {}",
+                        s.input_count,
+                        if s.input_count == 1 { "coin" } else { "coins" }
+                    )),
                 ))
                 .child(divider());
         }
@@ -498,7 +551,12 @@ impl TransactionSigning {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .child(div().font_family(FONT_MONO).text_size(px(12.)).child(short_txid(&tx.txid)))
+                .child(
+                    div()
+                        .font_family(FONT_MONO)
+                        .text_size(px(12.))
+                        .child(short_txid(&tx.txid)),
+                )
                 .child(copy_icon("copy-txid", tx.txid.clone())),
         ))
         .into_any_element()
@@ -522,9 +580,17 @@ impl TransactionSigning {
                     .px_4()
                     .py_2()
                     .child(icon_tile(
-                        if o.is_change { "arrow-down-left" } else { "arrow-up-right" },
+                        if o.is_change {
+                            "arrow-down-left"
+                        } else {
+                            "arrow-up-right"
+                        },
                         32.,
-                        Some(if o.is_change { t.muted_foreground } else { t.primary }),
+                        Some(if o.is_change {
+                            t.muted_foreground
+                        } else {
+                            t.primary
+                        }),
                     ))
                     .child(
                         div()
@@ -545,7 +611,11 @@ impl TransactionSigning {
                                 div()
                                     .text_size(px(12.))
                                     .text_color(t.muted_foreground)
-                                    .child(if o.is_change { "Back to the wallet" } else { "Recipient" }),
+                                    .child(if o.is_change {
+                                        "Back to the wallet"
+                                    } else {
+                                        "Recipient"
+                                    }),
                             ),
                     )
                     .when(o.is_change, |d| d.child(badge("Change", Tone::Secondary)))
@@ -557,7 +627,11 @@ impl TransactionSigning {
                             .justify_end()
                             .font_family(FONT_MONO)
                             .text_size(px(12.))
-                            .text_color(if o.is_change { t.muted_foreground } else { t.foreground })
+                            .text_color(if o.is_change {
+                                t.muted_foreground
+                            } else {
+                                t.foreground
+                            })
                             .child(format_btc(o.value as i64)),
                     ),
             );
@@ -578,7 +652,10 @@ impl TransactionSigning {
             if i > 0 {
                 list = list.child(divider());
             }
-            let present = self.devices.iter().any(|d| fingerprint(d).as_deref() == Some(slot.fingerprint.as_str()));
+            let present = self
+                .devices
+                .iter()
+                .any(|d| fingerprint(d).as_deref() == Some(slot.fingerprint.as_str()));
             list = list.child(
                 div()
                     .flex()
@@ -587,7 +664,15 @@ impl TransactionSigning {
                     .gap_4()
                     .h(px(48.))
                     .px_4()
-                    .child(icon_tile("key", 28., Some(if present { t.success } else { t.muted_foreground })))
+                    .child(icon_tile(
+                        "key",
+                        28.,
+                        Some(if present {
+                            t.success
+                        } else {
+                            t.muted_foreground
+                        }),
+                    ))
                     .child(
                         div()
                             .w(px(96.))
@@ -637,7 +722,12 @@ impl TransactionSigning {
                             .min_w_0()
                             .flex()
                             .flex_col()
-                            .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Raw PSBT"))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child("Raw PSBT"),
+                            )
                             .child(
                                 div()
                                     .text_size(px(12.))
@@ -647,14 +737,21 @@ impl TransactionSigning {
                     )
                     .child(copy_icon("copy-psbt", psbt.clone()))
                     .child(
-                        button("psbt-toggle", if self.psbt_expanded { "Hide" } else { "Show" })
-                            .ghost()
-                            .small()
-                            .icon_right(if self.psbt_expanded { "chevron-up" } else { "chevron-down" })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.psbt_expanded = !this.psbt_expanded;
-                                cx.notify();
-                            })),
+                        button(
+                            "psbt-toggle",
+                            if self.psbt_expanded { "Hide" } else { "Show" },
+                        )
+                        .ghost()
+                        .small()
+                        .icon_right(if self.psbt_expanded {
+                            "chevron-up"
+                        } else {
+                            "chevron-down"
+                        })
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.psbt_expanded = !this.psbt_expanded;
+                            cx.notify();
+                        })),
                     ),
             )
             .when(self.psbt_expanded, |c| {
@@ -677,7 +774,9 @@ impl TransactionSigning {
     }
 
     fn render_review(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let mut v = vec![section("Summary").child(self.render_summary()).into_any_element()];
+        let mut v = vec![section("Summary")
+            .child(self.render_summary())
+            .into_any_element()];
         if self.summary.is_none() {
             v.push(
                 alert(Tone::Warning, "This PSBT couldn't be decoded for review. Check it in another tool before signing.")
@@ -686,7 +785,11 @@ impl TransactionSigning {
         }
         v.extend(self.render_outputs());
         v.push(self.render_signers());
-        v.push(section("Details").child(self.render_psbt(cx)).into_any_element());
+        v.push(
+            section("Details")
+                .child(self.render_psbt(cx))
+                .into_any_element(),
+        );
         v
     }
 
@@ -771,7 +874,10 @@ impl TransactionSigning {
                     .map(|s| s.fingerprint.as_str())
                     .collect::<Vec<_>>()
                     .join(", ");
-                s.child(alert(Tone::Destructive, format!("No authorized signers found. Expected: {expected}")))
+                s.child(alert(
+                    Tone::Destructive,
+                    format!("No authorized signers found. Expected: {expected}"),
+                ))
             })
             .child(body)
             .into_any_element()];
@@ -792,12 +898,19 @@ impl TransactionSigning {
                             .flex()
                             .flex_col()
                             .gap(px(2.))
-                            .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Confirm on your device"))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child("Confirm on your device"),
+                            )
                             .child(
                                 div()
                                     .text_size(px(12.))
                                     .text_color(t.muted_foreground)
-                                    .child("Check the outputs and fee on the device screen, then approve."),
+                                    .child(
+                                    "Check the outputs and fee on the device screen, then approve.",
+                                ),
                             ),
                     )
                     .into_any_element(),
@@ -814,7 +927,10 @@ impl TransactionSigning {
                                 "Network fee",
                                 match s.fee {
                                     Some(f) => amount(f).into_any_element(),
-                                    None => div().text_color(t.muted_foreground).child("Unknown").into_any_element(),
+                                    None => div()
+                                        .text_color(t.muted_foreground)
+                                        .child("Unknown")
+                                        .into_any_element(),
                                 },
                             )),
                     )

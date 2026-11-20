@@ -119,8 +119,16 @@ pub fn hover_action(
 ) -> Stateful<Div> {
     let t = theme();
     let id: ElementId = id.into();
-    let hover_fg = if destructive { t.destructive } else { t.foreground };
-    let hover_bg = if destructive { alpha(t.destructive, 0.12) } else { t.muted };
+    let hover_fg = if destructive {
+        t.destructive
+    } else {
+        t.foreground
+    };
+    let hover_bg = if destructive {
+        alpha(t.destructive, 0.12)
+    } else {
+        t.muted
+    };
     let group: SharedString = format!("ha-{id}").into();
     div()
         .id(id)
@@ -143,7 +151,11 @@ pub fn hover_action(
 }
 
 /// Small copy-to-clipboard icon button with a toast.
-pub fn copy_button(id: impl Into<ElementId>, value: impl Into<String>, title: &'static str) -> Stateful<Div> {
+pub fn copy_button(
+    id: impl Into<ElementId>,
+    value: impl Into<String>,
+    title: &'static str,
+) -> Stateful<Div> {
     let value: String = value.into();
     hover_action(id, "copy", title, false).on_click(move |_, _, cx| {
         cx.stop_propagation();
@@ -178,7 +190,13 @@ pub fn dialog_title(title: impl Into<SharedString>, description: Option<SharedSt
 
 /// Right-aligned dialog buttons (Cancel, then the confirm action).
 pub fn dialog_actions(children: Vec<AnyElement>) -> Div {
-    div().flex().flex_row().justify_end().gap_2().pt_1().children(children)
+    div()
+        .flex()
+        .flex_row()
+        .justify_end()
+        .gap_2()
+        .pt_1()
+        .children(children)
 }
 
 /// Human network name: `Regtest`, `Signet`, `Testnet 4`, `Mainnet`.
@@ -259,7 +277,7 @@ pub fn group_thousands(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::with_capacity(s.len() + s.len() / 3);
     for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
@@ -313,4 +331,3 @@ pub fn default_save_dir() -> std::path::PathBuf {
         home
     }
 }
-

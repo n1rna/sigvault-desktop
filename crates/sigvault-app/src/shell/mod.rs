@@ -65,12 +65,14 @@ impl Root {
                 sb
             },
             dev_page: if cfg!(debug_assertions) {
-                std::env::var("SIGVAULT_DEV_PAGE").ok().and_then(|p| Page::from_path(&p))
+                std::env::var("SIGVAULT_DEV_PAGE")
+                    .ok()
+                    .and_then(|p| Page::from_path(&p))
             } else {
                 None
             },
-            activity: cx.new(|cx| ActivityPanel::new(cx)),
-            update: cx.new(|cx| UpdateBanner::new(cx)),
+            activity: cx.new(ActivityPanel::new),
+            update: cx.new(UpdateBanner::new),
             toast: None,
             toast_epoch: 0,
             _subs: vec![sub],
@@ -93,7 +95,9 @@ impl Root {
         let epoch = self.toast_epoch;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(1800)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(1800))
+                .await;
             this.update(cx, |this, cx| {
                 if this.toast_epoch == epoch {
                     this.toast = None;
@@ -128,7 +132,8 @@ impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(page) = self.pending.take() {
             self.view = Some(pages::build(&page, window, cx));
-            self.sidebar.update(cx, |s, cx| s.set_current(page.clone(), cx));
+            self.sidebar
+                .update(cx, |s, cx| s.set_current(page.clone(), cx));
             self.current = page;
         }
         let with_chrome = self.current.has_sidebar();
@@ -149,7 +154,10 @@ impl Render for Root {
             .overflow_hidden()
             .bg(t.surface)
             .when(with_chrome, |d| {
-                d.rounded_tl(RADIUS_CARD).border_l_1().border_t_1().border_color(t.line)
+                d.rounded_tl(RADIUS_CARD)
+                    .border_l_1()
+                    .border_t_1()
+                    .border_color(t.line)
             })
             .children(self.view.clone());
 

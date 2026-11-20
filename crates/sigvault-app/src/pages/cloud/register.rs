@@ -11,12 +11,21 @@ use gpui::{div, prelude::*, px, Context, Entity, FontWeight, SharedString, Subsc
 
 use super::common::icon_tile;
 use crate::theme::{theme, FONT_MONO};
-use crate::ui::{alert, button, card, field, footer_bar, page_frame, section, InputEvent, TextInput, Tone, FORM_WIDTH};
+use crate::ui::{
+    alert, button, card, field, footer_bar, page_frame, section, InputEvent, TextInput, Tone,
+    FORM_WIDTH,
+};
 
 /// (icon, text) points explaining the registration.
 const VALUE_POINTS: [(&str, &str); 3] = [
-    ("users", "Co-signers see this name when you join their sessions."),
-    ("hard-drive", "Bound to this computer's identifier, not to a wallet."),
+    (
+        "users",
+        "Co-signers see this name when you join their sessions.",
+    ),
+    (
+        "hard-drive",
+        "Bound to this computer's identifier, not to a wallet.",
+    ),
     ("pen", "You can rename it later in the web dashboard."),
 ];
 
@@ -31,7 +40,8 @@ pub struct MachineRegistrationPage {
 
 impl MachineRegistrationPage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let name_input = cx.new(|cx| TextInput::new(window, cx).placeholder("e.g. Nima's MacBook Pro"));
+        let name_input =
+            cx.new(|cx| TextInput::new(window, cx).placeholder("e.g. Nima's MacBook Pro"));
         let sub = cx.subscribe(&name_input, |this, _, ev: &InputEvent, cx| match ev {
             InputEvent::Changed => cx.notify(),
             InputEvent::Submit => this.submit(cx),
@@ -56,7 +66,6 @@ impl MachineRegistrationPage {
         self.error = Some("Failed to register machine. Please try again.".into());
         cx.notify();
     }
-
 }
 
 impl Render for MachineRegistrationPage {
@@ -85,12 +94,19 @@ impl Render for MachineRegistrationPage {
 
         let footer = footer_bar(
             vec![],
-            vec![button("register-machine", if self.loading { "Registering…" } else { "Register computer" })
-                .loading(self.loading)
-                .disabled(name_empty)
-                .when(!self.loading, |b| b.icon_right("arrow-right"))
-                .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
-                .into_any_element()],
+            vec![button(
+                "register-machine",
+                if self.loading {
+                    "Registering…"
+                } else {
+                    "Register computer"
+                },
+            )
+            .loading(self.loading)
+            .disabled(name_empty)
+            .when(!self.loading, |b| b.icon_right("arrow-right"))
+            .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
+            .into_any_element()],
         );
 
         page_frame("register")

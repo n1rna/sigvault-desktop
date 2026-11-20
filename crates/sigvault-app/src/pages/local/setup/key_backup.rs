@@ -1,14 +1,19 @@
 //! `setup/KeyBackup.tsx` — backup flow for a key generated on this
 //! computer:
-//!   1. show the words once,
-//!   2. quiz three random positions so we know they were written down,
-//!   3. offer an encrypted key file and (behind a warning) a plaintext copy.
+//!
+//! 1. show the words once,
+//! 2. quiz three random positions so we know they were written down,
+//! 3. offer an encrypted key file and (behind a warning) a plaintext copy.
+//!
 //! The slot only counts as filled once step 2 passes.
 
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 
-use gpui::{div, prelude::*, px, Context, Entity, EventEmitter, FontWeight, SharedString, Subscription, Window};
+use gpui::{
+    div, prelude::*, px, Context, Entity, EventEmitter, FontWeight, SharedString, Subscription,
+    Window,
+};
 
 use super::api::{self, DerivedKey, HotSecret};
 use super::files::{file_safe, save_text_file};
@@ -92,8 +97,11 @@ impl KeyBackup {
                 .masked()
                 .placeholder("File password (8+ characters)")
         });
-        let confirm =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Confirm password"));
+        let confirm = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Confirm password")
+        });
         let mut subs = Vec::new();
         for a in &answers {
             subs.push(cx.subscribe(a, |this, _, ev: &InputEvent, cx| match ev {
@@ -177,7 +185,11 @@ impl KeyBackup {
     }
 
     fn submit_quiz(&mut self, cx: &mut Context<Self>) {
-        if self.answers.iter().any(|a| a.read(cx).text().trim().is_empty()) {
+        if self
+            .answers
+            .iter()
+            .any(|a| a.read(cx).text().trim().is_empty())
+        {
             return;
         }
         self.checked = true;
@@ -225,10 +237,18 @@ impl KeyBackup {
             "KEEP THIS SECRET. Anyone with these words can spend with this key.".into(),
             String::new(),
         ];
-        lines.extend(self.words.iter().enumerate().map(|(i, w)| format!("{:>2}. {w}", i + 1)));
+        lines.extend(
+            self.words
+                .iter()
+                .enumerate()
+                .map(|(i, w)| format!("{:>2}. {w}", i + 1)),
+        );
         lines.push(String::new());
         lines.push(format!("Master fingerprint: {}", self.derived.fingerprint));
-        lines.push(format!("Derivation path:    {}", self.derived.derivation_path));
+        lines.push(format!(
+            "Derivation path:    {}",
+            self.derived.derivation_path
+        ));
         lines.push(format!("Public key:         {}", self.derived.key_expr));
         lines.push(String::new());
         let text = lines.join("\n");
@@ -256,36 +276,48 @@ impl KeyBackup {
             .chunks(3)
             .enumerate()
             .map(|(r, chunk)| {
-                div().flex().flex_row().gap_2().children(chunk.iter().enumerate().map(|(c, w)| {
-                    let i = r * 3 + c;
-                    div()
-                        .flex_1()
-                        .flex_basis(px(0.))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_2()
-                        .rounded_md()
-                        .border_1()
-                        .border_color(t.border)
-                        .bg(t.card)
-                        .px(px(10.))
-                        .py_2()
-                        .child(
-                            div()
-                                .font_family(FONT_MONO)
-                                .text_size(px(10.))
-                                .text_color(alpha(t.muted_foreground, 0.7))
-                                .child(format!("{:02}", i + 1)),
-                        )
-                        .child(
-                            div()
-                                .font_family(FONT_MONO)
-                                .text_size(px(12.))
-                                .text_color(if revealed { t.foreground } else { alpha(t.muted_foreground, 0.35) })
-                                .child(if revealed { w.clone() } else { "••••••".to_string() }),
-                        )
-                }))
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_2()
+                    .children(chunk.iter().enumerate().map(|(c, w)| {
+                        let i = r * 3 + c;
+                        div()
+                            .flex_1()
+                            .flex_basis(px(0.))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(t.border)
+                            .bg(t.card)
+                            .px(px(10.))
+                            .py_2()
+                            .child(
+                                div()
+                                    .font_family(FONT_MONO)
+                                    .text_size(px(10.))
+                                    .text_color(alpha(t.muted_foreground, 0.7))
+                                    .child(format!("{:02}", i + 1)),
+                            )
+                            .child(
+                                div()
+                                    .font_family(FONT_MONO)
+                                    .text_size(px(12.))
+                                    .text_color(if revealed {
+                                        t.foreground
+                                    } else {
+                                        alpha(t.muted_foreground, 0.35)
+                                    })
+                                    .child(if revealed {
+                                        w.clone()
+                                    } else {
+                                        "••••••".to_string()
+                                    }),
+                            )
+                    }))
             })
             .collect();
 
@@ -364,7 +396,10 @@ impl KeyBackup {
         let t = theme();
         let correct = self.correct(cx);
         let all_correct = correct.iter().all(|c| *c);
-        let any_blank = self.answers.iter().any(|a| a.read(cx).text().trim().is_empty());
+        let any_blank = self
+            .answers
+            .iter()
+            .any(|a| a.read(cx).text().trim().is_empty());
         let checked = self.checked;
 
         div()
@@ -535,7 +570,11 @@ impl Render for KeyBackup {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let stage = self.stage;
-        let crumbs = [(Stage::Words, "Write down"), (Stage::Quiz, "Confirm"), (Stage::Files, "Extra copies")];
+        let crumbs = [
+            (Stage::Words, "Write down"),
+            (Stage::Quiz, "Confirm"),
+            (Stage::Files, "Extra copies"),
+        ];
         div()
             .flex()
             .flex_col()
@@ -555,7 +594,9 @@ impl Render for KeyBackup {
                             .flex_row()
                             .items_center()
                             .gap_2()
-                            .when(i > 0, |d| d.child(div().text_color(alpha(t.muted_foreground, 0.5)).child("›")))
+                            .when(i > 0, |d| {
+                                d.child(div().text_color(alpha(t.muted_foreground, 0.5)).child("›"))
+                            })
                             .child(
                                 div()
                                     .when(*s == stage, |d| d.text_color(t.foreground))

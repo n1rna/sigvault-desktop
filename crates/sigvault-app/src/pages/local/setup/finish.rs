@@ -66,21 +66,31 @@ impl EventEmitter<ReviewEvent> for ReviewStep {}
 
 impl ReviewStep {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let passphrase =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("At least 8 characters"));
-        let confirm =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Repeat passphrase"));
-        let on_input = |this: &mut Self, _: Entity<TextInput>, ev: &InputEvent, cx: &mut Context<Self>| {
-            match ev {
-                InputEvent::Changed => cx.notify(),
-                InputEvent::Submit => {
-                    if this.ready(cx) && !this.submitting {
-                        cx.emit(ReviewEvent::Submit);
+        let passphrase = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("At least 8 characters")
+        });
+        let confirm = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Repeat passphrase")
+        });
+        let on_input =
+            |this: &mut Self, _: Entity<TextInput>, ev: &InputEvent, cx: &mut Context<Self>| {
+                match ev {
+                    InputEvent::Changed => cx.notify(),
+                    InputEvent::Submit => {
+                        if this.ready(cx) && !this.submitting {
+                            cx.emit(ReviewEvent::Submit);
+                        }
                     }
                 }
-            }
-        };
-        let subs = vec![cx.subscribe(&passphrase, on_input), cx.subscribe(&confirm, on_input)];
+            };
+        let subs = vec![
+            cx.subscribe(&passphrase, on_input),
+            cx.subscribe(&confirm, on_input),
+        ];
         Self {
             data: ReviewData::default(),
             submitting: false,
@@ -127,13 +137,30 @@ impl ReviewStep {
                 .gap_4()
                 .h(px(44.))
                 .px_4()
-                .child(div().w(px(150.)).flex_none().text_size(px(13.)).text_color(t.muted_foreground).child(k))
-                .child(div().flex_1().min_w_0().text_size(px(13.)).text_color(t.foreground).child(v))
+                .child(
+                    div()
+                        .w(px(150.))
+                        .flex_none()
+                        .text_size(px(13.))
+                        .text_color(t.muted_foreground)
+                        .child(k),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(13.))
+                        .text_color(t.foreground)
+                        .child(v),
+                )
         };
         card()
             .child(row("Name", self.data.name.clone().into_any_element()))
             .child(divider())
-            .child(row("Network", network_label(&self.data.network).into_any_element()))
+            .child(row(
+                "Network",
+                network_label(&self.data.network).into_any_element(),
+            ))
             .child(divider())
             .child(row("Policy", self.data.summary.clone().into_any_element()))
     }
@@ -141,69 +168,92 @@ impl ReviewStep {
     fn keys_card(&self) -> impl IntoElement {
         let t = theme();
         let n = self.data.rows.len();
-        card().overflow_hidden().children(self.data.rows.iter().enumerate().flat_map(|(i, r)| {
-            let body = match &r.key {
-                Some(k) => div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .min_w_0()
-                    .child(icon(source_icon(&k.source)).size(px(15.)).text_color(t.foreground))
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.foreground)
-                            .child(k.label.clone()),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_size(px(12.))
-                            .text_color(t.muted_foreground)
-                            .child(source_label(&k.source)),
-                    )
-                    .child(custody_badge(k.hot)),
-                None => div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(icon("eye").size(px(15.)))
-                    .child(div().text_size(px(13.)).text_color(t.muted_foreground).child("Watch-only")),
-            };
-            let (fp, path) = match &r.key {
-                Some(k) => (k.fingerprint.clone(), k.derivation_path.clone()),
-                None => (r.fingerprint.clone(), r.derivation_path.clone()),
-            };
-            let row = div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_4()
-                .min_h(px(52.))
-                .px_4()
-                .py_2()
-                .child(
-                    div()
-                        .w(px(150.))
-                        .flex_none()
+        card()
+            .overflow_hidden()
+            .children(self.data.rows.iter().enumerate().flat_map(|(i, r)| {
+                let body = match &r.key {
+                    Some(k) => div()
                         .flex()
-                        .flex_col()
-                        .gap(px(2.))
-                        .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(t.foreground).child(r.slot_label.clone()))
-                        .child(div().text_size(px(12.)).text_color(t.muted_foreground).truncate().child(r.path_title.clone())),
-                )
-                .child(div().flex_1().min_w_0().child(body))
-                .child(div().flex_none().child(meta_line(&fp, &path)));
-            let mut out = vec![row.into_any_element()];
-            if i + 1 < n {
-                out.push(divider().into_any_element());
-            }
-            out
-        }))
+                        .flex_row()
+                        .items_center()
+                        .gap_3()
+                        .min_w_0()
+                        .child(
+                            icon(source_icon(&k.source))
+                                .size(px(15.))
+                                .text_color(t.foreground),
+                        )
+                        .child(
+                            div()
+                                .truncate()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(t.foreground)
+                                .child(k.label.clone()),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_size(px(12.))
+                                .text_color(t.muted_foreground)
+                                .child(source_label(&k.source)),
+                        )
+                        .child(custody_badge(k.hot)),
+                    None => div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_3()
+                        .child(icon("eye").size(px(15.)))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .text_color(t.muted_foreground)
+                                .child("Watch-only"),
+                        ),
+                };
+                let (fp, path) = match &r.key {
+                    Some(k) => (k.fingerprint.clone(), k.derivation_path.clone()),
+                    None => (r.fingerprint.clone(), r.derivation_path.clone()),
+                };
+                let row = div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_4()
+                    .min_h(px(52.))
+                    .px_4()
+                    .py_2()
+                    .child(
+                        div()
+                            .w(px(150.))
+                            .flex_none()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(t.foreground)
+                                    .child(r.slot_label.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .truncate()
+                                    .child(r.path_title.clone()),
+                            ),
+                    )
+                    .child(div().flex_1().min_w_0().child(body))
+                    .child(div().flex_none().child(meta_line(&fp, &path)));
+                let mut out = vec![row.into_any_element()];
+                if i + 1 < n {
+                    out.push(divider().into_any_element());
+                }
+                out
+            }))
     }
 }
 
@@ -305,7 +355,12 @@ pub struct DoneStep {
 }
 
 impl DoneStep {
-    pub fn new(title: &'static str, wallet_id: String, wallet_name: String, multi_key: bool) -> Self {
+    pub fn new(
+        title: &'static str,
+        wallet_id: String,
+        wallet_name: String,
+        multi_key: bool,
+    ) -> Self {
         Self {
             title,
             wallet_id,

@@ -169,7 +169,12 @@ mod tests {
         assert!(same_extended_key(XPUB, TPUB));
         // Swapping a character mid-key changes the key bytes themselves.
         let c = TPUB.as_bytes()[40];
-        let other = format!("{}{}{}", &TPUB[..40], if c == b'a' { 'b' } else { 'a' }, &TPUB[41..]);
+        let other = format!(
+            "{}{}{}",
+            &TPUB[..40],
+            if c == b'a' { 'b' } else { 'a' },
+            &TPUB[41..]
+        );
         assert!(!same_extended_key(XPUB, &other));
     }
 
@@ -192,9 +197,15 @@ mod tests {
             })
         );
         assert!(matches!(classify_pasted_key(TPUB), PastedKey::Invalid(_)));
-        assert!(matches!(classify_pasted_key("tprv8ZgxMBicQKsPd"), PastedKey::Private(_)));
+        assert!(matches!(
+            classify_pasted_key("tprv8ZgxMBicQKsPd"),
+            PastedKey::Private(_)
+        ));
         assert_eq!(classify_pasted_key("  "), PastedKey::Invalid(String::new()));
-        assert!(matches!(classify_pasted_key("[zzzz/1]tpub"), PastedKey::Invalid(_)));
+        assert!(matches!(
+            classify_pasted_key("[zzzz/1]tpub"),
+            PastedKey::Invalid(_)
+        ));
     }
 
     #[test]

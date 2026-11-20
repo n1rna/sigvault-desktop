@@ -161,7 +161,10 @@ mod tests {
 
     #[test]
     fn local_namespace_keeps_siblings() {
-        assert_eq!(resolve(&R::LocalWallets, &Page::LocalSettings), Page::LocalSettings);
+        assert_eq!(
+            resolve(&R::LocalWallets, &Page::LocalSettings),
+            Page::LocalSettings
+        );
         assert_eq!(
             resolve(&R::LocalWallets, &Page::LocalSend("x".into())),
             Page::LocalSend("x".into())
@@ -173,7 +176,10 @@ mod tests {
         assert_eq!(resolve(&R::LocalWallets, &Page::Sessions), Page::LocalHome);
         assert_eq!(resolve(&R::Login, &Page::LocalWallets), Page::Login);
         assert_eq!(resolve(&R::MainPage, &Page::Login), Page::CloudHome);
-        assert_eq!(resolve(&R::MainPage, &Page::CloudSettings), Page::CloudSettings);
+        assert_eq!(
+            resolve(&R::MainPage, &Page::CloudSettings),
+            Page::CloudSettings
+        );
         assert_eq!(resolve(&R::Login, &Page::Sessions), Page::Login);
     }
 

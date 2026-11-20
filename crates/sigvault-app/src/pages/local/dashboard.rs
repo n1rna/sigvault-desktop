@@ -69,8 +69,11 @@ impl WalletDashboardPage {
             }
             cx.notify();
         });
-        let passphrase =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Wallet passphrase"));
+        let passphrase = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Wallet passphrase")
+        });
         let pass_sub = cx.subscribe(&passphrase, |this, _, ev: &InputEvent, cx| match ev {
             InputEvent::Changed => {
                 this.unlock_error = None;
@@ -110,7 +113,9 @@ impl WalletDashboardPage {
             let wallets = cmd_local_list_wallets(app.clone(), state).await?;
             let wallet = wallets.into_iter().find(|w| w.id.as_str() == id);
             // Details are metadata only — available while locked too.
-            let details = cmd_local_get_wallet_details(app.clone(), state, id.clone()).await.ok();
+            let details = cmd_local_get_wallet_details(app.clone(), state, id.clone())
+                .await
+                .ok();
             if wallet.as_ref().is_none_or(|w| w.locked) {
                 return Ok((wallet, details, None, Vec::new()));
             }
@@ -153,9 +158,8 @@ impl WalletDashboardPage {
         self.error = None;
         cx.notify();
         let id = self.wallet_id.clone();
-        let task = backend(cx).call(move |app, st| async move {
-            cmd_local_sync(app, State::new(&st), id).await
-        });
+        let task = backend(cx)
+            .call(move |app, st| async move { cmd_local_sync(app, State::new(&st), id).await });
         cx.spawn(async move |this, cx| {
             let res = task.await;
             this.update(cx, |this, cx| {
@@ -194,7 +198,9 @@ impl WalletDashboardPage {
     }
 
     fn unlock(&mut self, cx: &mut Context<Self>) {
-        let Some(w) = self.wallet.as_ref() else { return };
+        let Some(w) = self.wallet.as_ref() else {
+            return;
+        };
         let passphrase = self.passphrase.read(cx).text().to_string();
         if self.unlocking || (w.has_hot_keys && passphrase.is_empty()) {
             return;
@@ -204,8 +210,15 @@ impl WalletDashboardPage {
         cx.notify();
         let wallet_id = self.wallet_id.clone();
         let task = backend(cx).call(move |app, st| async move {
-            cmd_local_unlock_wallet(app, State::new(&st), UnlockWalletRequest { wallet_id, passphrase })
-                .await
+            cmd_local_unlock_wallet(
+                app,
+                State::new(&st),
+                UnlockWalletRequest {
+                    wallet_id,
+                    passphrase,
+                },
+            )
+            .await
         });
         cx.spawn(async move |this, cx| {
             let res = task.await;
@@ -233,11 +246,19 @@ impl WalletDashboardPage {
         self.exporting = true;
         cx.notify();
         let wallet_id = self.wallet_id.clone();
-        let name = self.wallet.as_ref().map(|w| w.name.clone()).unwrap_or_else(|| "wallet".into());
+        let name = self
+            .wallet
+            .as_ref()
+            .map(|w| w.name.clone())
+            .unwrap_or_else(|| "wallet".into());
         let file_name = format!("{}.wallet-backup.json", file_safe(&name));
         let export = backend(cx).call(move |app, st| async move {
-            cmd_local_export_wallet_backup(app, State::new(&st), ExportWalletBackupRequest { wallet_id })
-                .await
+            cmd_local_export_wallet_backup(
+                app,
+                State::new(&st),
+                ExportWalletBackupRequest { wallet_id },
+            )
+            .await
         });
         let rx = cx.prompt_for_new_path(&default_save_dir(), Some(&file_name));
         cx.spawn(async move |this, cx| {
@@ -283,7 +304,9 @@ impl WalletDashboardPage {
     }
 
     fn render_actions(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let Some(w) = self.wallet.as_ref() else { return Vec::new() };
+        let Some(w) = self.wallet.as_ref() else {
+            return Vec::new();
+        };
         if w.locked {
             return Vec::new();
         }
@@ -344,7 +367,9 @@ impl WalletDashboardPage {
 
     fn render_locked(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
-        let Some(w) = self.wallet.as_ref() else { return div().into_any_element() };
+        let Some(w) = self.wallet.as_ref() else {
+            return div().into_any_element();
+        };
         let hot = w.has_hot_keys;
         let empty = self.passphrase.read(cx).text().is_empty();
         div()
@@ -405,7 +430,11 @@ impl WalletDashboardPage {
     fn render_balance(&self) -> impl IntoElement {
         let t = theme();
         let confirmed = self.balance.as_ref().map(|b| b.confirmed_sat).unwrap_or(0);
-        let pending = self.balance.as_ref().map(|b| b.unconfirmed_sat).unwrap_or(0);
+        let pending = self
+            .balance
+            .as_ref()
+            .map(|b| b.unconfirmed_sat)
+            .unwrap_or(0);
         let total = confirmed + pending;
         let active = self.sync_active();
 
@@ -414,7 +443,12 @@ impl WalletDashboardPage {
                 .flex()
                 .flex_col()
                 .gap(px(2.))
-                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(label))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(label),
+                )
                 .child(
                     div()
                         .flex()
@@ -428,7 +462,12 @@ impl WalletDashboardPage {
                                 .text_color(color)
                                 .child(btc_amount(sat as i64)),
                         )
-                        .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("BTC")),
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(t.muted_foreground)
+                                .child("BTC"),
+                        ),
                 )
         };
 
@@ -446,7 +485,10 @@ impl WalletDashboardPage {
                         .justify_between()
                         .text_size(px(12.))
                         .text_color(t.muted_foreground)
-                        .child(format!("Syncing · {}", phase_label(self.sync.phase.as_deref())))
+                        .child(format!(
+                            "Syncing · {}",
+                            phase_label(self.sync.phase.as_deref())
+                        ))
                         .child(format!("{}%", self.sync.percent)),
                 )
                 .child(
@@ -455,7 +497,13 @@ impl WalletDashboardPage {
                         .w_full()
                         .rounded_full()
                         .bg(alpha(t.muted_foreground, 0.15))
-                        .child(div().h_full().rounded_full().bg(t.primary).w(gpui::relative(pct.max(0.02)))),
+                        .child(
+                            div()
+                                .h_full()
+                                .rounded_full()
+                                .bg(t.primary)
+                                .w(gpui::relative(pct.max(0.02))),
+                        ),
                 )
                 .into_any_element()
         } else {
@@ -466,12 +514,11 @@ impl WalletDashboardPage {
                 .gap_2()
                 .text_size(px(12.))
                 .text_color(t.muted_foreground)
-                .child(
-                    div()
-                        .size(px(6.))
-                        .rounded_full()
-                        .bg(if self.synced { t.success } else { alpha(t.muted_foreground, 0.5) }),
-                )
+                .child(div().size(px(6.)).rounded_full().bg(if self.synced {
+                    t.success
+                } else {
+                    alpha(t.muted_foreground, 0.5)
+                }))
                 .child(if self.synced {
                     "Up to date with your Electrum server"
                 } else {
@@ -493,7 +540,12 @@ impl WalletDashboardPage {
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Total balance"))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child("Total balance"),
+                            )
                             .child(
                                 div()
                                     .flex()
@@ -508,7 +560,12 @@ impl WalletDashboardPage {
                                             .text_color(t.foreground)
                                             .child(btc_amount(total as i64)),
                                     )
-                                    .child(div().text_size(px(13.)).text_color(t.muted_foreground).child("BTC")),
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .text_color(t.muted_foreground)
+                                            .child("BTC"),
+                                    ),
                             )
                             .child(
                                 div()
@@ -529,7 +586,15 @@ impl WalletDashboardPage {
                             .justify_center()
                             .gap_3()
                             .child(stat("Confirmed", confirmed, t.foreground))
-                            .child(stat("Pending", pending, if pending > 0 { t.warning } else { t.muted_foreground })),
+                            .child(stat(
+                                "Pending",
+                                pending,
+                                if pending > 0 {
+                                    t.warning
+                                } else {
+                                    t.muted_foreground
+                                },
+                            )),
                     ),
             )
             .child(divider())
@@ -577,7 +642,12 @@ impl WalletDashboardPage {
             .child(body)
     }
 
-    fn render_tx_row(&self, ix: usize, tx: &LocalTxRecord, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_tx_row(
+        &self,
+        ix: usize,
+        tx: &LocalTxRecord,
+        _cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let t = theme();
         let incoming = tx.net_sat >= 0;
         let group: SharedString = format!("tx-{ix}").into();
@@ -592,13 +662,17 @@ impl WalletDashboardPage {
         meta = if tx.confirmed {
             meta.child(format!(
                 "Confirmed{}",
-                tx.block_height.map(|h| format!(" in block {}", group_thousands(h as u64))).unwrap_or_default()
+                tx.block_height
+                    .map(|h| format!(" in block {}", group_thousands(h as u64)))
+                    .unwrap_or_default()
             ))
         } else {
             meta.child(div().text_color(t.warning).child("Pending"))
         };
         if tx.fee_sat > 0 {
-            meta = meta.child(sep_dot()).child(format!("fee {} sat", group_thousands(tx.fee_sat)));
+            meta = meta
+                .child(sep_dot())
+                .child(format!("fee {} sat", group_thousands(tx.fee_sat)));
         }
 
         let when = tx
@@ -649,7 +723,11 @@ impl WalletDashboardPage {
                         div()
                             .opacity(0.)
                             .group_hover(group, |s| s.opacity(1.))
-                            .child(copy_button(("copy-txid", ix), tx.txid.clone(), "Copy transaction ID")),
+                            .child(copy_button(
+                                ("copy-txid", ix),
+                                tx.txid.clone(),
+                                "Copy transaction ID",
+                            )),
                     ),
             )
             .child(
@@ -678,9 +756,18 @@ impl WalletDashboardPage {
                             .font_family(FONT_MONO)
                             .text_size(px(13.))
                             .text_color(if incoming { t.success } else { t.foreground })
-                            .child(format!("{}{}", if incoming { "+" } else { "" }, btc_amount(tx.net_sat))),
+                            .child(format!(
+                                "{}{}",
+                                if incoming { "+" } else { "" },
+                                btc_amount(tx.net_sat)
+                            )),
                     )
-                    .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("BTC")),
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child("BTC"),
+                    ),
             )
     }
 
@@ -701,14 +788,22 @@ impl WalletDashboardPage {
                 .text_color(t.muted_foreground)
                 .child(source_label(&slot.source));
             if let Some(fp) = slot.fingerprint.clone() {
-                meta = meta.child(sep_dot()).child(div().font_family(FONT_MONO).child(fp));
+                meta = meta
+                    .child(sep_dot())
+                    .child(div().font_family(FONT_MONO).child(fp));
             }
             if let Some(p) = slot.derivation_path.clone() {
-                meta = meta.child(sep_dot()).child(div().font_family(FONT_MONO).child(p));
+                meta = meta
+                    .child(sep_dot())
+                    .child(div().font_family(FONT_MONO).child(p));
             }
             list = list.child(
                 list_row(("slot", ix))
-                    .child(row_icon(if hw { "hw-device" } else { "key" }, t.muted_foreground, false))
+                    .child(row_icon(
+                        if hw { "hw-device" } else { "key" },
+                        t.muted_foreground,
+                        false,
+                    ))
                     .child(
                         div()
                             .flex_1()
@@ -736,7 +831,11 @@ impl WalletDashboardPage {
                     } else {
                         badge("Public key only", Tone::Outline)
                     })
-                    .child(copy_button(("copy-xpub", ix), slot.xpub.clone(), "Copy xpub")),
+                    .child(copy_button(
+                        ("copy-xpub", ix),
+                        slot.xpub.clone(),
+                        "Copy xpub",
+                    )),
             );
         }
         section("Keys")
@@ -761,8 +860,23 @@ impl WalletDashboardPage {
                 .min_h(px(44.))
                 .px_4()
                 .py_2()
-                .child(div().w(px(140.)).flex_none().text_size(px(12.)).text_color(t.muted_foreground).child(k))
-                .child(div().flex().flex_1().min_w_0().overflow_hidden().text_size(px(13.)).child(v))
+                .child(
+                    div()
+                        .w(px(140.))
+                        .flex_none()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(k),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_size(px(13.))
+                        .child(v),
+                )
         };
         let mono_row = |id: &'static str, value: String| {
             div()
@@ -791,16 +905,28 @@ impl WalletDashboardPage {
         let mut c = card();
         if let Some(w) = w {
             c = c
-                .child(row("Created", div().child(format_date(w.created_at)).into_any_element()))
+                .child(row(
+                    "Created",
+                    div().child(format_date(w.created_at)).into_any_element(),
+                ))
                 .child(divider())
-                .child(row("Wallet ID", mono_row("copy-id", w.id.as_str().to_string())));
+                .child(row(
+                    "Wallet ID",
+                    mono_row("copy-id", w.id.as_str().to_string()),
+                ));
         }
         if let Some(d) = d {
             c = c
                 .child(divider())
-                .child(row("Receive descriptor", mono_row("copy-ext", d.external_descriptor.clone())))
+                .child(row(
+                    "Receive descriptor",
+                    mono_row("copy-ext", d.external_descriptor.clone()),
+                ))
                 .child(divider())
-                .child(row("Change descriptor", mono_row("copy-int", d.internal_descriptor.clone())));
+                .child(row(
+                    "Change descriptor",
+                    mono_row("copy-int", d.internal_descriptor.clone()),
+                ));
         }
         section("Details")
             .description("Descriptors describe how this wallet's addresses are built. The backup file contains no private keys.")
@@ -841,7 +967,13 @@ fn source_label(source: &str) -> &'static str {
 fn file_safe(name: &str) -> String {
     let s: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let s = s.trim_matches('-').to_string();
     if s.is_empty() {
@@ -853,7 +985,11 @@ fn file_safe(name: &str) -> String {
 
 impl Render for WalletDashboardPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let name = self.wallet.as_ref().map(|w| w.name.clone()).unwrap_or_else(|| "Wallet".into());
+        let name = self
+            .wallet
+            .as_ref()
+            .map(|w| w.name.clone())
+            .unwrap_or_else(|| "Wallet".into());
         let mut frame = page_frame("wallet-dashboard")
             .crumb("Wallets", Some(Page::LocalWallets))
             .crumb(name.clone(), None)
@@ -868,7 +1004,9 @@ impl Render for WalletDashboardPage {
                     .ml_1()
                     .child(network_badge(&w.network))
                     .child(policy_badge(&w.policy_type))
-                    .when(w.recovery_only, |d| d.child(badge("Recovery-only", Tone::Warning)))
+                    .when(w.recovery_only, |d| {
+                        d.child(badge("Recovery-only", Tone::Warning))
+                    })
                     .when(w.locked, |d| d.child(badge("Locked", Tone::Outline))),
             );
         }
@@ -877,7 +1015,9 @@ impl Render for WalletDashboardPage {
         }
 
         if self.loading {
-            return frame.child(loading_card("Loading wallet…")).into_any_element();
+            return frame
+                .child(loading_card("Loading wallet…"))
+                .into_any_element();
         }
         frame = frame.children(self.error.clone().map(|e| alert(Tone::Destructive, e)));
         if self.wallet.is_none() {

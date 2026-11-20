@@ -16,7 +16,10 @@ pub struct WelcomePage {
 
 impl WelcomePage {
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
-        Self { busy: None, error: None }
+        Self {
+            busy: None,
+            error: None,
+        }
     }
 
     fn choose(&mut self, mode: AppMode, cx: &mut Context<Self>) {
@@ -26,9 +29,8 @@ impl WelcomePage {
         self.error = None;
         self.busy = Some(mode);
         cx.notify();
-        let task = backend(cx).call(move |app, st| async move {
-            cmd_set_app_mode(app, State::new(&st), mode).await
-        });
+        let task = backend(cx)
+            .call(move |app, st| async move { cmd_set_app_mode(app, State::new(&st), mode).await });
         cx.spawn(async move |this, cx| {
             if let Err(e) = task.await {
                 this.update(cx, |this, cx| {
@@ -111,17 +113,22 @@ impl WelcomePage {
                     .child(subtitle),
             )
             .child(
-                div().mt_4().flex().flex_col().gap_2().children(features.into_iter().map(|f| {
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(10.))
-                        .text_size(px(12.))
-                        .text_color(t.muted_foreground)
-                        .child(icon("check").size(px(14.)).text_color(accent))
-                        .child(f)
-                })),
+                div()
+                    .mt_4()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(features.into_iter().map(|f| {
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(10.))
+                            .text_size(px(12.))
+                            .text_color(t.muted_foreground)
+                            .child(icon("check").size(px(14.)).text_color(accent))
+                            .child(f)
+                    })),
             )
             .child(
                 div()
@@ -142,7 +149,10 @@ impl WelcomePage {
                     .child(if busy {
                         spinner_with(px(16.), accent).into_any_element()
                     } else {
-                        icon("arrow-right").size(px(16.)).text_color(accent).into_any_element()
+                        icon("arrow-right")
+                            .size(px(16.))
+                            .text_color(accent)
+                            .into_any_element()
                     }),
             )
     }

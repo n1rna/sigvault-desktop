@@ -10,3 +10,26 @@ repository = "https://github.com/n1rna/sigvault-desktop"
 
 [profile.dev.package."*"]
 opt-level = 2
+
+# Ported from the Tauri app's src-tauri/Cargo.toml: warnings and clippy are
+# errors, in CI and locally.
+[workspace.lints.rust]
+warnings = { level = "deny", priority = -1 }
+# Several core types (window/types.rs, api/types.rs) are forward-looking and
+# only consumed by later flows.
+dead_code = "allow"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+# cmd_* functions keep their original Tauri command signatures, several of
+# which take many narrow params by design.
+too_many_arguments = "allow"
+# tonic::Status-shaped errors are intentionally wide.
+result_large_err = "allow"
+# Stylistic.
+redundant_field_names = "allow"
+collapsible_if = "allow"
+# SessionMessageType variants are the wire shape shared with cloud peers.
+enum_variant_names = "allow"
+# GPUI view constructors and element builders take Window/Context by design.
+type_complexity = "allow"

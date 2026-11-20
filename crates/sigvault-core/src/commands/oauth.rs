@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use crate::host::{AppHandle, State};
 use axum::{
     extract::{Extension, Query},
     response::IntoResponse,
@@ -18,7 +19,6 @@ use oauth2::{
     TokenResponse,
 };
 use serde::Deserialize;
-use crate::host::{AppHandle, State};
 use tokio::sync::Mutex;
 
 use crate::api::ApiClient;

@@ -111,7 +111,10 @@ impl DevicePicker {
     }
 
     fn extract(&mut self, cx: &mut Context<Self>) {
-        let Some(fp) = self.selected_device().and_then(|d| d.fingerprint()).map(str::to_string)
+        let Some(fp) = self
+            .selected_device()
+            .and_then(|d| d.fingerprint())
+            .map(str::to_string)
         else {
             return;
         };
@@ -134,7 +137,12 @@ impl DevicePicker {
         .detach();
     }
 
-    fn render_card(&self, ix: usize, d: &DiscoveredDevice, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_card(
+        &self,
+        ix: usize,
+        d: &DiscoveredDevice,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let t = theme();
         let selected = self.selected.as_deref() == Some(d.id.as_str());
         let unlocking = self.unlocking.as_deref() == Some(d.id.as_str());
@@ -153,7 +161,11 @@ impl DevicePicker {
         } else if locked {
             ("Locked", Tone::Default, t.primary)
         } else {
-            ("Unsupported", Tone::Secondary, alpha(t.muted_foreground, 0.4))
+            (
+                "Unsupported",
+                Tone::Secondary,
+                alpha(t.muted_foreground, 0.4),
+            )
         };
         let id = d.id.clone();
         let id2 = d.id.clone();
@@ -168,7 +180,12 @@ impl DevicePicker {
                 .bg(t.card)
                 .px(px(14.))
                 .py_2()
-                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child(k))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child(k),
+                )
                 .child(v)
         };
         let mut meta = div()
@@ -195,7 +212,9 @@ impl DevicePicker {
             ));
         }
         if let DeviceState::Supported {
-            version, registered, ..
+            version,
+            registered,
+            ..
         } = &d.state
         {
             if let Some(v) = version {
@@ -245,22 +264,35 @@ impl DevicePicker {
             .border_1()
             .map(|c| {
                 if selected {
-                    c.border_color(alpha(t.primary, 0.6)).bg(alpha(t.primary, 0.06))
+                    c.border_color(alpha(t.primary, 0.6))
+                        .bg(alpha(t.primary, 0.06))
                 } else if locked {
-                    c.border_color(alpha(t.primary, 0.4)).bg(alpha(t.primary, 0.03))
+                    c.border_color(alpha(t.primary, 0.4))
+                        .bg(alpha(t.primary, 0.03))
                 } else if !supported {
-                    c.border_color(t.border).bg(alpha(t.muted, 0.3)).opacity(0.8)
+                    c.border_color(t.border)
+                        .bg(alpha(t.muted, 0.3))
+                        .opacity(0.8)
                 } else {
                     c.border_color(t.border).bg(t.card)
                 }
             })
             .when(supported, |c| {
-                c.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
-                    this.selected = Some(id.clone());
-                    cx.notify();
-                }))
+                c.cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.selected = Some(id.clone());
+                        cx.notify();
+                    }))
             })
-            .child(div().absolute().top_0().bottom_0().left_0().w(px(3.)).bg(rail))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(3.))
+                    .bg(rail),
+            )
             .child(
                 div()
                     .flex()
@@ -375,21 +407,35 @@ impl DevicePicker {
                             .pt_3()
                             .when(supported, |c| {
                                 c.child(
-                                    button(("select", ix), if selected { "Selected" } else { "Select" })
-                                        .small()
-                                        .map(|b| if selected { b.secondary().icon("check") } else { b.icon_right("chevron-right") }),
+                                    button(
+                                        ("select", ix),
+                                        if selected { "Selected" } else { "Select" },
+                                    )
+                                    .small()
+                                    .map(|b| {
+                                        if selected {
+                                            b.secondary().icon("check")
+                                        } else {
+                                            b.icon_right("chevron-right")
+                                        }
+                                    }),
                                 )
                             })
                             .when(locked, |c| {
                                 c.child(
-                                    button(("unlock", ix), if unlocking { "Unlocking" } else { "Unlock" })
-                                        .small()
-                                        .icon("lock")
-                                        .loading(unlocking)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    button(
+                                        ("unlock", ix),
+                                        if unlocking { "Unlocking" } else { "Unlock" },
+                                    )
+                                    .small()
+                                    .icon("lock")
+                                    .loading(unlocking)
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             cx.stop_propagation();
                                             this.unlock(id2.clone(), cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                             })
                             .when(!supported && !locked, |c| {
@@ -416,7 +462,8 @@ impl DevicePicker {
 impl Render for DevicePicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
-        let can_extract = self.selected_device().is_some_and(|d| d.is_supported()) && !self.extracting;
+        let can_extract =
+            self.selected_device().is_some_and(|d| d.is_supported()) && !self.extracting;
         let cards: Vec<_> = self
             .devices
             .clone()
@@ -461,25 +508,37 @@ impl Render for DevicePicker {
                             ),
                     )
                     .child(
-                        button("discover", if self.discovering { "Scanning…" } else { "Discover devices" })
-                            .loading(self.discovering)
-                            .on_click(cx.listener(|this, _, _, cx| this.discover(cx))),
+                        button(
+                            "discover",
+                            if self.discovering {
+                                "Scanning…"
+                            } else {
+                                "Discover devices"
+                            },
+                        )
+                        .loading(self.discovering)
+                        .on_click(cx.listener(|this, _, _, cx| this.discover(cx))),
                     ),
             )
             .children(self.error.clone().map(|e| alert(Tone::Destructive, e)))
             .when(has_devices, |d| {
-                d.child(div().flex().flex_col().gap_3().children(cards)).when(can_extract || self.extracting, |d| {
-                    d.child(
-                        button(
-                            "extract",
-                            if self.extracting { "Extracting device info…" } else { "Continue with selected device" },
+                d.child(div().flex().flex_col().gap_3().children(cards))
+                    .when(can_extract || self.extracting, |d| {
+                        d.child(
+                            button(
+                                "extract",
+                                if self.extracting {
+                                    "Extracting device info…"
+                                } else {
+                                    "Continue with selected device"
+                                },
+                            )
+                            .large()
+                            .full_width()
+                            .loading(self.extracting)
+                            .on_click(cx.listener(|this, _, _, cx| this.extract(cx))),
                         )
-                        .large()
-                        .full_width()
-                        .loading(self.extracting)
-                        .on_click(cx.listener(|this, _, _, cx| this.extract(cx))),
-                    )
-                })
+                    })
             })
     }
 }

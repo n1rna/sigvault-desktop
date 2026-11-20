@@ -10,8 +10,8 @@ use sigvault_core::commands::{
 use sigvault_core::State;
 
 use super::common::{
-    card_message, format_relative, icon_tile, list_row, main_window, parse_time, segmented, sep_dot,
-    session_icon, session_title, short_id, skeleton_list,
+    card_message, format_relative, icon_tile, list_row, main_window, parse_time, segmented,
+    sep_dot, session_icon, session_title, short_id, skeleton_list,
 };
 use crate::runtime::backend;
 use crate::state::{store, RemoteSession, StoreEvent};
@@ -75,7 +75,10 @@ impl RemoteSessionsPage {
                     this.sessions = sessions
                         .into_iter()
                         .map(|s| RemoteSession {
-                            created_at: previous.iter().find(|p| p.id == s.id).and_then(|p| p.created_at.clone()),
+                            created_at: previous
+                                .iter()
+                                .find(|p| p.id == s.id)
+                                .and_then(|p| p.created_at.clone()),
                             id: s.id,
                             status: s.status,
                             session_type: s.session_type,
@@ -107,7 +110,12 @@ impl RemoteSessionsPage {
                 match res {
                     Ok(r) if !r.success => {
                         this.error = Some(
-                            if r.message.is_empty() { "Failed to connect".to_string() } else { r.message }.into(),
+                            if r.message.is_empty() {
+                                "Failed to connect".to_string()
+                            } else {
+                                r.message
+                            }
+                            .into(),
                         )
                     }
                     Ok(_) => {}
@@ -122,7 +130,11 @@ impl RemoteSessionsPage {
     }
 
     fn session_types(&self) -> Vec<String> {
-        let mut types: Vec<String> = self.sessions.iter().map(|s| s.session_type.clone()).collect();
+        let mut types: Vec<String> = self
+            .sessions
+            .iter()
+            .map(|s| s.session_type.clone())
+            .collect();
         types.sort();
         types.dedup();
         types
@@ -133,7 +145,11 @@ impl RemoteSessionsPage {
             .sessions
             .iter()
             .enumerate()
-            .filter(|(_, s)| self.type_filter.as_ref().is_none_or(|f| &s.session_type == f))
+            .filter(|(_, s)| {
+                self.type_filter
+                    .as_ref()
+                    .is_none_or(|f| &s.session_type == f)
+            })
             .collect();
         let newest = self.newest_first;
         out.sort_by(|(ia, a), (ib, b)| {
@@ -157,7 +173,13 @@ impl RemoteSessionsPage {
 }
 
 impl RemoteSessionsPage {
-    fn render_row(&self, pos: usize, ix: usize, session: &RemoteSession, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_row(
+        &self,
+        pos: usize,
+        ix: usize,
+        session: &RemoteSession,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let t = theme();
         let is_active = session.status.eq_ignore_ascii_case("active");
         let is_connecting = self.connecting_to.as_deref() == Some(session.id.as_str());
@@ -171,25 +193,33 @@ impl RemoteSessionsPage {
                 None => "Unknown".into(),
             }
         };
-        let join = button(("join", ix), if is_connecting { "Joining…" } else { "Join" })
-            .small()
-            .loading(is_connecting)
-            .disabled(busy && !is_connecting)
-            .when(!is_active, |b| b.outline())
-            .on_click(cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                this.connect(id.clone(), cx)
-            }));
+        let join = button(
+            ("join", ix),
+            if is_connecting { "Joining…" } else { "Join" },
+        )
+        .small()
+        .loading(is_connecting)
+        .disabled(busy && !is_connecting)
+        .when(!is_active, |b| b.outline())
+        .on_click(cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.connect(id.clone(), cx)
+        }));
         list_row(("session-row", pos))
             .h(px(60.))
             .gap_4()
             .when(!busy, |d| {
-                d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.connect(id2.clone(), cx)))
+                d.cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| this.connect(id2.clone(), cx)))
             })
             .child(icon_tile(
                 session_icon(&session.session_type),
                 32.,
-                Some(if is_active { t.primary } else { t.muted_foreground }),
+                Some(if is_active {
+                    t.primary
+                } else {
+                    t.muted_foreground
+                }),
             ))
             .child(
                 div()
@@ -216,18 +246,27 @@ impl RemoteSessionsPage {
                             .text_color(t.muted_foreground)
                             .child(div().font_family(FONT_MONO).child(short_id(&session.id)))
                             .when_some(session.created_at.clone(), |d, created| {
-                                d.child(sep_dot()).child(format!("Created {}", format_relative(Some(&created))))
+                                d.child(sep_dot())
+                                    .child(format!("Created {}", format_relative(Some(&created))))
                             }),
                     ),
             )
+            .child(div().w(px(96.)).flex_none().flex().child(badge(
+                status,
+                if is_active {
+                    Tone::Success
+                } else {
+                    Tone::Secondary
+                },
+            )))
             .child(
                 div()
-                    .w(px(96.))
+                    .w(px(84.))
                     .flex_none()
                     .flex()
-                    .child(badge(status, if is_active { Tone::Success } else { Tone::Secondary })),
+                    .justify_end()
+                    .child(join),
             )
-            .child(div().w(px(84.)).flex_none().flex().justify_end().child(join))
     }
 }
 
@@ -235,15 +274,26 @@ impl Render for RemoteSessionsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let total = self.sessions.len();
-        let active = self.sessions.iter().filter(|s| s.status.eq_ignore_ascii_case("active")).count();
-        let rows: Vec<(usize, RemoteSession)> =
-            self.filtered_sorted().into_iter().map(|(i, s)| (i, s.clone())).collect();
+        let active = self
+            .sessions
+            .iter()
+            .filter(|s| s.status.eq_ignore_ascii_case("active"))
+            .count();
+        let rows: Vec<(usize, RemoteSession)> = self
+            .filtered_sorted()
+            .into_iter()
+            .map(|(i, s)| (i, s.clone()))
+            .collect();
 
         // ── Filters: type tabs + sort ──
         let filters = (total > 0).then(|| {
             let mut items = vec![("all".to_string(), format!("All  {total}"))];
             for ty in self.session_types() {
-                let n = self.sessions.iter().filter(|s| s.session_type == ty).count();
+                let n = self
+                    .sessions
+                    .iter()
+                    .filter(|s| s.session_type == ty)
+                    .count();
                 items.push((ty.clone(), format!("{}  {n}", session_title(&ty))));
             }
             let current = self.type_filter.clone().unwrap_or_else(|| "all".into());
@@ -254,22 +304,34 @@ impl Render for RemoteSessionsPage {
                 .items_center()
                 .justify_between()
                 .gap_4()
-                .child(segmented("session-filter", items, &current, move |key, _, cx| {
-                    this.update(cx, |this, cx| {
-                        this.type_filter = (key != "all").then_some(key);
-                        cx.notify();
-                    })
-                    .ok();
-                }))
-                .child(
-                    button("sort-order", if self.newest_first { "Newest first" } else { "Oldest first" })
-                        .ghost()
-                        .small()
-                        .icon("chevrons-up-down")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.newest_first = !this.newest_first;
+                .child(segmented(
+                    "session-filter",
+                    items,
+                    &current,
+                    move |key, _, cx| {
+                        this.update(cx, |this, cx| {
+                            this.type_filter = (key != "all").then_some(key);
                             cx.notify();
-                        })),
+                        })
+                        .ok();
+                    },
+                ))
+                .child(
+                    button(
+                        "sort-order",
+                        if self.newest_first {
+                            "Newest first"
+                        } else {
+                            "Oldest first"
+                        },
+                    )
+                    .ghost()
+                    .small()
+                    .icon("chevrons-up-down")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.newest_first = !this.newest_first;
+                        cx.notify();
+                    })),
                 )
         });
 
@@ -298,8 +360,18 @@ impl Render for RemoteSessionsPage {
                 .items_center()
                 .py_10()
                 .gap_1()
-                .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("No sessions match this filter"))
-                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Show all sessions or refresh the list."))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child("No sessions match this filter"),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child("Show all sessions or refresh the list."),
+                )
                 .into_any_element()
         } else {
             let mut list = card().overflow_hidden();

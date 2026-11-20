@@ -71,7 +71,10 @@ impl DeviceCreationSession {
         session_id: String,
         cx: &mut Context<Self>,
     ) {
-        if self.network != network || self.derivation_path != derivation_path || self.session_id != session_id {
+        if self.network != network
+            || self.derivation_path != derivation_path
+            || self.session_id != session_id
+        {
             self.network = network;
             self.derivation_path = derivation_path;
             self.session_id = session_id;
@@ -97,7 +100,9 @@ impl DeviceCreationSession {
                 let d = &mut this.discovery;
                 match res {
                     Ok(r) if r.success && r.data.is_some() => {
-                        match serde_json::from_value::<Vec<DiscoveredDevice>>(r.data.unwrap_or_default()) {
+                        match serde_json::from_value::<Vec<DiscoveredDevice>>(
+                            r.data.unwrap_or_default(),
+                        ) {
                             Ok(devices) => {
                                 if let Some(sel) = &d.selected {
                                     if !devices.iter().any(|x| x.id == sel.id) {
@@ -153,8 +158,9 @@ impl DeviceCreationSession {
                         }
                     }
                     Ok(r) => {
-                        this.discovery.error =
-                            Some(non_empty(r.message, "Failed to extract device information").into())
+                        this.discovery.error = Some(
+                            non_empty(r.message, "Failed to extract device information").into(),
+                        )
                     }
                     Err(e) => this.discovery.error = Some(e.into()),
                 }
@@ -186,8 +192,9 @@ impl DeviceCreationSession {
                     // backend advances the workflow over the websocket.
                     Ok(r) if r.success => this.submitted = true,
                     Ok(r) => {
-                        this.error =
-                            Some(non_empty(r.message, "Failed to submit device registration").into())
+                        this.error = Some(
+                            non_empty(r.message, "Failed to submit device registration").into(),
+                        )
                     }
                     Err(e) => this.error = Some(e.into()),
                 }
@@ -198,7 +205,6 @@ impl DeviceCreationSession {
         })
         .detach();
     }
-
 }
 
 impl DeviceListHost for DeviceCreationSession {
@@ -228,7 +234,8 @@ impl DeviceListHost for DeviceCreationSession {
                 let d = &mut this.discovery;
                 match res {
                     Ok(r) if r.success && r.data.is_some() => {
-                        match serde_json::from_value::<DiscoveredDevice>(r.data.unwrap_or_default()) {
+                        match serde_json::from_value::<DiscoveredDevice>(r.data.unwrap_or_default())
+                        {
                             Ok(dev) => {
                                 for x in d.devices.iter_mut() {
                                     if x.id == device_id {
@@ -253,7 +260,6 @@ impl DeviceListHost for DeviceCreationSession {
         .detach();
     }
 }
-
 
 impl DeviceCreationSession {
     /// Debug screenshot hook (`SIGVAULT_DEV_CLOUD_STEP=devices|select|done`).
@@ -309,7 +315,11 @@ impl DeviceCreationSession {
             "Share public key"
         };
         (
-            vec![div().text_size(px(12.)).text_color(t.muted_foreground).child(hint).into_any_element()],
+            vec![div()
+                .text_size(px(12.))
+                .text_color(t.muted_foreground)
+                .child(hint)
+                .into_any_element()],
             vec![button("extract", label)
                 .loading(busy)
                 .when(!busy, |b| b.icon_right("arrow-right"))

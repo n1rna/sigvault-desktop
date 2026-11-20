@@ -6,8 +6,8 @@ pub mod types;
 pub use events::*;
 pub use types::*;
 
-use log::debug;
 use crate::host::WebviewWindow;
+use log::debug;
 
 type WindowResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send>>;
 

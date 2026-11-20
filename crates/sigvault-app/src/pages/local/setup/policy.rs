@@ -92,7 +92,8 @@ pub fn common_presets() -> Vec<PolicyPreset> {
         PolicyPreset {
             id: "timelocked-recovery",
             title: "Key + timelocked recovery",
-            hint: "Your key spends any time. A backup key can spend after 6 months without activity.",
+            hint:
+                "Your key spends any time. A backup key can spend after 6 months without activity.",
             shape: "Miniscript · Taproot",
             draft: default_timelocked(),
         },
@@ -394,8 +395,14 @@ pub fn layout_for_analysis(analysis: &DescriptorAnalysis) -> SlotLayout {
         .enumerate()
         .map(|(i, s)| Slot {
             id: s.id.clone(),
-            label: s.label.clone().unwrap_or_else(|| format!("Key {}", letter(i))),
-            path_id: path_of.get(&s.id).cloned().unwrap_or_else(|| "other".into()),
+            label: s
+                .label
+                .clone()
+                .unwrap_or_else(|| format!("Key {}", letter(i))),
+            path_id: path_of
+                .get(&s.id)
+                .cloned()
+                .unwrap_or_else(|| "other".into()),
             derivation_path: s.derivation_path.clone().unwrap_or_default(),
             expected: Some(s.clone()),
             filled: None,
@@ -444,9 +451,9 @@ pub fn paths_spendable_by(layout: &SlotLayout, is_hot: impl Fn(&Slot) -> bool) -
 /// Another slot that already holds this exact key, if any.
 #[allow(dead_code)] // setup/slot_editor.rs
 pub fn duplicate_of<'a>(slots: &'a [Slot], slot_id: &str, xpub: &str) -> Option<&'a Slot> {
-    slots.iter().find(|s| {
-        s.id != slot_id && s.filled.as_ref().is_some_and(|f| f.key.xpub == xpub)
-    })
+    slots
+        .iter()
+        .find(|s| s.id != slot_id && s.filled.as_ref().is_some_and(|f| f.key.xpub == xpub))
 }
 
 pub fn to_wire_policy(policy: &PolicyDraft, layout: &SlotLayout) -> WirePolicy {
@@ -461,7 +468,12 @@ pub fn to_wire_policy(policy: &PolicyDraft, layout: &SlotLayout) -> WirePolicy {
             .paths
             .iter()
             .find(|p| p.id == path_id)
-            .map(|p| p.slot_ids.iter().filter_map(|id| index.get(id.as_str()).copied()).collect())
+            .map(|p| {
+                p.slot_ids
+                    .iter()
+                    .filter_map(|id| index.get(id.as_str()).copied())
+                    .collect()
+            })
             .unwrap_or_default()
     };
     match policy {
@@ -611,7 +623,10 @@ mod tests {
             "m/84'/1'/0'"
         );
         let ms = layout_for_policy(&PolicyDraft::Multisig { threshold: 2, n: 3 }, "regtest");
-        assert!(ms.slots.iter().all(|s| s.derivation_path == "m/48'/1'/0'/2'"));
+        assert!(ms
+            .slots
+            .iter()
+            .all(|s| s.derivation_path == "m/48'/1'/0'/2'"));
         assert_eq!(ms.slots.len(), 3);
         assert_eq!(ms.paths[0].slot_ids, vec!["k0", "k1", "k2"]);
     }
@@ -622,8 +637,16 @@ mod tests {
             script: ScriptKind::Taproot,
             primary: Some(Threshold { threshold: 2, n: 2 }),
             recoveries: vec![
-                RecoveryDraft { timelock_blocks: 4320, threshold: 1, n: 1 },
-                RecoveryDraft { timelock_blocks: 52560, threshold: 2, n: 3 },
+                RecoveryDraft {
+                    timelock_blocks: 4320,
+                    threshold: 1,
+                    n: 1,
+                },
+                RecoveryDraft {
+                    timelock_blocks: 52560,
+                    threshold: 2,
+                    n: 3,
+                },
             ],
         };
         let layout = layout_for_policy(&policy, "regtest");
@@ -632,10 +655,21 @@ mod tests {
             to_wire_policy(&policy, &layout),
             WirePolicy::Timelocked {
                 script: ScriptKind::Taproot,
-                primary: Some(WirePath { threshold: 2, slots: vec![0, 1] }),
+                primary: Some(WirePath {
+                    threshold: 2,
+                    slots: vec![0, 1]
+                }),
                 recoveries: vec![
-                    WireRecovery { timelock_blocks: 4320, threshold: 1, slots: vec![2] },
-                    WireRecovery { timelock_blocks: 52560, threshold: 2, slots: vec![3, 4, 5] },
+                    WireRecovery {
+                        timelock_blocks: 4320,
+                        threshold: 1,
+                        slots: vec![2]
+                    },
+                    WireRecovery {
+                        timelock_blocks: 52560,
+                        threshold: 2,
+                        slots: vec![3, 4, 5]
+                    },
                 ],
             }
         );
@@ -646,11 +680,19 @@ mod tests {
         let policy = PolicyDraft::Timelocked {
             script: ScriptKind::Taproot,
             primary: None,
-            recoveries: vec![RecoveryDraft { timelock_blocks: 4320, threshold: 1, n: 1 }],
+            recoveries: vec![RecoveryDraft {
+                timelock_blocks: 4320,
+                threshold: 1,
+                n: 1,
+            }],
         };
         let layout = layout_for_policy(&policy, "regtest");
         assert_eq!(
-            layout.paths.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            layout
+                .paths
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["recovery_0"]
         );
         match to_wire_policy(&policy, &layout) {
@@ -679,8 +721,16 @@ mod tests {
             script: ScriptKind::Taproot,
             primary: Some(Threshold { threshold: 1, n: 1 }),
             recoveries: vec![
-                RecoveryDraft { timelock_blocks: 100, threshold: 1, n: 1 },
-                RecoveryDraft { timelock_blocks: 100, threshold: 1, n: 1 },
+                RecoveryDraft {
+                    timelock_blocks: 100,
+                    threshold: 1,
+                    n: 1,
+                },
+                RecoveryDraft {
+                    timelock_blocks: 100,
+                    threshold: 1,
+                    n: 1,
+                },
             ],
         });
         assert!(p.unwrap().contains("same timelock"));
@@ -691,7 +741,11 @@ mod tests {
         let p = policy_problem(&PolicyDraft::Timelocked {
             script: ScriptKind::Segwit,
             primary: None,
-            recoveries: vec![RecoveryDraft { timelock_blocks: 100, threshold: 1, n: 1 }],
+            recoveries: vec![RecoveryDraft {
+                timelock_blocks: 100,
+                threshold: 1,
+                n: 1,
+            }],
         });
         assert!(p.unwrap().contains("Taproot"));
     }
@@ -699,7 +753,10 @@ mod tests {
     #[test]
     fn policy_problem_accepts_the_common_presets() {
         assert_eq!(policy_problem(&PolicyDraft::Singlesig), None);
-        assert_eq!(policy_problem(&PolicyDraft::Multisig { threshold: 2, n: 3 }), None);
+        assert_eq!(
+            policy_problem(&PolicyDraft::Multisig { threshold: 2, n: 3 }),
+            None
+        );
         for p in common_presets() {
             assert_eq!(policy_problem(&p.draft), None);
         }
@@ -707,7 +764,8 @@ mod tests {
 
     #[test]
     fn spendable_flags_a_2of3_with_two_local_keys_but_not_with_one() {
-        let mut layout = layout_for_policy(&PolicyDraft::Multisig { threshold: 2, n: 3 }, "regtest");
+        let mut layout =
+            layout_for_policy(&PolicyDraft::Multisig { threshold: 2, n: 3 }, "regtest");
         layout.slots[0].filled = Some(hot("aaaaaaaa"));
         layout.slots[1].filled = Some(cold("bbbbbbbb"));
         assert!(paths_spendable_from_this_device(&layout).is_empty());
@@ -730,8 +788,14 @@ mod tests {
 
     #[test]
     fn with_account_bumps_the_account_of_standard_paths_only() {
-        assert_eq!(with_account("m/48'/1'/0'/2'", 3).as_deref(), Some("m/48'/1'/3'/2'"));
-        assert_eq!(with_account("m/84'/0'/0'", 1).as_deref(), Some("m/84'/0'/1'"));
+        assert_eq!(
+            with_account("m/48'/1'/0'/2'", 3).as_deref(),
+            Some("m/48'/1'/3'/2'")
+        );
+        assert_eq!(
+            with_account("m/84'/0'/0'", 1).as_deref(),
+            Some("m/84'/0'/1'")
+        );
         assert_eq!(with_account("m/0/1", 1), None);
     }
 

@@ -1,7 +1,7 @@
 // Session-related commands
 
-use log::{debug, error, warn};
 use crate::host::{State, WebviewWindow};
+use log::{debug, error, warn};
 
 use crate::api::ApiClient;
 use crate::error::AppErrorCode;
@@ -18,7 +18,7 @@ pub async fn cmd_start_session_websocket_connection(
     session_id: String,
 ) -> Result<CommandResult, String> {
     app_state.require_cloud_mode().await?;
-    let app_state_clone = app_state.clone();
+    let app_state_clone = app_state;
     let ws_thread = app_state_clone.ws_thread.lock().await;
 
     // Get OAuth access token for WebSocket authentication

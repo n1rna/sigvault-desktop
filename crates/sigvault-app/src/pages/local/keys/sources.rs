@@ -24,7 +24,8 @@ impl KeySource {
     /// Sources that create a brand-new key.
     pub const CREATE: [KeySource; 1] = [KeySource::Generate];
     /// Imports whose private key ends up (encrypted) on this computer.
-    pub const IMPORT_PRIVATE: [KeySource; 3] = [KeySource::Seed, KeySource::Xprv, KeySource::KeyFile];
+    pub const IMPORT_PRIVATE: [KeySource; 3] =
+        [KeySource::Seed, KeySource::Xprv, KeySource::KeyFile];
     /// Imports of a public key only: signing happens elsewhere.
     pub const IMPORT_PUBLIC: [KeySource; 2] = [KeySource::Hardware, KeySource::Xpub];
 
@@ -113,11 +114,19 @@ pub fn icon_tile(name: &'static str, size: f32, color: Option<Hsla>) -> gpui::Di
         .bg(alpha(t.muted, 0.8))
         .border_1()
         .border_color(alpha(t.border, 0.7))
-        .child(icon(name).size(px(size * 0.5)).text_color(color.unwrap_or(t.foreground)))
+        .child(
+            icon(name)
+                .size(px(size * 0.5))
+                .text_color(color.unwrap_or(t.foreground)),
+        )
 }
 
 /// Supported local networks: (id, label).
-pub const NETWORKS: [(&str, &str); 3] = [("regtest", "Regtest"), ("signet", "Signet"), ("testnet4", "Testnet 4")];
+pub const NETWORKS: [(&str, &str); 3] = [
+    ("regtest", "Regtest"),
+    ("signet", "Signet"),
+    ("testnet4", "Testnet 4"),
+];
 
 pub fn network_label(id: &str) -> String {
     NETWORKS
@@ -204,13 +213,17 @@ pub fn default_path(network: &str) -> String {
 
 /// The setup module mirrors the core `HotSecret` with an identical wire
 /// shape; convert through serde.
-pub fn to_core_secret(s: &api::HotSecret) -> Result<sigvault_core::local_wallet::storage::HotSecret, String> {
+pub fn to_core_secret(
+    s: &api::HotSecret,
+) -> Result<sigvault_core::local_wallet::storage::HotSecret, String> {
     serde_json::to_value(s)
         .and_then(serde_json::from_value)
         .map_err(|e| e.to_string())
 }
 
-pub fn from_core_secret(s: &sigvault_core::local_wallet::storage::HotSecret) -> Result<api::HotSecret, String> {
+pub fn from_core_secret(
+    s: &sigvault_core::local_wallet::storage::HotSecret,
+) -> Result<api::HotSecret, String> {
     serde_json::to_value(s)
         .and_then(serde_json::from_value)
         .map_err(|e| e.to_string())
@@ -225,9 +238,13 @@ pub fn with_origin(secret: api::HotSecret, key: &SlotKey) -> api::HotSecret {
             if extended_key_depth(bare).is_some_and(|d| d > 0) {
                 let path = normalize_path(&key.derivation_path);
                 let path = path.trim_start_matches('m');
-                api::HotSecret::Xprv { xprv: format!("[{}{}]{}", key.fingerprint.to_lowercase(), path, bare) }
+                api::HotSecret::Xprv {
+                    xprv: format!("[{}{}]{}", key.fingerprint.to_lowercase(), path, bare),
+                }
             } else {
-                api::HotSecret::Xprv { xprv: bare.to_string() }
+                api::HotSecret::Xprv {
+                    xprv: bare.to_string(),
+                }
             }
         }
         other => other,
@@ -306,14 +323,24 @@ mod tests {
     #[test]
     fn presets_round_trip() {
         assert_eq!(default_path("signet"), "m/48'/1'/0'/2'");
-        assert_eq!(PathPreset::detect("m/84h/1h/0h", "regtest"), PathPreset::Singlesig);
-        assert_eq!(PathPreset::detect("m/48'/1'/3'/2'", "regtest"), PathPreset::Custom);
+        assert_eq!(
+            PathPreset::detect("m/84h/1h/0h", "regtest"),
+            PathPreset::Singlesig
+        );
+        assert_eq!(
+            PathPreset::detect("m/48'/1'/3'/2'", "regtest"),
+            PathPreset::Custom
+        );
         assert_eq!(KeySource::from_id("key_file"), Some(KeySource::KeyFile));
     }
 
     #[test]
     fn key_expr_strips_m() {
-        let k = SlotKey { fingerprint: "AABBCCDD".into(), derivation_path: "m/84'/1'/0'".into(), xpub: "tpubX".into() };
+        let k = SlotKey {
+            fingerprint: "AABBCCDD".into(),
+            derivation_path: "m/84'/1'/0'".into(),
+            xpub: "tpubX".into(),
+        };
         assert_eq!(key_expr(&k), "[aabbccdd/84'/1'/0']tpubX");
     }
 }

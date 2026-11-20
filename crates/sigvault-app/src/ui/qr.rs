@@ -13,7 +13,10 @@ pub struct QrCode {
 
 impl QrCode {
     pub fn new(data: impl Into<String>, size: Pixels) -> Self {
-        Self { data: data.into(), size }
+        Self {
+            data: data.into(),
+            size,
+        }
     }
 }
 

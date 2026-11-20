@@ -87,8 +87,12 @@ impl Render for ActivityPanel {
                             .child("Clear"),
                     )
                     .child(
-                        icon(if self.expanded { "chevron-down" } else { "chevron-up" })
-                            .size(px(14.)),
+                        icon(if self.expanded {
+                            "chevron-down"
+                        } else {
+                            "chevron-up"
+                        })
+                        .size(px(14.)),
                     ),
             )
             .when(self.expanded, |d| {
@@ -116,7 +120,11 @@ impl Render for ActivityPanel {
                                     div()
                                         .font_family(FONT_MONO)
                                         .text_size(px(11.5))
-                                        .text_color(if busy { t.foreground } else { t.muted_foreground })
+                                        .text_color(if busy {
+                                            t.foreground
+                                        } else {
+                                            t.muted_foreground
+                                        })
                                         .child(format!("{} — {}", item.title, item.message)),
                                 )
                         })),

@@ -83,7 +83,11 @@ pub fn psbt_to_ur_frames(psbt_base64: &str) -> Result<PsbtQrFrames, String> {
         vec![single; total_frames]
     } else {
         (0..total_frames)
-            .map(|_| encoder.next_part().map_err(|e| format!("UR encode failed: {e}")))
+            .map(|_| {
+                encoder
+                    .next_part()
+                    .map_err(|e| format!("UR encode failed: {e}"))
+            })
             .collect::<Result<Vec<_>, _>>()?
     };
     Ok(PsbtQrFrames {
@@ -242,7 +246,8 @@ impl PsbtQrAssembler {
                 None => return Ok(None),
             }
         }
-        let joined = Joined::try_from_parts(ordered).map_err(|e| format!("BBQr join failed: {e}"))?;
+        let joined =
+            Joined::try_from_parts(ordered).map_err(|e| format!("BBQr join failed: {e}"))?;
         let data = if joined.file_type == FileType::UnicodeText && !is_psbt(&joined.data) {
             // Some tools send the PSBT as base64/hex text instead of 'P'.
             String::from_utf8(joined.data)
@@ -420,7 +425,10 @@ pub(crate) mod tests {
         let bb = psbt_to_bbqr_frames(&b64).unwrap();
         let mut asm = PsbtQrAssembler::new();
         asm.push(&ur.frames[0]).unwrap();
-        assert!(asm.push(&bb.frames[0]).unwrap_err().contains("mixed QR formats"));
+        assert!(asm
+            .push(&bb.frames[0])
+            .unwrap_err()
+            .contains("mixed QR formats"));
     }
 
     #[test]

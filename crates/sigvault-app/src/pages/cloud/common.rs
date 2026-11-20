@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use gpui::{
-    div, prelude::*, px, pulsating_between, Animation, AnimationExt, AnyElement, Div, ElementId,
+    div, prelude::*, pulsating_between, px, Animation, AnimationExt, AnyElement, Div, ElementId,
     FontWeight, Hsla, Pixels, SharedString, Stateful,
 };
 use sigvault_core::host::WebviewWindow;
@@ -30,7 +30,8 @@ pub fn short_id(id: &str) -> String {
 
 /// The `main` webview window, as required by Tauri-shaped commands.
 pub fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
-    app.get_webview_window("main").ok_or_else(|| "no window".to_string())
+    app.get_webview_window("main")
+        .ok_or_else(|| "no window".to_string())
 }
 
 /// Human title for a backend session type (`TRANSACTION_SIGNING` →
@@ -89,7 +90,9 @@ pub fn format_relative(iso: Option<&str>) -> String {
     if days < 7 {
         return format!("{days}d ago");
     }
-    then.with_timezone(&chrono::Local).format("%b %-d, %Y").to_string()
+    then.with_timezone(&chrono::Local)
+        .format("%b %-d, %Y")
+        .to_string()
 }
 
 pub fn parse_time(iso: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {
@@ -110,7 +113,11 @@ pub fn icon_tile(name: &'static str, size: f32, color: Option<Hsla>) -> Div {
         .bg(alpha(t.muted, 0.8))
         .border_1()
         .border_color(alpha(t.border, 0.7))
-        .child(icon(name).size(px(size * 0.5)).text_color(color.unwrap_or(t.foreground)))
+        .child(
+            icon(name)
+                .size(px(size * 0.5))
+                .text_color(color.unwrap_or(t.foreground)),
+        )
 }
 
 pub fn network_label(n: &str) -> String {
@@ -216,12 +223,23 @@ pub fn review_row(label: impl Into<SharedString>, value: impl IntoElement) -> Di
                 .text_color(theme().muted_foreground)
                 .child(label.into()),
         )
-        .child(div().flex_1().min_w_0().text_size(px(13.)).line_height(px(18.)).child(value))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_size(px(13.))
+                .line_height(px(18.))
+                .child(value),
+        )
 }
 
 /// 3px separator dot between metadata items.
 pub fn sep_dot() -> Div {
-    div().size(px(3.)).flex_none().rounded_full().bg(alpha(theme().muted_foreground, 0.5))
+    div()
+        .size(px(3.))
+        .flex_none()
+        .rounded_full()
+        .bg(alpha(theme().muted_foreground, 0.5))
 }
 
 /// Pulsing placeholder block.
@@ -276,7 +294,12 @@ pub fn skeleton_list(prefix: &'static str, n: usize) -> Div {
 
 /// Segmented filter with owned keys (like `ui::tabs`, but for keys known
 /// only at runtime). `items` are (key, label).
-pub fn segmented<F>(id: &'static str, items: Vec<(String, String)>, active: &str, on_select: F) -> Stateful<Div>
+pub fn segmented<F>(
+    id: &'static str,
+    items: Vec<(String, String)>,
+    active: &str,
+    on_select: F,
+) -> Stateful<Div>
 where
     F: Fn(String, &mut gpui::Window, &mut gpui::App) + Clone + 'static,
 {
@@ -302,7 +325,11 @@ where
                 .text_size(px(12.5))
                 .font_weight(FontWeight::MEDIUM)
                 .cursor_pointer()
-                .text_color(if selected { t.foreground } else { t.muted_foreground })
+                .text_color(if selected {
+                    t.foreground
+                } else {
+                    t.muted_foreground
+                })
                 .when(selected, |d| d.bg(t.card).border_1().border_color(t.border))
                 .when(!selected, |d| d.hover(move |s| s.text_color(t.foreground)))
                 .on_click(move |_, w, cx| handler(key.clone(), w, cx))
@@ -311,7 +338,12 @@ where
 }
 
 /// Centered empty / status block inside a card: icon tile, title, body.
-pub fn card_message(icon_name: &'static str, color: Option<Hsla>, title: impl Into<SharedString>, body: impl Into<SharedString>) -> Div {
+pub fn card_message(
+    icon_name: &'static str,
+    color: Option<Hsla>,
+    title: impl Into<SharedString>,
+    body: impl Into<SharedString>,
+) -> Div {
     let t = theme();
     card()
         .items_center()

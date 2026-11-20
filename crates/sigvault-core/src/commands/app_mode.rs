@@ -5,8 +5,8 @@
 //! selection (so a returning user lands in the same context on next launch)
 //! and routes the frontend to the appropriate next page.
 
-use log::info;
 use crate::host::{AppHandle, State};
+use log::info;
 
 use crate::app_mode::AppMode;
 use crate::state::ApplicationState;

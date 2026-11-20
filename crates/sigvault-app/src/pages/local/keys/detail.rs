@@ -2,7 +2,10 @@
 //! xpub, key expression, QR), the wallets using it, and rename / export /
 //! delete.
 
-use gpui::{div, prelude::*, px, AnyElement, Context, Entity, FontWeight, SharedString, Subscription, Window};
+use gpui::{
+    div, prelude::*, px, AnyElement, Context, Entity, FontWeight, SharedString, Subscription,
+    Window,
+};
 
 use super::list::{load_usage, wallets_using, UsageMap};
 use super::sources::{copy_box, custody_text, from_core_secret, network_badge};
@@ -15,8 +18,8 @@ use crate::shell::{navigate, toast};
 use crate::state::{store, StoreEvent};
 use crate::theme::{alpha, theme, FONT_MONO};
 use crate::ui::{
-    alert, badge, button, card, divider, field, format_timestamp, icon, modal, page_frame,
-    section, InputEvent, QrCode, TextInput, Tone,
+    alert, badge, button, card, divider, field, format_timestamp, icon, modal, page_frame, section,
+    InputEvent, QrCode, TextInput, Tone,
 };
 
 enum Dialog {
@@ -42,9 +45,16 @@ pub struct KeyDetailPage {
 impl KeyDetailPage {
     pub fn new(key_id: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let rename_input = cx.new(|cx| TextInput::new(window, cx).max_len(60));
-        let export_pw =
-            cx.new(|cx| TextInput::new(window, cx).masked().placeholder("At least 8 characters"));
-        let export_confirm = cx.new(|cx| TextInput::new(window, cx).masked().placeholder("Repeat password"));
+        let export_pw = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("At least 8 characters")
+        });
+        let export_confirm = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .masked()
+                .placeholder("Repeat password")
+        });
         let delete_input = cx.new(|cx| TextInput::new(window, cx));
         let mut subs = vec![
             cx.subscribe(&keychain(cx), |_, _, _: &KeychainEvent, cx| cx.notify()),
@@ -115,7 +125,8 @@ impl KeyDetailPage {
 
     fn open_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(k) = self.key(cx) else { return };
-        self.rename_input.update(cx, |i, cx| i.set_text(k.label, cx));
+        self.rename_input
+            .update(cx, |i, cx| i.set_text(k.label, cx));
         self.rename_input.read(cx).focus(window);
         self.error = None;
         self.dialog = Some(Dialog::Rename);
@@ -141,10 +152,14 @@ impl KeyDetailPage {
             return;
         }
         let unlock = cx.new(|cx| KeychainUnlock::new("to export this key", window, cx));
-        self._subs.push(cx.subscribe_in(&unlock, window, |this, _, ev: &UnlockEvent, window, cx| match ev {
-            UnlockEvent::Unlocked => this.open_export(window, cx),
-            UnlockEvent::Cancelled => this.close(cx),
-        }));
+        self._subs.push(cx.subscribe_in(
+            &unlock,
+            window,
+            |this, _, ev: &UnlockEvent, window, cx| match ev {
+                UnlockEvent::Unlocked => this.open_export(window, cx),
+                UnlockEvent::Cancelled => this.close(cx),
+            },
+        ));
         self.dialog = Some(Dialog::Unlock(unlock));
         cx.notify();
     }
@@ -193,7 +208,10 @@ impl KeyDetailPage {
                 match res {
                     Ok(Some(path)) => {
                         this.close(cx);
-                        toast(cx, format!("Saved {}", path.rsplit('/').next().unwrap_or(&path)));
+                        toast(
+                            cx,
+                            format!("Saved {}", path.rsplit('/').next().unwrap_or(&path)),
+                        );
                     }
                     Ok(None) => {}
                     Err(e) => this.error = Some(e.into()),
@@ -290,7 +308,12 @@ impl KeyDetailPage {
                             .flex()
                             .flex_col()
                             .gap(px(6.))
-                            .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Extended public key"))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(t.muted_foreground)
+                                    .child("Extended public key"),
+                            )
                             .child(copy_box("copy-xpub", k.xpub.clone())),
                     )
                     .child(
@@ -333,7 +356,12 @@ impl KeyDetailPage {
         let Some(usage) = &self.usage else {
             return card()
                 .p_4()
-                .child(div().text_size(px(12.)).text_color(t.muted_foreground).child("Loading wallets…"))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(t.muted_foreground)
+                        .child("Loading wallets…"),
+                )
                 .into_any_element();
         };
         let wallets = wallets_using(usage, k);
@@ -394,14 +422,23 @@ impl KeyDetailPage {
                             .min_w_0()
                             .flex()
                             .flex_col()
-                            .child(div().truncate().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(w.name.clone()))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(w.name.clone()),
+                            )
                             .child(
                                 div()
                                     .text_size(px(12.))
                                     .text_color(t.muted_foreground)
                                     .child({
                                         let n = w.fingerprints.len().max(1);
-                                        format!("{kind} · {n} {}", if n == 1 { "key" } else { "keys" })
+                                        format!(
+                                            "{kind} · {n} {}",
+                                            if n == 1 { "key" } else { "keys" }
+                                        )
                                     }),
                             ),
                     )
@@ -429,7 +466,12 @@ impl KeyDetailPage {
                         .flex()
                         .flex_col()
                         .gap(px(2.))
-                        .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(title))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(title),
+                        )
                         .child(
                             div()
                                 .text_size(px(12.))
@@ -482,7 +524,12 @@ impl KeyDetailPage {
     fn render_dialog(&self, k: &KeyRecord, cx: &mut Context<Self>) -> Option<AnyElement> {
         let t = theme();
         let dialog = self.dialog.as_ref()?;
-        let title = |s: &'static str| div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(s);
+        let title = |s: &'static str| {
+            div()
+                .text_size(px(16.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(s)
+        };
         let body = |s: String| {
             div()
                 .text_size(px(13.))
@@ -491,7 +538,13 @@ impl KeyDetailPage {
                 .child(s)
         };
         let actions = |cancel: AnyElement, primary: AnyElement| {
-            div().flex().flex_row().justify_end().gap_2().child(cancel).child(primary)
+            div()
+                .flex()
+                .flex_row()
+                .justify_end()
+                .gap_2()
+                .child(cancel)
+                .child(primary)
         };
         let cancel = || {
             button("dlg-cancel", "Cancel")
@@ -575,7 +628,11 @@ impl KeyDetailPage {
                 .into_any_element(),
             ],
         };
-        let width = if matches!(dialog, Dialog::Delete | Dialog::Export) { 460. } else { 420. };
+        let width = if matches!(dialog, Dialog::Delete | Dialog::Export) {
+            460.
+        } else {
+            420.
+        };
         Some(
             modal("key-dialog", width)
                 .on_dismiss(cx.listener(|this, _, _, cx| this.close(cx)))

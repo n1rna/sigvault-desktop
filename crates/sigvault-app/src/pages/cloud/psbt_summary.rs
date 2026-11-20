@@ -29,7 +29,11 @@ pub struct PsbtSummary {
 impl PsbtSummary {
     /// Value leaving the wallet (non-change outputs).
     pub fn sending(&self) -> u64 {
-        self.outputs.iter().filter(|o| !o.is_change).map(|o| o.value).sum()
+        self.outputs
+            .iter()
+            .filter(|o| !o.is_change)
+            .map(|o| o.value)
+            .sum()
     }
 }
 
@@ -48,7 +52,9 @@ pub fn hrp_for(network: Option<&str>, descriptor: Option<&str>) -> &'static str 
 }
 
 pub fn summarize(psbt_base64: &str, hrp: &str) -> Option<PsbtSummary> {
-    let bytes = base64::engine::general_purpose::STANDARD.decode(psbt_base64.trim()).ok()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(psbt_base64.trim())
+        .ok()?;
     let mut r = Reader { b: &bytes, pos: 0 };
     if r.take(5)? != b"psbt\xff" {
         return None;
@@ -95,12 +101,21 @@ pub fn summarize(psbt_base64: &str, hrp: &str) -> Option<PsbtSummary> {
                 is_change = true;
             }
         }
-        outputs.push(OutputSummary { address: script_to_address(&out.script, hrp), value: out.value, is_change });
+        outputs.push(OutputSummary {
+            address: script_to_address(&out.script, hrp),
+            value: out.value,
+            is_change,
+        });
     }
 
     let out_total: u64 = outputs.iter().map(|o| o.value).sum();
     let fee = input_total.and_then(|i| i.checked_sub(out_total));
-    Some(PsbtSummary { input_count: tx.inputs.len(), outputs, input_total, fee })
+    Some(PsbtSummary {
+        input_count: tx.inputs.len(),
+        outputs,
+        input_total,
+        fee,
+    })
 }
 
 // ── transaction parsing ──
@@ -146,7 +161,10 @@ fn parse_tx(b: &[u8]) -> Option<Tx> {
     for _ in 0..n_out {
         let value = r.u64()?;
         let len = r.varint()? as usize;
-        outputs.push(TxOut { value, script: r.take(len)?.to_vec() });
+        outputs.push(TxOut {
+            value,
+            script: r.take(len)?.to_vec(),
+        });
     }
     if segwit {
         for _ in 0..n_in {
@@ -275,7 +293,10 @@ mod tests {
     use std::str::FromStr;
 
     use bitcoin::bip32::{DerivationPath, Fingerprint};
-    use bitcoin::{absolute, transaction, Address, Amount, Network, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness};
+    use bitcoin::{
+        absolute, transaction, Address, Amount, Network, OutPoint, Psbt, ScriptBuf, Sequence,
+        Transaction, TxIn, TxOut, Witness,
+    };
 
     #[test]
     fn summarizes_outputs_change_and_fee() {
@@ -283,10 +304,11 @@ mod tests {
             .unwrap()
             .require_network(Network::Testnet)
             .unwrap();
-        let change = Address::from_str("tb1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesf3hn0c")
-            .unwrap()
-            .require_network(Network::Testnet)
-            .unwrap();
+        let change =
+            Address::from_str("tb1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesf3hn0c")
+                .unwrap()
+                .require_network(Network::Testnet)
+                .unwrap();
         let tx = Transaction {
             version: transaction::Version::TWO,
             lock_time: absolute::LockTime::ZERO,
@@ -297,22 +319,38 @@ mod tests {
                 witness: Witness::new(),
             }],
             output: vec![
-                TxOut { value: Amount::from_sat(40_000), script_pubkey: dest.script_pubkey() },
-                TxOut { value: Amount::from_sat(59_000), script_pubkey: change.script_pubkey() },
+                TxOut {
+                    value: Amount::from_sat(40_000),
+                    script_pubkey: dest.script_pubkey(),
+                },
+                TxOut {
+                    value: Amount::from_sat(59_000),
+                    script_pubkey: change.script_pubkey(),
+                },
             ],
         };
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
-        psbt.inputs[0].witness_utxo =
-            Some(TxOut { value: Amount::from_sat(100_000), script_pubkey: dest.script_pubkey() });
+        psbt.inputs[0].witness_utxo = Some(TxOut {
+            value: Amount::from_sat(100_000),
+            script_pubkey: dest.script_pubkey(),
+        });
         let pk = bitcoin::secp256k1::PublicKey::from_str(
             "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
         )
         .unwrap();
-        psbt.outputs[1]
-            .bip32_derivation
-            .insert(pk, (Fingerprint::from([1, 2, 3, 4]), DerivationPath::from_str("m/1/0").unwrap()));
+        psbt.outputs[1].bip32_derivation.insert(
+            pk,
+            (
+                Fingerprint::from([1, 2, 3, 4]),
+                DerivationPath::from_str("m/1/0").unwrap(),
+            ),
+        );
 
-        let s = summarize(&base64::engine::general_purpose::STANDARD.encode(psbt.serialize()), "tb").expect("parses");
+        let s = summarize(
+            &base64::engine::general_purpose::STANDARD.encode(psbt.serialize()),
+            "tb",
+        )
+        .expect("parses");
         assert_eq!(s.input_count, 1);
         assert_eq!(s.outputs.len(), 2);
         assert_eq!(s.outputs[0].address, dest.to_string());

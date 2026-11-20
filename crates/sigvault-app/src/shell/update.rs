@@ -12,7 +12,8 @@ use crate::runtime::backend;
 use crate::theme::{alpha, theme};
 use crate::ui::{badge, button, Tone};
 
-const FEED_URL: &str = "https://github.com/n1rna/sigvault-desktop/releases/latest/download/latest.json";
+const FEED_URL: &str =
+    "https://github.com/n1rna/sigvault-desktop/releases/latest/download/latest.json";
 const RELEASES_URL: &str = "https://github.com/n1rna/sigvault-desktop/releases/latest";
 
 #[derive(Deserialize)]
@@ -103,7 +104,11 @@ impl Render for UpdateBanner {
                             .gap_2()
                             .text_size(px(12.))
                             .child(badge("Update available", Tone::Default))
-                            .child(div().font_weight(gpui::FontWeight::MEDIUM).child(format!("v{version}"))),
+                            .child(
+                                div()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .child(format!("v{version}")),
+                            ),
                     )
                     .child(
                         button("update-dismiss", "Later")
