@@ -1,7 +1,7 @@
-//! Electrum sync runner for local wallets.
+//! Sync runner for local wallets.
 //!
-//! Drives `wallet_runtime::ElectrumClient` against the wallet's
-//! configured Electrs endpoint, applies the resulting update, and
+//! Drives a [`ChainClient`] (Esplora or Electrum, by URL scheme) against
+//! the wallet's configured endpoint, applies the resulting update, and
 //! persists. Long-running blocking calls (TCP connect + full_scan) run
 //! through `tokio::task::spawn_blocking` / `block_in_place` so the
 //! Tauri runtime stays responsive.
@@ -19,13 +19,13 @@ use std::sync::Arc;
 use bdk_wallet::bitcoin::Network;
 use serde::Serialize;
 use thiserror::Error;
-use wallet_runtime::ElectrumClient;
+
+use super::chain::ChainClient;
 
 use super::state::SharedHandle;
 use super::storage::WalletId;
 
 const FULL_SCAN_STOP_GAP: usize = 20;
-const FULL_SCAN_BATCH_SIZE: usize = 5;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SyncSummary {
@@ -44,13 +44,15 @@ pub enum SyncPhase {
     FetchingHistory,
     Persisting,
     Complete,
+    /// Terminal: the sync stopped with an error. `message` carries it.
+    Failed,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SyncProgress {
     pub wallet_id: String,
     pub phase: SyncPhase,
-    /// 0..=100. Coarse-grained — bdk_electrum's full_scan does not expose
+    /// 0..=100. Coarse-grained — the backends' full_scan does not expose
     /// a progress callback, so we only emit boundaries between phases.
     pub percent: u32,
     pub message: String,
@@ -58,9 +60,9 @@ pub struct SyncProgress {
 
 #[derive(Debug, Error)]
 pub enum SyncError {
-    #[error("electrs connect failed for {url}: {message}")]
+    #[error("couldn't reach {url}: {message}")]
     Connect { url: String, message: String },
-    #[error("electrum full_scan failed: {0}")]
+    #[error("scan failed: {0}")]
     Scan(String),
     #[error("apply_update failed: {0}")]
     Apply(String),
@@ -113,12 +115,15 @@ fn emit(
     });
 }
 
-/// Run a full Electrum scan against the wallet, apply the resulting
-/// update, persist, and return a summary the dashboard can render.
+/// Run a full scan against the wallet, apply the resulting update,
+/// persist, and return a summary the dashboard can render.
 ///
 /// The caller passes a `SharedHandle` that they've looked up from
 /// `LocalWalletState::get`. The per-wallet Mutex is acquired here for
-/// the whole apply + persist phases.
+/// the whole scan + apply + persist.
+///
+/// Every run ends with a terminal progress event: `complete`, or `failed`
+/// with the error, so the UI never stays stuck on an intermediate phase.
 pub async fn run_sync(
     handle: SharedHandle,
     network: Network,
@@ -126,46 +131,73 @@ pub async fn run_sync(
     wallet_id: WalletId,
     sink: Arc<dyn ProgressSink>,
 ) -> Result<SyncSummary, SyncError> {
+    let result = run_sync_inner(handle, network, electrs_url, &wallet_id, &sink).await;
+    match &result {
+        Ok(summary) => emit(
+            &sink,
+            &wallet_id,
+            SyncPhase::Complete,
+            100,
+            format!(
+                "Synced — {} txs, balance {} sat",
+                summary.txs_synced, summary.balance_sat
+            ),
+        ),
+        Err(e) => emit(&sink, &wallet_id, SyncPhase::Failed, 0, e.to_string()),
+    }
+    result
+}
+
+async fn run_sync_inner(
+    handle: SharedHandle,
+    network: Network,
+    electrs_url: String,
+    wallet_id: &WalletId,
+    sink: &Arc<dyn ProgressSink>,
+) -> Result<SyncSummary, SyncError> {
     let _ = network; // checked at unlock time + by descriptor; reserved for future per-network sync params.
 
     // Phase 1: connect (blocking I/O on the dedicated blocking pool).
     emit(
-        &sink,
-        &wallet_id,
+        sink,
+        wallet_id,
         SyncPhase::Connecting,
         5,
         format!("Connecting to {electrs_url}…"),
     );
     let url_for_blocking = electrs_url.clone();
-    let client = tokio::task::spawn_blocking(move || ElectrumClient::connect(&url_for_blocking))
+    let client = tokio::task::spawn_blocking(move || ChainClient::connect(&url_for_blocking))
         .await
         .map_err(|e| SyncError::Internal(format!("spawn_blocking join: {e}")))?
-        .map_err(|e| SyncError::Connect {
+        .map_err(|message| SyncError::Connect {
             url: electrs_url.clone(),
-            message: e.to_string(),
+            message,
         })?;
 
     // Phase 2 + 3: scan + apply + persist. All three need the per-wallet
     // handle, so we lock it once and run the blocking work via
     // block_in_place to avoid moving the BDK wallet across tasks.
     emit(
-        &sink,
-        &wallet_id,
+        sink,
+        wallet_id,
         SyncPhase::FetchingHistory,
         30,
         "Fetching wallet history…",
     );
 
     let mut handle_guard = handle.lock().await;
-    let summary = tokio::task::block_in_place(|| {
+    tokio::task::block_in_place(|| {
         let update = client
-            .full_scan(
-                &handle_guard.wallet,
-                FULL_SCAN_STOP_GAP,
-                FULL_SCAN_BATCH_SIZE,
-                /* fetch_prev_txouts */ true,
-            )
-            .map_err(|e| SyncError::Scan(e.to_string()))?;
+            .full_scan(&handle_guard.wallet, FULL_SCAN_STOP_GAP)
+            .map_err(SyncError::Scan)?;
+
+        emit(
+            sink,
+            wallet_id,
+            SyncPhase::Persisting,
+            90,
+            "Saving wallet state…",
+        );
 
         // Borrow-split so apply_update + persist can both take &mut.
         let super::state::UnlockedHandle {
@@ -189,30 +221,7 @@ pub async fn run_sync(
             txs_synced: txs,
             balance_sat: balance.total().to_sat(),
         })
-    });
-
-    emit(
-        &sink,
-        &wallet_id,
-        SyncPhase::Persisting,
-        90,
-        "Saving wallet state…",
-    );
-
-    let summary = summary?;
-
-    emit(
-        &sink,
-        &wallet_id,
-        SyncPhase::Complete,
-        100,
-        format!(
-            "Synced — {} txs, balance {} sat",
-            summary.txs_synced, summary.balance_sat
-        ),
-    );
-
-    Ok(summary)
+    })
 }
 
 #[cfg(test)]
@@ -236,6 +245,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&SyncPhase::Complete).unwrap(),
             "\"complete\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncPhase::Failed).unwrap(),
+            "\"failed\""
         );
     }
 

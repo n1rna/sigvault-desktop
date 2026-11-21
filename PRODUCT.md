@@ -38,8 +38,8 @@ involved, and who else still has to act.
 
 Conductor, not custodian. Keys on users' devices never leave them; the app
 talks to the hardware wallet on the desk and SigVault only relays signatures.
-The local workspace works with no account at all and connects to the user's
-own Electrum server. The app is open source and builds reproducibly from
+The local workspace works with no account at all; it syncs through SigVault's
+Esplora servers (regtest, testnet4) or the user's own Esplora or Electrum server. The app is open source and builds reproducibly from
 n1rna/sigvault-desktop.
 
 ## Operating Context
@@ -48,7 +48,8 @@ n1rna/sigvault-desktop.
 - Hardware: Ledger, BitBox02, Jade, Trezor, Coldcard and others via HWI;
   PSBT exchange by file and animated QR for air-gapped devices.
 - Networks: regtest and testnet (testnet4) for SigVault Cloud today; local
-  wallets choose their own network and Electrum server.
+  wallets choose their own network and server (Esplora `https://…`, or Electrum
+  `ssl://` / `tcp://`).
 - Updates ship through the built-in updater, signed with the release minisign
   key.
 

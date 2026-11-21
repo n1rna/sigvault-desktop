@@ -136,8 +136,8 @@ pub(crate) fn plain_error(stage: Stage, raw: &str) -> PlainError {
                 "The device didn't sign. Check it's unlocked with the Bitcoin app open, then approve on the device."
             }
             Stage::Import => "That isn't a signed PSBT this wallet can read.",
-            Stage::Broadcast if r.contains("electrum connect") => {
-                "Couldn't reach the Electrum server. Check the server in Settings and your connection, then try again."
+            Stage::Broadcast if r.contains("couldn't reach") || r.contains("electrum connect") => {
+                "Couldn't reach the server. Check the server in Settings and your connection, then try again."
             }
             Stage::Broadcast
                 if r.contains("min relay fee") || r.contains("insufficient fee") =>
@@ -1743,8 +1743,11 @@ mod tests {
             e.headline.as_ref(),
             "That passphrase didn't unlock this wallet's key."
         );
-        let e = plain_error(Stage::Broadcast, "electrum connect ssl://x:1: timed out");
-        assert!(e.headline.starts_with("Couldn't reach the Electrum server"));
+        let e = plain_error(
+            Stage::Broadcast,
+            "couldn't reach https://x: esplora https://x: timed out",
+        );
+        assert!(e.headline.starts_with("Couldn't reach the server"));
         let e = plain_error(Stage::Build, "wallet abc not unlocked");
         assert!(e.headline.starts_with("This wallet is locked"));
         for stage in [

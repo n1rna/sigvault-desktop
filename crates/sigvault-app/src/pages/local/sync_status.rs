@@ -14,20 +14,17 @@ pub enum LocalSyncStatus {
     Idle,
     Active,
     Complete,
-    /// Reserved: the sync surface does not emit error events yet (the
-    /// React hook never produced this state either).
-    #[allow(dead_code)]
+    /// The last sync failed; `error` says why.
     Error,
 }
 
 #[derive(Debug, Clone)]
 pub struct LocalSyncState {
     pub status: LocalSyncStatus,
-    /// `connecting` | `fetching_history` | `persisting` | `complete`.
+    /// `connecting` | `fetching_history` | `persisting` | `complete` | `failed`.
     pub phase: Option<String>,
     pub percent: u32,
-    /// Cleared when a fresh sync starts.
-    #[allow(dead_code)]
+    /// Set when the sync failed; cleared when a fresh sync starts.
     pub error: Option<String>,
 }
 
@@ -42,15 +39,16 @@ impl LocalSyncState {
     }
 
     fn from_progress(p: &SyncProgress) -> Self {
+        let (status, error) = match p.phase.as_str() {
+            "complete" => (LocalSyncStatus::Complete, None),
+            "failed" => (LocalSyncStatus::Error, Some(p.message.clone())),
+            _ => (LocalSyncStatus::Active, None),
+        };
         Self {
-            status: if p.phase == "complete" {
-                LocalSyncStatus::Complete
-            } else {
-                LocalSyncStatus::Active
-            },
+            status,
             phase: Some(p.phase.clone()),
             percent: p.percent,
-            error: None,
+            error,
         }
     }
 }
@@ -59,13 +57,18 @@ impl LocalSyncState {
 /// saw events emitted after mount; the store keeps the last event per
 /// wallet, so a sync that is still running when the page mounts (e.g. the
 /// auto-sync kicked off by unlock just before navigating) is surfaced as
-/// active instead of being missed. A finished sync stays idle, matching
-/// the hook.
+/// active instead of being missed, and a failed one shows its error. A
+/// finished sync stays idle, matching the hook.
 pub fn initial_sync_state<T: 'static>(wallet_id: &str, cx: &mut Context<T>) -> LocalSyncState {
     match store(cx).read(cx).sync_progress.get(wallet_id) {
         Some(p) if p.phase != "complete" => LocalSyncState::from_progress(p),
         _ => LocalSyncState::idle(),
     }
+}
+
+/// Whether `phase` belongs to a sync that is still running.
+pub fn phase_in_progress(phase: &str) -> bool {
+    !matches!(phase, "complete" | "failed")
 }
 
 /// Subscribe to sync progress for one wallet. `on_update` runs with the new

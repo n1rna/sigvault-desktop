@@ -60,6 +60,9 @@ impl WalletDashboardPage {
             // sync after unlock, or a manual trigger).
             let became_complete = state.status == LocalSyncStatus::Complete
                 && this.sync.status != LocalSyncStatus::Complete;
+            if let Some(e) = state.error.as_deref() {
+                this.error = Some(super::widgets::plain_error(e).into());
+            }
             this.sync = state;
             if became_complete {
                 this.synced = true;
@@ -277,7 +280,7 @@ impl WalletDashboardPage {
         let sync_tip: SharedString = if active {
             phase_label(self.sync.phase.as_deref()).into()
         } else {
-            "Fetch the latest transactions from your Electrum server".into()
+            "Fetch the latest transactions from your server".into()
         };
         let watch_only = w.policy_type == "watch_only";
         let receive_id = self.wallet_id.clone();
@@ -409,7 +412,7 @@ impl WalletDashboardPage {
                     alpha(t.muted_foreground, 0.5)
                 }))
                 .child(if self.synced {
-                    "Up to date with your Electrum server"
+                    "Up to date with your server"
                 } else {
                     "Showing the last synced state — press Sync to refresh"
                 })
@@ -831,7 +834,7 @@ impl WalletDashboardPage {
 
 fn phase_label(phase: Option<&str>) -> &'static str {
     match phase {
-        Some("connecting") => "Connecting to Electrum",
+        Some("connecting") => "Connecting to server",
         Some("fetching_history") => "Fetching history",
         Some("persisting") => "Saving wallet data",
         Some("complete") => "Done",

@@ -12,6 +12,7 @@
 // most readable way to say "this is API surface, not orphaned code".
 #![allow(dead_code)]
 
+pub mod chain;
 pub mod commands;
 pub mod manager;
 pub mod persister;

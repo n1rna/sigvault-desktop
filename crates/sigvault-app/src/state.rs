@@ -42,13 +42,12 @@ fn level_lenient<'de, D: serde::Deserializer<'de>>(d: D) -> Result<NotificationL
 
 /// Mirrors `local_wallet::sync::SyncProgress` (`local_wallet_sync_progress`).
 /// `phase` is one of `connecting`, `fetching_history`, `persisting`,
-/// `complete`.
+/// `complete`, `failed` (then `message` is the error).
 #[derive(Debug, Clone, Deserialize)]
 pub struct SyncProgress {
     pub wallet_id: String,
     pub phase: String,
     pub percent: u32,
-    #[allow(dead_code)] // part of the wire format; pages render phase/percent
     pub message: String,
 }
 
