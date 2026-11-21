@@ -24,6 +24,20 @@
 				"type": "string",
 				"required": false,
 				"secret": true
+			},
+			"CLOUDFLARE_R2_API_TOKEN": {
+				"name": "CLOUDFLARE_R2_API_TOKEN",
+				"title": "Cloudflare API token that can write the sigvault-downloads R2 bucket (release mirror)",
+				"type": "string",
+				"required": false,
+				"secret": true
+			},
+			"CLOUDFLARE_ACCOUNT_ID": {
+				"name": "CLOUDFLARE_ACCOUNT_ID",
+				"title": "Cloudflare account that owns the sigvault-downloads bucket",
+				"type": "string",
+				"required": false,
+				"secret": false
 			}
 		}
 	},
