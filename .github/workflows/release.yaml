@@ -79,8 +79,13 @@ jobs:
             # unbundled value could still reach the log verbatim. Register
             # each one before it goes anywhere near a build tool.
             [[ -n "$value" ]] && echo "::add-mask::${value}"
+            # Only the signing key reaches the build: everything exported here
+            # is visible to every crate's build script. The sheet also holds
+            # the release job's R2 token, which stays out of these jobs.
+            [[ "$key" == TAURI_SIGNING_PRIVATE_KEY* ]] || continue
             echo "${key}=${value}" >> "$GITHUB_ENV"
           done < .env
+          rm -f .env
 
       # For scripts/unlock-updater-key.py: it needs hashlib.scrypt, which
       # Python only has when built against OpenSSL (not macOS's system one).
@@ -209,8 +214,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Only for the signing key, to sign SHA256SUMS.txt below. Same source as
-      # the build jobs: ENV_VARS_DESKTOP, owned by sigvault-secrets.
+      # Before any secret is loaded, so no third-party build script sees one.
+      - name: Install cargo-packager and minisign
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          cargo install --locked cargo-packager --version 0.11.8
+
+      # The signing key (for SHA256SUMS.txt below) and the R2 token (for the
+      # mirror). Same source as the build jobs: ENV_VARS_DESKTOP, owned by
+      # sigvault-secrets (projects/desktop/development.env).
       - name: Prepare signing key
         uses: n1rna/ee-action/hydrate@v1
         with:
@@ -227,6 +241,8 @@ jobs:
         shell: bash
         run: |
           key="" password=""
+          umask 077
+          : > "$RUNNER_TEMP/r2.env"
           while IFS='=' read -r name value; do
             [[ -z "$name" || "$name" =~ ^# ]] && continue
             value="${value%\"}"
@@ -235,6 +251,10 @@ jobs:
             case "$name" in
               TAURI_SIGNING_PRIVATE_KEY) key="$value" ;;
               TAURI_SIGNING_PRIVATE_KEY_PASSWORD) password="$value" ;;
+              # Kept out of $GITHUB_ENV, which every later step and action
+              # inherits; only the mirror step reads this file.
+              CLOUDFLARE_R2_API_TOKEN) echo "CLOUDFLARE_API_TOKEN=${value}" >> "$RUNNER_TEMP/r2.env" ;;
+              CLOUDFLARE_ACCOUNT_ID) echo "CLOUDFLARE_ACCOUNT_ID=${value}" >> "$RUNNER_TEMP/r2.env" ;;
             esac
           done < .env
           rm -f .env
@@ -245,13 +265,6 @@ jobs:
             echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY=${UNLOCKED}" >> "$GITHUB_ENV"
             echo "CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
           fi
-
-      - name: Install cargo-packager and minisign
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y minisign
-          cargo install --locked cargo-packager --version 0.11.8
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -351,16 +364,27 @@ jobs:
       - name: Mirror to sigvault.org
         shell: bash
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TAG: ${{ inputs.tag }}
         run: |
+          set -a; source "$RUNNER_TEMP/r2.env"; set +a
+          rm -f "$RUNNER_TEMP/r2.env"
           if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::warning::CLOUDFLARE_R2_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not set; the release is on GitHub only. Mirror it later with scripts/mirror-desktop-release.sh $TAG in n1rna/sigvault."
+            echo "::warning::CLOUDFLARE_R2_API_TOKEN / CLOUDFLARE_ACCOUNT_ID missing from ENV_VARS_DESKTOP (sigvault-secrets projects/desktop/development.env); the release is on GitHub only. Mirror it later with scripts/mirror-desktop-release.sh $TAG in n1rna/sigvault."
             exit 0
           fi
           cd all-artifacts
           BUCKET=sigvault-downloads
+          # wrangler 4: R2 commands default to the local simulator without
+          # --remote (wrangler 3 has no such flag). Retry: an upload
+          # occasionally fails on a fresh connection.
+          put() {
+            local i
+            for i in 1 2 3; do
+              npx --yes wrangler@4 r2 object put "$@" --remote > /dev/null && return 0
+              echo "::warning::upload of $1 failed (attempt $i)"; sleep $((i * 5))
+            done
+            return 1
+          }
           content_type() {
             case "$1" in
               *.json) echo "application/json" ;;
@@ -376,18 +400,15 @@ jobs:
             [[ -f "$f" ]] || continue
             # The updater manifest points at GitHub; the mirror has its own.
             [[ "$f" == "latest.json" ]] && continue
-            npx --yes wrangler@3 r2 object put "$BUCKET/desktop/$TAG/$f" \
-              --file "$f" --content-type "$(content_type "$f")" --remote > /dev/null
+            put "$BUCKET/desktop/$TAG/$f" --file "$f" --content-type "$(content_type "$f")"
             echo "put desktop/$TAG/$f"
             files=$(jq -c --arg n "$f" --argjson s "$(stat -c %s "$f")" \
               --arg h "$(sha256sum "$f" | cut -d' ' -f1)" '. + [{name: $n, size: $s, sha256: $h}]' <<< "$files")
           done
           jq -n --arg v "${TAG#v}" --arg t "$TAG" --arg p "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson f "$files" '{version: $v, tag: $t, published_at: $p, files: $f}' > ../manifest.json
-          npx --yes wrangler@3 r2 object put "$BUCKET/desktop/$TAG/manifest.json" \
-            --file ../manifest.json --content-type application/json --remote > /dev/null
-          npx --yes wrangler@3 r2 object put "$BUCKET/desktop/latest.json" \
-            --file ../manifest.json --content-type application/json --remote > /dev/null
+          put "$BUCKET/desktop/$TAG/manifest.json" --file ../manifest.json --content-type application/json
+          put "$BUCKET/desktop/latest.json" --file ../manifest.json --content-type application/json
           echo "desktop/latest.json now points at $TAG"
 
           # Read it back through the public URL, so a broken binding or route
