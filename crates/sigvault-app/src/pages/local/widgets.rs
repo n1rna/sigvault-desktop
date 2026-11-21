@@ -368,8 +368,12 @@ pub fn plain_error(raw: &str) -> String {
     let plain = if lower.contains("decryption failed") || lower.contains("wrong passphrase") {
         // The message is the whole story here.
         return "That passphrase didn't unlock the wallet. Check it and try again.".into();
-    } else if lower.contains("electrum") || lower.contains("connection refused") {
-        "Couldn't reach your Electrum server. Check the server address in Settings."
+    } else if lower.contains("couldn't reach")
+        || lower.contains("electrum")
+        || lower.contains("esplora")
+        || lower.contains("connection refused")
+    {
+        "Couldn't reach your server. Check the server address in Settings and your connection."
     } else if lower.starts_with("build_tx") || lower.contains("insufficient") {
         "Couldn't build the transaction."
     } else if lower.starts_with("persist") || lower.starts_with("initialize") {

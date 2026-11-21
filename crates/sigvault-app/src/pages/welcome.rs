@@ -188,7 +188,7 @@ impl Render for WelcomePage {
             "No account",
             "On this device",
             "A personal wallet that runs entirely on this computer. No account, no cloud, no third party.",
-            ["Keys encrypted on this computer", "Sign and broadcast on-device", "Connects to your own Electrum server"],
+            ["Keys encrypted on this computer", "Sign and broadcast on-device", "Syncs with SigVault's servers or your own"],
             "hard-drive",
             "Continue without an account",
             cx,

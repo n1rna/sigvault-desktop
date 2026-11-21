@@ -19,8 +19,8 @@ Bug-labeled tickets blocking QBL-233.
 - [ ] **Host OS:** _(macOS 14.x / Windows 11 / Ubuntu 22.04 / ...)_
 - [ ] **Build:** _(commit sha or tag of the desktop build)_
 - [ ] **Network endpoints:**
-  - Regtest electrs: `ssl://ers.regtest.sigvault.org:443`
-  - Testnet4: _(the public default from QBL-231 settings)_
+  - Regtest: `https://esplora.regtest.sigvault.org` (default)
+  - Testnet4: `https://esplora.testnet.sigvault.org` (default)
 - [ ] **Hardware devices connected:**
   - [ ] Ledger Nano S Plus _(firmware version: ___)_
   - [ ] BitBox02 Multi _(firmware version: ___)_
@@ -28,6 +28,9 @@ Bug-labeled tickets blocking QBL-233.
   - [ ] Coldcard Mk4 or Q _(firmware version: ___)_
 - [ ] **Automated test pass (regtest):**
       `cargo test --test regtest_e2e -- --ignored --nocapture` — all green?
+      Against the hosted regtest: `ELECTRS_URL=https://esplora.regtest.sigvault.org`
+      plus `BITCOIND_RPC_URL` / `BITCOIND_WALLET=admin` pointing at a port-forward
+      of the cluster's bitcoind (funding needs RPC).
 
 ---
 
