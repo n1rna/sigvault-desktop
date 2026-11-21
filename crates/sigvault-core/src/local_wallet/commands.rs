@@ -19,7 +19,7 @@ use bdk_wallet::KeychainKind;
 use serde::{Deserialize, Serialize};
 use wallet_runtime::{
     add_psbt_signers, add_xprv_signer, analyze_for_signing, list_spending_paths, sign_psbt,
-    ElectrumClient, SpendingPath, Wallet,
+    SpendingPath, Wallet,
 };
 
 use super::manager::{
@@ -36,9 +36,10 @@ use policy_core::KeyUtils;
 fn wallet_runtime_default_account_path(network: Network) -> String {
     KeyUtils::get_primary_derivation_path(network).to_string()
 }
+use super::chain::ChainClient;
 use super::settings::{LocalSettings, SettingsStore};
 use super::storage::{read_seed_file, WalletDirLayout, WalletId};
-use super::sync::{run_sync, ClosureSink, ProgressSink, SyncProgress, SyncSummary};
+use super::sync::{run_sync, ClosureSink, ProgressSink, SyncPhase, SyncProgress, SyncSummary};
 use crate::state::ApplicationState;
 
 // ---------- request / response payloads ----------
@@ -686,31 +687,50 @@ async fn run_sync_for(
     state: &Arc<crate::local_wallet::state::LocalWalletState>,
     id: WalletId,
 ) -> Result<SyncSummary, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app data dir: {e}"))?;
-    let mgr = LocalWalletManager::new(app_data_dir.clone(), state.clone());
-    let meta = mgr.read_metadata(&id).map_err(map_err)?;
-    let network = Network::from_str(&meta.network)
-        .map_err(|_| format!("unsupported network in metadata: {}", meta.network))?;
-
-    let settings = SettingsStore::new(app_data_dir)
-        .load()
-        .map_err(|e| e.to_string())?;
-    let electrs_url = settings
-        .electrs_url_for(network)
-        .map_err(|e| e.to_string())?;
-
-    let handle = state
-        .get(&id)
-        .await
-        .ok_or_else(|| ManagerError::NotUnlocked(id.to_string()).to_string())?;
-
     let app_for_emit = app.clone();
     let sink: Arc<dyn ProgressSink> = Arc::new(ClosureSink(move |p: SyncProgress| {
         let _ = app_for_emit.emit(SYNC_PROGRESS_EVENT, &p);
     }));
+
+    let prepared = async {
+        let app_data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("app data dir: {e}"))?;
+        let mgr = LocalWalletManager::new(app_data_dir.clone(), state.clone());
+        let meta = mgr.read_metadata(&id).map_err(map_err)?;
+        let network = Network::from_str(&meta.network)
+            .map_err(|_| format!("unsupported network in metadata: {}", meta.network))?;
+
+        let settings = SettingsStore::new(app_data_dir)
+            .load()
+            .map_err(|e| e.to_string())?;
+        let electrs_url = settings
+            .electrs_url_for(network)
+            .map_err(|e| e.to_string())?;
+
+        let handle = state
+            .get(&id)
+            .await
+            .ok_or_else(|| ManagerError::NotUnlocked(id.to_string()).to_string())?;
+        Ok::<_, String>((handle, network, electrs_url))
+    }
+    .await;
+
+    let (handle, network, electrs_url) = match prepared {
+        Ok(p) => p,
+        Err(message) => {
+            // run_sync reports its own failures; these happen before it
+            // starts, so report them here to leave the UI in a final state.
+            sink.emit(SyncProgress {
+                wallet_id: id.to_string(),
+                phase: SyncPhase::Failed,
+                percent: 0,
+                message: message.clone(),
+            });
+            return Err(message);
+        }
+    };
 
     run_sync(handle, network, electrs_url, id, sink)
         .await
@@ -1379,11 +1399,11 @@ pub async fn cmd_local_broadcast_psbt(
     let psbt = Psbt::from_str(&request.psbt_base64).map_err(|e| format!("parse psbt: {}", e))?;
     let tx = finalize_psbt(&psbt)?;
 
-    // Electrum I/O blocks; offload to a blocking thread so the runtime
+    // Chain I/O blocks; offload to a blocking thread so the runtime
     // stays responsive.
     let txid = tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let client = ElectrumClient::connect(&electrs_url)
-            .map_err(|e| format!("electrum connect {}: {}", electrs_url, e))?;
+        let client = ChainClient::connect(&electrs_url)
+            .map_err(|e| format!("couldn't reach {}: {}", electrs_url, e))?;
         client
             .broadcast(&tx)
             .map_err(|e| format!("broadcast: {}", e))

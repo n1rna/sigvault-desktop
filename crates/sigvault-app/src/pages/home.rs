@@ -426,7 +426,7 @@ impl HomePage {
             .read(cx)
             .sync_progress
             .get(&id)
-            .filter(|p| p.phase != "complete")
+            .filter(|p| crate::pages::local::sync_status::phase_in_progress(&p.phase))
             .map(|p| p.percent.min(100));
 
         let status: SharedString = if s.locked {

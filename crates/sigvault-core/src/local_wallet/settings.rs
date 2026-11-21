@@ -1,4 +1,4 @@
-//! Non-secret local-mode settings (Electrs endpoints + default network).
+//! Non-secret local-mode settings (chain server endpoints + default network).
 //!
 //! Persisted as plain JSON at `<app_data_dir>/local-settings.json`. None
 //! of these fields are sensitive — leaking them just reveals which public
@@ -21,30 +21,52 @@ pub struct LocalSettings {
     /// Default network preselected in the wallet-creation wizard. Falls
     /// back to "regtest" on first launch.
     pub default_network: String,
-    /// Electrs endpoint URLs keyed by network (`regtest`, `testnet4`,
-    /// `signet`). Mainnet entry is intentionally absent in v1; QBL-232
-    /// gates mainnet off across the stack.
+    /// Chain server URLs keyed by network (`regtest`, `testnet4`,
+    /// `signet`): `https://…` for an Esplora server, `ssl://host:port` /
+    /// `tcp://host:port` for an Electrum server (see `chain::BackendKind`).
+    /// The field keeps its historical name for on-disk compatibility.
+    /// Mainnet entry is intentionally absent in v1; QBL-232 gates mainnet
+    /// off across the stack.
     pub electrs_urls: BTreeMap<String, String>,
+}
+
+/// Sigvault-hosted Esplora servers: the electrs of each sigvault
+/// environment, published over HTTPS behind Cloudflare.
+pub const HOSTED_ESPLORA_REGTEST: &str = "https://esplora.regtest.sigvault.org";
+pub const HOSTED_ESPLORA_TESTNET4: &str = "https://esplora.testnet.sigvault.org";
+
+/// The hosted default for `key`, if sigvault runs a server for it.
+pub fn hosted_default(key: &str) -> Option<&'static str> {
+    match key {
+        "regtest" => Some(HOSTED_ESPLORA_REGTEST),
+        "testnet4" => Some(HOSTED_ESPLORA_TESTNET4),
+        _ => None,
+    }
+}
+
+/// Earlier builds defaulted to Electrum at `ssl://ers.<env>.sigvault.org:443`.
+/// That only worked while the servers ran on a VPS; behind Cloudflare the
+/// Electrum protocol can't get through, so these are rewritten on load.
+fn is_retired_hosted_url(url: &str) -> bool {
+    let u = url.trim().to_ascii_lowercase();
+    let host = u
+        .strip_prefix("ssl://")
+        .or_else(|| u.strip_prefix("tcp://"))
+        .unwrap_or(&u);
+    host.starts_with("ers.")
+        && host
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .ends_with(".sigvault.org")
 }
 
 impl Default for LocalSettings {
     fn default() -> Self {
         let mut electrs_urls = BTreeMap::new();
-        // Regtest: the sigvault-hosted electrs, exposed via Traefik
-        // TCP+SNI on :443 so it shares the existing TLS infra (no
-        // dedicated Electrum port to firewall-allow, free LE cert).
-        electrs_urls.insert(
-            "regtest".to_string(),
-            "ssl://ers.regtest.sigvault.org:443".to_string(),
-        );
-        // Testnet4 and signet ship empty: there is no single public
-        // electrs server with both broad uptime and a stable URL we
-        // can point users at without setting them up for downtime.
-        // The settings UI (QBL-231) shows these as "configure your own
-        // server" rather than as preconfigured working endpoints. Users
-        // who run their own node (Sparrow / Mempool.space self-hosted /
-        // electrs.bublina) supply the URL there.
-        electrs_urls.insert("testnet4".to_string(), String::new());
+        electrs_urls.insert("regtest".to_string(), HOSTED_ESPLORA_REGTEST.to_string());
+        electrs_urls.insert("testnet4".to_string(), HOSTED_ESPLORA_TESTNET4.to_string());
+        // Sigvault doesn't run a signet server; users supply their own.
         electrs_urls.insert("signet".to_string(), String::new());
         Self {
             default_network: "regtest".to_string(),
@@ -54,6 +76,23 @@ impl Default for LocalSettings {
 }
 
 impl LocalSettings {
+    /// Bring settings saved by older builds up to date: retired hosted
+    /// Electrum URLs and unset hosted networks get the hosted Esplora
+    /// default. Returns whether anything changed.
+    pub fn migrate(&mut self) -> bool {
+        let mut changed = false;
+        for key in ["regtest", "testnet4"] {
+            let default = hosted_default(key).unwrap_or_default();
+            let current = self.electrs_urls.get(key).map(String::as_str).unwrap_or("");
+            if current.trim().is_empty() || is_retired_hosted_url(current) {
+                self.electrs_urls
+                    .insert(key.to_string(), default.to_string());
+                changed = true;
+            }
+        }
+        changed
+    }
+
     /// Resolve the configured Electrs URL for `network`. Returns an
     /// `EmptyEndpoint` error when the user has not configured a URL for
     /// a non-mainnet network the manager supports — the sync engine
@@ -96,14 +135,36 @@ pub fn network_key(network: Network) -> Option<&'static str> {
     }
 }
 
-/// Validate an electrs URL accepted by `electrum_client::Client::new`.
-/// Accepts `tcp://host:port`, `ssl://host:port`, or bare `host:port`.
+/// Validate a chain server URL. Accepts `http(s)://host[:port][/path]`
+/// (Esplora) and `tcp://host:port`, `ssl://host:port`, or bare `host:port`
+/// (Electrum).
 /// We do not attempt a TCP connection here — connecting is QBL-218 sync
 /// territory; this is just structural validation so set_settings rejects
 /// obvious typos before they get persisted.
 pub fn validate_electrs_url(url: &str) -> Result<(), String> {
     if url.is_empty() {
         return Err("URL cannot be empty".to_string());
+    }
+    let lower = url.to_ascii_lowercase();
+    if let Some(rest) = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"))
+    {
+        let authority = rest.split('/').next().unwrap_or("");
+        let (host, port) = match authority.rsplit_once(':') {
+            Some((h, p)) => (h, Some(p)),
+            None => (authority, None),
+        };
+        if host.is_empty() || host.contains(char::is_whitespace) {
+            return Err(format!("URL must include a host (got '{url}')"));
+        }
+        if let Some(p) = port {
+            match p.parse::<u16>() {
+                Ok(n) if n > 0 => {}
+                _ => return Err(format!("URL port must be a number 1-65535 (got '{p}')")),
+            }
+        }
+        return Ok(());
     }
     let host_port = url
         .strip_prefix("tcp://")
@@ -114,7 +175,7 @@ pub fn validate_electrs_url(url: &str) -> Result<(), String> {
     let host = parts.next().unwrap_or("");
     if host.is_empty() {
         return Err(format!(
-            "URL must include host:port (got '{url}'); use tcp://host:port, ssl://host:port, or host:port"
+            "URL must include host:port (got '{url}'); use https://host for Esplora, or ssl://host:port, tcp://host:port or host:port for Electrum"
         ));
     }
     let port: u16 = port_str
@@ -132,9 +193,9 @@ pub enum SettingsError {
     Io(#[from] std::io::Error),
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
-    #[error("invalid electrs URL for {network}: {message}")]
+    #[error("invalid server URL for {network}: {message}")]
     InvalidUrl { network: String, message: String },
-    #[error("no electrs URL configured for {0} — set one in Settings")]
+    #[error("no server URL configured for {0} — set one in Settings")]
     EmptyEndpoint(String),
     #[error("network '{0}' is not supported in v1 standalone mode")]
     UnsupportedNetwork(String),
@@ -164,7 +225,15 @@ impl SettingsStore {
         // rather than refusing to start; the user can re-set values from
         // the settings page.
         match serde_json::from_slice::<LocalSettings>(&bytes) {
-            Ok(s) => Ok(s),
+            Ok(mut s) => {
+                if s.migrate() {
+                    // Best effort: the migrated values are used either way.
+                    if let Err(e) = self.save(&s) {
+                        log::warn!("couldn't save migrated local settings: {e}");
+                    }
+                }
+                Ok(s)
+            }
             Err(_) => Ok(LocalSettings::default()),
         }
     }
@@ -197,20 +266,55 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn defaults_carry_regtest_endpoint() {
+    fn defaults_carry_hosted_esplora_endpoints() {
         let s = LocalSettings::default();
         assert_eq!(s.default_network, "regtest");
         assert_eq!(
-            s.electrs_urls.get("regtest"),
-            Some(&"ssl://ers.regtest.sigvault.org:443".to_string())
+            s.electrs_urls.get("regtest").map(String::as_str),
+            Some("https://esplora.regtest.sigvault.org")
+        );
+        assert_eq!(
+            s.electrs_urls.get("testnet4").map(String::as_str),
+            Some("https://esplora.testnet.sigvault.org")
         );
     }
 
     #[test]
-    fn defaults_have_blank_testnet4_and_signet() {
+    fn defaults_have_blank_signet() {
         let s = LocalSettings::default();
-        assert_eq!(s.electrs_urls.get("testnet4"), Some(&String::new()));
         assert_eq!(s.electrs_urls.get("signet"), Some(&String::new()));
+    }
+
+    #[test]
+    fn load_migrates_retired_and_blank_hosted_urls() {
+        let tmp = TempDir::new().unwrap();
+        let store = SettingsStore::new(tmp.path().to_path_buf());
+        fs::write(
+            store.path(),
+            br#"{"default_network":"regtest","electrs_urls":{"regtest":"ssl://ers.regtest.sigvault.org:443","testnet4":"","signet":"ssl://signet.example:50002"}}"#,
+        )
+        .unwrap();
+        let loaded = store.load().expect("load");
+        assert_eq!(loaded.electrs_urls["regtest"], HOSTED_ESPLORA_REGTEST);
+        assert_eq!(loaded.electrs_urls["testnet4"], HOSTED_ESPLORA_TESTNET4);
+        assert_eq!(loaded.electrs_urls["signet"], "ssl://signet.example:50002");
+        // Persisted, so the settings page shows the new values too.
+        let on_disk: LocalSettings =
+            serde_json::from_slice(&fs::read(store.path()).unwrap()).unwrap();
+        assert_eq!(on_disk, loaded);
+    }
+
+    #[test]
+    fn migrate_keeps_user_configured_servers() {
+        let mut s = LocalSettings::default();
+        s.electrs_urls
+            .insert("regtest".to_string(), "tcp://127.0.0.1:60401".to_string());
+        s.electrs_urls.insert(
+            "testnet4".to_string(),
+            "ssl://mempool.space:40002".to_string(),
+        );
+        assert!(!s.migrate());
+        assert_eq!(s.electrs_urls["regtest"], "tcp://127.0.0.1:60401");
     }
 
     #[test]
@@ -257,6 +361,9 @@ mod tests {
     #[test]
     fn validate_accepts_known_good_urls() {
         for ok in [
+            "https://esplora.regtest.sigvault.org",
+            "https://mempool.space/testnet4/api/",
+            "http://localhost:3002",
             "tcp://regtest.sigvault.org:50001",
             "ssl://electrum.example.org:50002",
             "host.local:8080",
@@ -276,6 +383,8 @@ mod tests {
             ("host:0", "zero port"),
             (":50001", "missing host"),
             ("ssl://", "scheme only"),
+            ("https://", "https without host"),
+            ("https://host:0", "https zero port"),
         ] {
             assert!(
                 validate_electrs_url(bad).is_err(),
@@ -322,16 +431,16 @@ mod tests {
         let s = LocalSettings::default();
         assert_eq!(
             s.electrs_url_for(Network::Regtest).unwrap(),
-            "ssl://ers.regtest.sigvault.org:443"
+            "https://esplora.regtest.sigvault.org"
         );
     }
 
     #[test]
     fn electrs_url_for_errors_when_blank() {
         let s = LocalSettings::default();
-        match s.electrs_url_for(Network::Testnet4) {
-            Err(SettingsError::EmptyEndpoint(net)) => assert_eq!(net, "testnet4"),
-            other => panic!("expected EmptyEndpoint(testnet4), got {other:?}"),
+        match s.electrs_url_for(Network::Signet) {
+            Err(SettingsError::EmptyEndpoint(net)) => assert_eq!(net, "signet"),
+            other => panic!("expected EmptyEndpoint(signet), got {other:?}"),
         }
     }
 

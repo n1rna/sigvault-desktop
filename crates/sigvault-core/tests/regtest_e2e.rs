@@ -61,6 +61,7 @@ use bitcoin::{
 use policy_core::{build_descriptor, PolicyPath, RecoveryPath, WalletShape};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sigvault_core::local_wallet::chain::ChainClient;
 use sigvault_core::local_wallet::commands::{register_software_signers, spending_paths_for};
 use sigvault_core::local_wallet::manager::{
     derive_account_at_path, derive_master_xpriv, LocalWalletManager, MultisigCosigner,
@@ -70,7 +71,7 @@ use sigvault_core::local_wallet::state::{LocalWalletState, UnlockedHandle};
 use sigvault_core::local_wallet::storage::{read_seed_file, WalletDirLayout, WalletId};
 use sigvault_core::local_wallet::sync::{run_sync, NoopSink};
 use tempfile::TempDir;
-use wallet_runtime::{sign_psbt, ElectrumClient, KeychainKind, SpendingPath};
+use wallet_runtime::{sign_psbt, KeychainKind, SpendingPath};
 
 // ── Test infrastructure ────────────────────────────────────────────
 
@@ -223,7 +224,7 @@ async fn setup_ok() -> bool {
         return false;
     }
     let url = electrs_url();
-    let ok = tokio::task::spawn_blocking(move || ElectrumClient::connect(&url).is_ok())
+    let ok = tokio::task::spawn_blocking(move || ChainClient::connect(&url).is_ok())
         .await
         .unwrap_or(false);
     if !ok {
@@ -262,29 +263,41 @@ fn fresh_manager() -> (TempDir, LocalWalletManager) {
     (tmp, mgr)
 }
 
-/// Convenience: unlock + sync against the configured electrs and
-/// return the sync summary. Used after funding a wallet to wait
-/// until BDK sees the new UTXO.
+/// Convenience: sync the unlocked wallet against the configured server.
+/// Used after funding a wallet to wait until BDK sees the new UTXO, so it
+/// re-syncs until the wallet's tip reaches bitcoind's: electrs indexes new
+/// blocks a few seconds after bitcoind accepts them.
 async fn sync_wallet(
     mgr: &LocalWalletManager,
     wallet_id: &WalletId,
     network: Network,
 ) -> Result<(), String> {
-    let handle = mgr
-        .state()
-        .get(wallet_id)
+    let target: u32 = BitcoindRpc::from_env()
+        .call("getblockcount", json!([]))
+        .await?;
+    for attempt in 0..30 {
+        let handle = mgr
+            .state()
+            .get(wallet_id)
+            .await
+            .ok_or_else(|| "wallet not unlocked".to_string())?;
+        let summary = run_sync(
+            handle,
+            network,
+            electrs_url(),
+            wallet_id.clone(),
+            Arc::new(NoopSink),
+        )
         .await
-        .ok_or_else(|| "wallet not unlocked".to_string())?;
-    run_sync(
-        handle,
-        network,
-        electrs_url(),
-        wallet_id.clone(),
-        Arc::new(NoopSink),
-    )
-    .await
-    .map_err(|e| format!("sync: {e}"))?;
-    Ok(())
+        .map_err(|e| format!("sync: {e}"))?;
+        if summary.tip_height >= target {
+            return Ok(());
+        }
+        if attempt < 29 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+    Err(format!("server never reached block {target}"))
 }
 
 /// Build + sign + broadcast a PSBT spending `amount_sat` from the
@@ -312,7 +325,7 @@ async fn build_sign_broadcast(
     let tx = psbt.extract_tx().map_err(|e| format!("extract: {e}"))?;
     let url = electrs_url();
     let txid = tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let client = ElectrumClient::connect(&url).map_err(|e| format!("electrum connect: {e}"))?;
+        let client = ChainClient::connect(&url).map_err(|e| format!("chain connect: {e}"))?;
         client.broadcast(&tx).map_err(|e| format!("broadcast: {e}"))
     })
     .await
@@ -689,7 +702,7 @@ async fn spend_timelocked_as_seed_a(
 
 // ── Tests ──────────────────────────────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn singlesig_hot_full_cycle() {
     if !setup_ok().await {
@@ -747,7 +760,7 @@ async fn singlesig_hot_full_cycle() {
         .expect("confirm send");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn watch_only_descriptor_import() {
     if !setup_ok().await {
@@ -817,7 +830,7 @@ async fn watch_only_descriptor_import() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn lock_unlock_cycle_preserves_state() {
     // Pure-disk test, no network needed — but lives here so it runs
     // in the same suite as the e2e flow.
@@ -845,7 +858,7 @@ async fn lock_unlock_cycle_preserves_state() {
     assert_eq!(addr_before, addr_after);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn wrong_passphrase_rejected() {
     let (_tmp, mgr) = fresh_manager();
     let (id, _) = mgr
@@ -857,7 +870,7 @@ async fn wrong_passphrase_rejected() {
     mgr.unlock_wallet(&id, b"correct").await.unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn app_restart_preserves_wallets() {
     let tmp = TempDir::new().unwrap();
     let pass = b"restart";
@@ -895,14 +908,14 @@ async fn app_restart_preserves_wallets() {
     assert_eq!(addr_before, addr_after);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn mainnet_creation_gated() {
     let (_tmp, mgr) = fresh_manager();
     let result = mgr.create_singlesig_hot("mn", Network::Bitcoin, b"x").await;
     assert!(result.is_err(), "mainnet creation must be rejected");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn bip39_passphrase_round_trip() {
     if !setup_ok().await {
@@ -1000,7 +1013,7 @@ async fn bip39_passphrase_round_trip() {
         .expect("unlock recovered");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn singlesig_hot_signs_offline() {
     let (_tmp, mgr) = fresh_manager();
     let pass = b"e2e-passphrase";
@@ -1020,7 +1033,7 @@ async fn singlesig_hot_signs_offline() {
 /// The seed holds a key in the primary and, at the `<2;3>` step of the
 /// same xpub, the only key of the recovery. It must be able to spend the
 /// recovery leaf alone.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn cosigner_signs_recovery_leaf_at_second_multipath_step() {
     let psbt = spend_timelocked_as_seed_a(
         PolicyPath::Multi {
@@ -1041,7 +1054,7 @@ async fn cosigner_signs_recovery_leaf_at_second_multipath_step() {
 
 /// The seed holds the taproot internal key and a key inside a recovery
 /// leaf. The primary must still be signed by key path.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn cosigner_signs_key_path_while_holding_a_leaf_key() {
     let psbt = spend_timelocked_as_seed_a(
         PolicyPath::Single(cosigner_key(SEED_A, 0)),
@@ -1056,7 +1069,7 @@ async fn cosigner_signs_key_path_while_holding_a_leaf_key() {
     assert_eq!(witness.len(), 1, "key-path spend: one signature");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn timelocked_single_key_primary_lists_and_spends_its_paths() {
     check_timelocked_wallet_paths(TimelockedPrimary::Keys(keys_path(
         1,
@@ -1065,7 +1078,7 @@ async fn timelocked_single_key_primary_lists_and_spends_its_paths() {
     .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn timelocked_multisig_primary_lists_and_spends_its_paths() {
     check_timelocked_wallet_paths(TimelockedPrimary::Keys(keys_path(
         2,
@@ -1074,12 +1087,12 @@ async fn timelocked_multisig_primary_lists_and_spends_its_paths() {
     .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn timelocked_unspendable_primary_lists_and_spends_its_recoveries() {
     check_timelocked_wallet_paths(TimelockedPrimary::Unspendable).await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn recoveries_sharing_a_timelock_are_refused() {
     let secp = Secp256k1::new();
     let path = "48'/1'/0'/2'";
@@ -1111,7 +1124,7 @@ async fn recoveries_sharing_a_timelock_are_refused() {
     assert!(err.to_string().contains("same 144-block timelock"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn unspendable_primary_descriptor_uses_nums() {
     // QBL-235 — confirm the descriptor built from an unspendable
     // primary actually contains the BIP-341 NUMS pubkey at the

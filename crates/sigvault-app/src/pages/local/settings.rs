@@ -1,20 +1,20 @@
 //! `pages/local/LocalSettings.tsx` — local-mode settings (QBL-231).
 //!
-//! Default network, per-network Electrum (electrs) URLs via
+//! Default network, per-network chain server URLs (Esplora or Electrum) via
 //! `cmd_local_get_settings` / `cmd_local_set_settings`, keychain lock and
 //! an About section. v1 supports regtest / signet / testnet4; mainnet is
 //! gated off across the stack and intentionally absent here.
 //!
-//! Live URL validation mirrors the Rust-side `validate_electrs_url`:
-//! accepts `tcp://host:port`, `ssl://host:port`, or bare `host:port`;
-//! empty values are tolerated ("not configured yet"). The backend
-//! re-validates at save time and is authoritative.
+//! Live URL validation calls the backend's `validate_electrs_url`:
+//! `https://host` for Esplora, `ssl://host:port`, `tcp://host:port` or bare
+//! `host:port` for Electrum; empty values are tolerated ("not configured
+//! yet"). The backend re-validates at save time.
 
 use std::path::PathBuf;
 
 use gpui::{div, prelude::*, px, AnyElement, Context, Entity, SharedString, Subscription, Window};
 use sigvault_core::local_wallet::commands::{cmd_local_get_settings, cmd_local_set_settings};
-use sigvault_core::local_wallet::settings::LocalSettings;
+use sigvault_core::local_wallet::settings::{hosted_default, validate_electrs_url, LocalSettings};
 use sigvault_core::State;
 
 use super::widgets::{loading_card, network_color, row_icon};
@@ -54,42 +54,13 @@ const SUPPORTED_NETWORKS: [NetworkOption; 3] = [
     },
 ];
 
-/// Mirror of `validate_electrs_url` in `local_wallet/settings.rs`. Empty
-/// strings are valid here ("not configured yet").
+/// Live validation with the backend's own rules. Empty strings are valid
+/// here ("not configured yet").
 fn validate_url(url: &str) -> Option<String> {
     if url.is_empty() {
         return None;
     }
-    let stripped = url
-        .strip_prefix("tcp://")
-        .or_else(|| url.strip_prefix("ssl://"))
-        .unwrap_or(url);
-    let last_colon = stripped.rfind(':');
-    let last_colon =
-        match last_colon {
-            Some(i) if i > 0 && i != stripped.len() - 1 => i,
-            _ => return Some(
-                "URL must include host:port — use tcp://host:port, ssl://host:port, or host:port"
-                    .into(),
-            ),
-        };
-    let host = &stripped[..last_colon];
-    let port_str = &stripped[last_colon + 1..];
-    if host.is_empty() {
-        return Some("URL is missing the host".into());
-    }
-    // JS `Number(portStr)` + `Number.isInteger` + range check.
-    let ok = port_str
-        .trim()
-        .parse::<f64>()
-        .map(|p| p.fract() == 0. && (1. ..=65535.).contains(&p))
-        .unwrap_or(false);
-    if !ok {
-        return Some(format!(
-            "Port must be a number between 1 and 65535 (got \"{port_str}\")"
-        ));
-    }
-    None
+    validate_electrs_url(url).err()
 }
 
 pub struct LocalSettingsPage {
@@ -110,11 +81,7 @@ impl LocalSettingsPage {
         let mut inputs = Vec::new();
         let mut subs = Vec::new();
         for n in SUPPORTED_NETWORKS.iter() {
-            let placeholder = if n.id == "regtest" {
-                "ssl://ers.regtest.sigvault.org:443"
-            } else {
-                "ssl://your.electrs.host:50002"
-            };
+            let placeholder = hosted_default(n.id).unwrap_or("https://your.esplora.host");
             let input = cx.new(|cx| TextInput::new(window, cx).mono().placeholder(placeholder));
             let network = n.id;
             subs.push(
@@ -367,8 +334,8 @@ impl LocalSettingsPage {
                     ),
             );
         }
-        section("Electrum servers")
-            .description("Used to sync wallets and broadcast transactions. Use ssl://host:port, tcp://host:port or host:port; leave blank for networks you don't use.")
+        section("Servers")
+            .description("Used to sync wallets and broadcast transactions. Use https://host for an Esplora server, or ssl://host:port / tcp://host:port for an Electrum server; leave blank for networks you don't use. Regtest and Testnet 4 default to SigVault's servers.")
             .child(c)
     }
 
