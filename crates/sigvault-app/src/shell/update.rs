@@ -45,7 +45,9 @@ impl UpdateBanner {
                     .build()
                     .ok()?;
                 let feed: Feed = client.get(FEED_URL).send().await.ok()?.json().await.ok()?;
-                is_newer(&feed.version, local).then_some(feed.version)
+                // The feed carries the tag (`v0.7.1`); the banner adds its own `v`.
+                is_newer(&feed.version, local)
+                    .then(|| feed.version.trim_start_matches('v').to_string())
             });
             cx.spawn(async move |this, cx| {
                 if let Some(Some(version)) = task.await {
