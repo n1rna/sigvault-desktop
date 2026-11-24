@@ -46,6 +46,9 @@ jobs:
             formats: nsis
 
     runs-on: ${{ matrix.platform }}
+    # ENV_VARS_DESKTOP is synced by sigvault-secrets to this environment;
+    # without it the job reads the stale repo-level secret of the same name.
+    environment: development
     steps:
       - uses: actions/checkout@v4
 
@@ -211,6 +214,8 @@ jobs:
     needs: build
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
+    # See the build job: the synced ENV_VARS_DESKTOP (R2 token included).
+    environment: development
     steps:
       - uses: actions/checkout@v4
 
