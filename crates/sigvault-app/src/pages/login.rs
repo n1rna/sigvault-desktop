@@ -9,7 +9,7 @@ use sigvault_core::State;
 use super::cloud::common::{icon_tile, network_badge_unless_named};
 use crate::e2e::{E2eClick, Probe};
 use crate::runtime::backend;
-use crate::theme::{alpha, theme, FONT_MONO};
+use crate::theme::{alpha, theme};
 use crate::ui::{alert, button, card, divider, page_frame, Tone};
 
 /// (icon, title, body) for the value proposition column.
@@ -152,13 +152,6 @@ impl Render for LoginPage {
             }));
 
         let env = self.current_env.as_ref();
-        let host = env.map(|e| {
-            e.api_base_url
-                .trim_start_matches("https://")
-                .trim_start_matches("http://")
-                .trim_end_matches('/')
-                .to_string()
-        });
         let env_row = div()
             .flex()
             .flex_row()
@@ -172,36 +165,20 @@ impl Render for LoginPage {
                     .flex_1()
                     .min_w_0()
                     .flex()
-                    .flex_col()
-                    .gap(px(2.))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(px(13.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(
-                                        env.map(|e| e.name.clone())
-                                            .unwrap_or_else(|| "Loading…".into()),
-                                    ),
-                            )
-                            .children(
-                                env.and_then(|e| network_badge_unless_named(&e.name, &e.network)),
-                            ),
-                    )
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
                     .child(
                         div()
                             .truncate()
-                            .font_family(FONT_MONO)
-                            .text_size(px(12.))
-                            .text_color(t.muted_foreground)
-                            .child(host.unwrap_or_else(|| "Network".into())),
-                    ),
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(
+                                env.map(|e| e.name.clone())
+                                    .unwrap_or_else(|| "Loading…".into()),
+                            ),
+                    )
+                    .children(env.and_then(|e| network_badge_unless_named(&e.name, &e.network))),
             )
             .child(
                 button("change-env", "Change")
